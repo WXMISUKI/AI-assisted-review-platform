@@ -1,8 +1,5 @@
-# platform-shell Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change platform-framework-blueprint. Update Purpose after archive.
-## Requirements
 ### Requirement: Role-based login entry
 The system SHALL provide a login entry that routes users into the platform according to their role.
 
@@ -35,4 +32,3 @@ The system SHALL provide navigation entries for document library, knowledge base
 #### Scenario: User sees knowledge base placeholder
 - **WHEN** the knowledge base page is selected
 - **THEN** the system shows a placeholder page if the capability is not yet implemented
-

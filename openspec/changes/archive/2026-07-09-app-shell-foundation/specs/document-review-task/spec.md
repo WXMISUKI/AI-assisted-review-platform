@@ -1,8 +1,5 @@
-# document-review-task Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change platform-framework-blueprint. Update Purpose after archive.
-## Requirements
 ### Requirement: Document upload and task creation
 The system SHALL allow users to upload or drag documents into the document library and create a review task.
 
@@ -35,4 +32,3 @@ The system SHALL open the review workbench only after AI issues are ready.
 #### Scenario: User opens an in-progress task
 - **WHEN** the user opens a document whose review is still loading
 - **THEN** the system shows a locked loading state instead of the workbench
-

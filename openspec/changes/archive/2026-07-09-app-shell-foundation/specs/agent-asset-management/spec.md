@@ -1,8 +1,5 @@
-# agent-asset-management Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change platform-framework-blueprint. Update Purpose after archive.
-## Requirements
 ### Requirement: Agent asset navigation
 The system SHALL expose an agent management entry under data assets for authorized users.
 
@@ -35,4 +32,3 @@ The system SHALL reserve entries for a construction plan review agent and a revi
 #### Scenario: Prompt assets page opens
 - **WHEN** the prompt assets page is opened
 - **THEN** the system shows placeholder content if CRUD is not yet implemented
-
