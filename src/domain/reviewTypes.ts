@@ -6,6 +6,8 @@ export type IssueSeverity = "critical" | "high" | "medium" | "low";
 
 export type StatusFilter = "all" | IssueStatus;
 
+export type ReviewMode = "review" | "revise";
+
 export interface DocumentParagraph {
   id: string;
   section: string;

@@ -38,3 +38,31 @@ The system SHALL distinguish AI-generated issues from manually created review is
 - **WHEN** AI and manual issues are displayed together
 - **THEN** the user can identify whether each issue came from AI or manual review
 
+### Requirement: Manual issue creation contract
+The system SHALL create manual review issues using the same structured issue contract as AI-generated review issues.
+
+#### Scenario: Manual issue is created from selected text
+- **WHEN** a user submits a manual annotation for selected text
+- **THEN** the created issue has `source` set to `manual`, `status` set to `pending`, and an anchor with paragraph identity, offsets, and selected text
+
+### Requirement: Manual issue default fields
+The system SHALL provide sensible default values for manual issue fields when the user leaves optional fields empty.
+
+#### Scenario: User submits partial manual annotation
+- **WHEN** the user submits selected text with only a title
+- **THEN** the system still creates a complete issue with fallback reason, basis, and suggestion text
+
+### Requirement: Reversible resolution contract
+The system SHALL store the current issue decision as a reversible resolution state rather than a final locked action.
+
+#### Scenario: User switches issue decision
+- **WHEN** the user changes an issue from accepted to rejected or rejected to accepted
+- **THEN** the issue stores the latest decision without losing the original finding details
+
+### Requirement: Accepted suggestion snapshot
+The system SHALL snapshot the current suggestion text when an issue is accepted.
+
+#### Scenario: User accepts edited suggestion
+- **WHEN** the user edits a suggestion and clicks accept
+- **THEN** the accepted issue stores the edited suggestion as the text to apply in review-revise mode
+

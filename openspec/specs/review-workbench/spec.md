@@ -68,3 +68,99 @@ The system SHALL display a review progress summary based on issue statuses.
 - **WHEN** an issue status changes
 - **THEN** the progress summary updates pending, accepted, rejected, and modified counts
 
+### Requirement: Manual text selection annotation
+The system SHALL allow users to create a manual review issue from selected text in the document body.
+
+#### Scenario: User selects text in one paragraph
+- **WHEN** the user selects text within a single document paragraph
+- **THEN** the system captures the paragraph identity, start offset, end offset, and selected text
+
+#### Scenario: User submits manual annotation
+- **WHEN** the user fills the manual annotation form and submits it
+- **THEN** the system adds a pending manual issue linked to the selected text
+
+#### Scenario: User cancels manual annotation
+- **WHEN** the user cancels the selected annotation draft
+- **THEN** the system clears the selection draft without adding a review issue
+
+### Requirement: Manual annotation visibility
+The system SHALL render newly created manual annotations in both the document and the issue panel.
+
+#### Scenario: Manual issue is created
+- **WHEN** a manual issue is added from selected text
+- **THEN** the selected text is highlighted in the document and a matching issue card appears in the side panel
+ 
+#### Scenario: Manual issue card is processed
+- **WHEN** the user accepts, rejects, or edits a manual issue
+- **THEN** the issue follows the same status and preview behavior as AI issues
+
+### Requirement: Selection anchored annotation popover
+The system SHALL display the manual annotation form near the selected document text instead of moving the user to a top-of-document form.
+
+#### Scenario: User selects valid text
+- **WHEN** the user selects valid text within one document paragraph
+- **THEN** the system displays a manual annotation popover anchored near the selected text
+
+#### Scenario: Selection is near viewport edge
+- **WHEN** the selected text is close to a viewport edge
+- **THEN** the popover remains visible within the viewport bounds
+
+#### Scenario: User creates annotation from popover
+- **WHEN** the user submits the popover form
+- **THEN** the system creates the manual issue and closes the popover without scrolling the document to the top
+
+#### Scenario: User cancels annotation from popover
+- **WHEN** the user cancels the popover form
+- **THEN** the system clears the selection draft and removes the popover
+
+### Requirement: Review mode switch
+The system SHALL provide a mode switch between review mode and review-revise mode, with review mode selected by default.
+
+#### Scenario: User opens the application
+- **WHEN** the workbench loads
+- **THEN** review mode is selected by default
+
+#### Scenario: User switches mode
+- **WHEN** the user selects review-revise mode
+- **THEN** accepted issues can affect the processed document preview
+
+### Requirement: Reversible issue decision
+The system SHALL allow users to switch an issue decision between accepted and rejected without locking the issue card.
+
+#### Scenario: User accepts an issue
+- **WHEN** the user clicks accept
+- **THEN** the accept button is highlighted and the issue is marked accepted
+
+#### Scenario: User changes accepted issue to rejected
+- **WHEN** the user clicks reject on an accepted issue
+- **THEN** the reject button is highlighted and the issue is marked rejected
+
+### Requirement: Mode-specific preview behavior
+The system SHALL render the processed preview according to the selected mode.
+
+#### Scenario: Review mode preview
+- **WHEN** review mode is selected
+- **THEN** the preview keeps original document text even if issues are accepted
+
+#### Scenario: Review-revise mode preview
+- **WHEN** review-revise mode is selected and an issue is accepted
+- **THEN** the preview applies the accepted suggestion text
+
+### Requirement: Manual issue deletion
+The system SHALL allow users to delete manually created issues after confirmation.
+
+#### Scenario: User requests deleting a manual issue
+- **WHEN** the user clicks delete on a manual issue
+- **THEN** the system shows a confirmation prompt before removing the issue
+
+#### Scenario: User confirms deletion
+- **WHEN** the user confirms deletion
+- **THEN** the manual issue is removed from document highlights, issue cards, filters, and preview calculations
+
+### Requirement: Long document preview
+The system SHALL display the processed preview as a continuous document flow suitable for long content.
+
+#### Scenario: Preview is rendered
+- **WHEN** the processed preview is displayed
+- **THEN** paragraphs appear in document order in a scrollable continuous preview instead of separate cards
+

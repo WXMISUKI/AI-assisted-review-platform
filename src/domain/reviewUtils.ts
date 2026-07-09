@@ -2,6 +2,7 @@ import type {
   DocumentParagraph,
   IssueCounts,
   IssueStatus,
+  ReviewMode,
   ReviewIssue,
   StatusFilter,
 } from "./reviewTypes";
@@ -23,10 +24,6 @@ export function matchesFilter(issue: ReviewIssue, filter: StatusFilter): boolean
 
 export function getReplacementText(issue: ReviewIssue): string | null {
   if (issue.status === "accepted") {
-    return issue.finding.suggestion;
-  }
-
-  if (issue.status === "modified") {
     return issue.resolution.editedText || issue.finding.suggestion;
   }
 
@@ -48,11 +45,16 @@ export function applyIssueToText(text: string, issue: ReviewIssue): string {
 export function buildProcessedParagraphs(
   paragraphs: DocumentParagraph[],
   issues: ReviewIssue[],
+  mode: ReviewMode,
 ): DocumentParagraph[] {
+  if (mode === "review") {
+    return paragraphs;
+  }
+
   return paragraphs.map((paragraph) => {
     const paragraphIssues = issues
       .filter((issue) => issue.anchor.paragraphId === paragraph.id)
-      .filter((issue) => issue.status === "accepted" || issue.status === "modified")
+      .filter((issue) => issue.status === "accepted")
       .sort((a, b) => b.anchor.startOffset - a.anchor.startOffset);
 
     const text = paragraphIssues.reduce(
@@ -66,7 +68,7 @@ export function buildProcessedParagraphs(
 
 export function resolveIssue(
   issue: ReviewIssue,
-  status: Extract<IssueStatus, "accepted" | "rejected" | "modified">,
+  status: Extract<IssueStatus, "accepted" | "rejected">,
   editedText?: string,
 ): ReviewIssue {
   return {
@@ -74,7 +76,7 @@ export function resolveIssue(
     status,
     resolution: {
       action: status,
-      editedText: status === "modified" ? editedText || issue.finding.suggestion : null,
+      editedText: status === "accepted" ? editedText || issue.finding.suggestion : null,
       resolvedAt: new Date().toISOString(),
     },
   };
