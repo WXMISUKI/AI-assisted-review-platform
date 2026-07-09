@@ -5,8 +5,12 @@
   --border: #d8e0e6;
   --border-soft: #e7edf2;
   --ink: #1b2430;
-  --ink-muted: #536477;
-  --ink-subtle: #7a8998;
+  --ink-muted: #617284;
+  --ink-subtle: #8a97a6;
+  --text-primary: #1b2430;
+  --text-secondary: #617284;
+  --text-tertiary: #8a97a6;
+  --text-on-accent: #ffffff;
   --primary: #0f766e;
   --primary-hover: #0b5f59;
   --primary-soft: #e8f7f3;
@@ -14,6 +18,26 @@
   --warning: #b45f06;
   --danger: #b42318;
   --success: #177245;
+  --severity-critical-bg: #ffe8e3;
+  --severity-critical-text: #b42318;
+  --severity-high-bg: #fff0d9;
+  --severity-high-text: #a05000;
+  --severity-medium-bg: #eaf3ff;
+  --severity-medium-text: #175cd3;
+  --severity-low-bg: #eaf8f0;
+  --severity-low-text: #177245;
+  --status-ready-bg: #e8f7f3;
+  --status-ready-text: #0f645e;
+  --status-completed-bg: #e8f7f3;
+  --status-completed-text: #0f645e;
+  --status-reviewing-bg: #fff8ec;
+  --status-reviewing-text: #714300;
+  --status-parsing-bg: #fff8ec;
+  --status-parsing-text: #714300;
+  --status-uploaded-bg: #eef2f5;
+  --status-uploaded-text: #536477;
+  --status-failed-bg: #fff1ee;
+  --status-failed-text: #b42318;
   --shadow: 0 24px 60px rgba(23, 35, 50, 0.12);
   color: var(--ink);
   background:
@@ -26,30 +50,56 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --page-bg: #0f172a;
-  --surface: #111827;
-  --surface-muted: #0b1220;
-  --border: #243244;
-  --border-soft: #1b2837;
-  --ink: #e5eef7;
-  --ink-muted: #9fb2c7;
-  --ink-subtle: #7f93a8;
-  --primary: #2dd4bf;
-  --primary-hover: #14b8a6;
-  --primary-soft: rgba(45, 212, 191, 0.14);
-  --info: #60a5fa;
-  --warning: #f59e0b;
-  --danger: #f87171;
-  --success: #34d399;
-  --shadow: 0 28px 72px rgba(0, 0, 0, 0.28);
+  --page-bg: #141c29;
+  --surface: #182131;
+  --surface-muted: #1f2a3d;
+  --border: #33455d;
+  --border-soft: #27364a;
+  --ink: #eef5fb;
+  --ink-muted: #b6c1cf;
+  --ink-subtle: #93a3b8;
+  --text-primary: #eef5fb;
+  --text-secondary: #b6c1cf;
+  --text-tertiary: #93a3b8;
+  --text-on-accent: #f5fbff;
+  --primary: #31d6c7;
+  --primary-hover: #58e4d8;
+  --primary-soft: rgba(49, 214, 199, 0.14);
+  --info: #7ab0ff;
+  --warning: #f3b34b;
+  --danger: #ff8585;
+  --success: #4bd39b;
+  --severity-critical-bg: rgba(255, 133, 133, 0.18);
+  --severity-critical-text: #ffb8b8;
+  --severity-high-bg: rgba(243, 179, 75, 0.18);
+  --severity-high-text: #ffd7a1;
+  --severity-medium-bg: rgba(122, 176, 255, 0.18);
+  --severity-medium-text: #c5dcff;
+  --severity-low-bg: rgba(75, 211, 155, 0.18);
+  --severity-low-text: #b5f0d1;
+  --status-ready-bg: rgba(75, 211, 155, 0.14);
+  --status-ready-text: #b5f0d1;
+  --status-completed-bg: rgba(75, 211, 155, 0.14);
+  --status-completed-text: #b5f0d1;
+  --status-reviewing-bg: rgba(243, 179, 75, 0.14);
+  --status-reviewing-text: #ffe0aa;
+  --status-parsing-bg: rgba(243, 179, 75, 0.14);
+  --status-parsing-text: #ffe0aa;
+  --status-uploaded-bg: rgba(122, 176, 255, 0.12);
+  --status-uploaded-text: #c5dcff;
+  --status-failed-bg: rgba(255, 133, 133, 0.14);
+  --status-failed-text: #ffb8b8;
+  --shadow: 0 24px 54px rgba(3, 9, 20, 0.34);
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(45, 212, 191, 0.12), transparent 24%),
-    radial-gradient(circle at top right, rgba(96, 165, 250, 0.08), transparent 18%),
+    radial-gradient(circle at top left, rgba(49, 214, 199, 0.14), transparent 24%),
+    radial-gradient(circle at top right, rgba(122, 176, 255, 0.09), transparent 18%),
     var(--page-bg);
+  color-scheme: dark;
 }
 
 * {
@@ -312,8 +362,8 @@ button {
   min-height: 42px;
   border: 1px solid #cbd5df;
   border-radius: 8px;
-  background: #ffffff;
-  color: #425366;
+  background: var(--surface);
+  color: var(--ink-muted);
   font-weight: 700;
 }
 
@@ -525,24 +575,24 @@ button {
 
 .status-ready,
 .status-completed {
-  background: #e8f7f3;
-  color: #0f645e;
+  background: var(--status-ready-bg);
+  color: var(--status-ready-text);
 }
 
 .status-reviewing,
 .status-parsing {
-  background: #fff8ec;
-  color: #714300;
+  background: var(--status-reviewing-bg);
+  color: var(--status-reviewing-text);
 }
 
 .status-uploaded {
-  background: #eef2f5;
-  color: #536477;
+  background: var(--status-uploaded-bg);
+  color: var(--status-uploaded-text);
 }
 
 .status-failed {
-  background: #fff1ee;
-  color: #b42318;
+  background: var(--status-failed-bg);
+  color: var(--status-failed-text);
 }
 
 .mode-pill {
@@ -1204,23 +1254,23 @@ h4 {
 }
 
 .severity-critical {
-  background: #ffe8e3;
-  color: #b42318;
+  background: var(--severity-critical-bg);
+  color: var(--severity-critical-text);
 }
 
 .severity-high {
-  background: #fff0d9;
-  color: #a05000;
+  background: var(--severity-high-bg);
+  color: var(--severity-high-text);
 }
 
 .severity-medium {
-  background: #eaf3ff;
-  color: #175cd3;
+  background: var(--severity-medium-bg);
+  color: var(--severity-medium-text);
 }
 
 .severity-low {
-  background: #eaf8f0;
-  color: #177245;
+  background: var(--severity-low-bg);
+  color: var(--severity-low-text);
 }
 
 .source {
@@ -1604,4 +1654,676 @@ body {
 
 .confirm-dialog {
   box-shadow: var(--shadow);
+}
+
+:root[data-theme="dark"] body {
+  background: var(--page-bg);
+}
+
+:root[data-theme="dark"] .shell-sidebar,
+:root[data-theme="dark"] .shell-topbar,
+:root[data-theme="dark"] .login-card,
+:root[data-theme="dark"] .login-hero,
+:root[data-theme="dark"] .login-form,
+:root[data-theme="dark"] .library-rail,
+:root[data-theme="dark"] .library-upload-card,
+:root[data-theme="dark"] .library-table-card,
+:root[data-theme="dark"] .placeholder-page,
+:root[data-theme="dark"] .assets-card,
+:root[data-theme="dark"] .loading-card,
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .mode-switch-panel,
+:root[data-theme="dark"] .metric,
+:root[data-theme="dark"] .active-issue,
+:root[data-theme="dark"] .outline-panel,
+:root[data-theme="dark"] .document-panel,
+:root[data-theme="dark"] .issues-panel,
+:root[data-theme="dark"] .processed-preview,
+:root[data-theme="dark"] .confirm-dialog,
+:root[data-theme="dark"] .shell-role-card,
+:root[data-theme="dark"] .shell-logout,
+:root[data-theme="dark"] .shell-nav-item {
+  background: rgba(23, 33, 49, 0.94);
+  border-color: var(--border);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .shell-sidebar {
+  background: linear-gradient(180deg, rgba(16, 24, 36, 0.94), rgba(20, 29, 44, 0.96));
+}
+
+:root[data-theme="dark"] .login-shell {
+  background:
+    radial-gradient(circle at top left, rgba(49, 214, 199, 0.08), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(122, 176, 255, 0.06), transparent 18%),
+    var(--page-bg);
+}
+
+:root[data-theme="dark"] .role-button {
+  background: var(--surface-muted);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .shell-nav-item {
+  background: rgba(30, 42, 61, 0.95);
+}
+
+:root[data-theme="dark"] .shell-nav-item:hover,
+:root[data-theme="dark"] .outline-item:hover,
+:root[data-theme="dark"] .upload-dropzone.dragging,
+:root[data-theme="dark"] .manual-selection.active,
+:root[data-theme="dark"] .document-paragraph.active {
+  background: rgba(49, 214, 199, 0.12);
+}
+
+:root[data-theme="dark"] .shell-nav-item.active,
+:root[data-theme="dark"] .role-button.active,
+:root[data-theme="dark"] .mode-button.active,
+:root[data-theme="dark"] .row-actions .primary,
+:root[data-theme="dark"] .upload-button,
+:root[data-theme="dark"] .assets-card button,
+:root[data-theme="dark"] .login-submit,
+:root[data-theme="dark"] .manual-actions button,
+:root[data-theme="dark"] .dialog-actions button.danger,
+:root[data-theme="dark"] .shell-brand-mark {
+  color: #f5fbff;
+}
+
+:root[data-theme="dark"] .shell-role-pill,
+:root[data-theme="dark"] .project-meta span,
+:root[data-theme="dark"] .legend,
+:root[data-theme="dark"] .preview-note,
+:root[data-theme="dark"] .status-pill,
+:root[data-theme="dark"] .mode-pill {
+  background: rgba(30, 42, 61, 0.95);
+  color: var(--ink-muted);
+}
+
+:root[data-theme="dark"] .mode-switch {
+  background: rgba(30, 42, 61, 0.95);
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] .filter {
+  background: rgba(30, 42, 61, 0.95);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] .filter.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  border-color: var(--border);
+  background: rgba(17, 26, 39, 0.96);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: var(--ink-subtle);
+}
+
+:root[data-theme="dark"] .upload-dropzone {
+  background: rgba(17, 26, 39, 0.8);
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] .upload-pick-button,
+:root[data-theme="dark"] .theme-toggle,
+:root[data-theme="dark"] .theme-toggle.subtle,
+:root[data-theme="dark"] .detail-back-button,
+:root[data-theme="dark"] .row-actions button,
+:root[data-theme="dark"] .dialog-actions button,
+:root[data-theme="dark"] .icon-button {
+  background: rgba(17, 26, 39, 0.96);
+  border-color: var(--border);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .preview-document {
+  background: rgba(17, 26, 39, 0.72);
+}
+
+:root[data-theme="dark"] .table-row,
+:root[data-theme="dark"] .history-item,
+:root[data-theme="dark"] .selected-text,
+:root[data-theme="dark"] .manual-popover,
+:root[data-theme="dark"] .dialog-anchor,
+:root[data-theme="dark"] .document-paragraph.active,
+:root[data-theme="dark"] .manual-selection.active {
+  background: rgba(18, 27, 41, 0.96);
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] .table-row,
+:root[data-theme="dark"] .history-item,
+:root[data-theme="dark"] .preview-paragraph,
+:root[data-theme="dark"] .issue-card,
+:root[data-theme="dark"] .preview-document,
+:root[data-theme="dark"] .document-paragraph,
+:root[data-theme="dark"] .manual-form input,
+:root[data-theme="dark"] .manual-form textarea,
+:root[data-theme="dark"] .upload-form-row input {
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] .table-head {
+  border-bottom-color: var(--border-soft);
+}
+
+:root[data-theme="dark"] .preview-paragraph {
+  border-bottom-color: var(--border-soft);
+}
+
+:root[data-theme="dark"] .shell-nav-item.active {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .shell-nav-item.active span,
+:root[data-theme="dark"] .shell-nav-item.active svg,
+:root[data-theme="dark"] .role-button.active,
+:root[data-theme="dark"] .mode-button.active {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .platform-shell,
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .login-shell {
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    strong,
+    .shell-brand,
+    .shell-nav-item,
+    .role-button,
+    .mode-button,
+    .theme-toggle,
+    .upload-pick-button,
+    .detail-back-button,
+    .login-submit,
+    .upload-button,
+    .assets-card button,
+    .row-actions button,
+    .dialog-actions button,
+    .icon-button,
+    .table-row strong,
+    .history-item strong,
+    .issue-card h4,
+    .preview-paragraph h3,
+    .manual-popover-header h3,
+    .selected-text strong,
+    .metric strong,
+    .active-issue
+  ) {
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    p,
+    small,
+    .eyebrow,
+    .shell-brand span,
+    .shell-role-card p,
+    .history-item small,
+    .table-row small,
+    .table-head,
+    .mode-switch-panel p,
+    .library-upload-card p,
+    .placeholder-page p,
+    .assets-card p,
+    .loading-card p,
+    .manual-selection-hint,
+    .manual-form label span,
+    .preview-paragraph p,
+    .confirm-dialog p,
+    .issue-card-body p,
+    .project-meta,
+    .shell-role-pill,
+    .legend,
+    .preview-note,
+    .status-pill,
+    .mode-pill,
+    .empty-state
+  ) {
+  color: var(--text-secondary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .shell-nav-item.active,
+    .role-button.active,
+    .mode-button.active,
+    .row-actions .primary,
+    .upload-button,
+    .assets-card button,
+    .login-submit,
+    .manual-actions button,
+    .dialog-actions button.danger,
+    .shell-brand-mark
+  ) {
+  color: var(--text-on-accent) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .shell-nav-item,
+    .shell-role-card,
+    .shell-logout,
+    .shell-topbar,
+    .login-card,
+    .login-hero,
+    .login-form,
+    .library-rail,
+    .library-upload-card,
+    .library-table-card,
+    .placeholder-page,
+    .assets-card,
+    .loading-card,
+    .topbar,
+    .mode-switch-panel,
+    .metric,
+    .active-issue,
+    .outline-panel,
+    .document-panel,
+    .issues-panel,
+    .processed-preview,
+    .confirm-dialog,
+    .history-item,
+    .table-row,
+    .issue-card,
+    .preview-paragraph,
+    .manual-popover,
+    .dialog-anchor,
+    .selected-text,
+    .theme-toggle,
+    .upload-pick-button,
+    .detail-back-button,
+    .row-actions button,
+    .dialog-actions button,
+    .icon-button,
+    .upload-dropzone,
+    .upload-form-row input,
+    .login-form input,
+    .manual-form input,
+    .manual-form textarea,
+    .preview-document
+  ) {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .upload-dropzone,
+    .manual-selection.active,
+    .document-paragraph.active,
+    .preview-document
+  ) {
+  background: var(--surface-muted) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(input, textarea, select) {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .panel-title,
+    .panel-heading,
+    .section-title,
+    .section-title.row,
+    .issue-card-header,
+    .issue-card-body,
+    .filter-row,
+    .filter,
+    .metric,
+    .active-issue,
+    .outline-panel,
+    .document-panel,
+    .issues-panel,
+    .processed-preview,
+    .table-head,
+    .table-row,
+    .history-item,
+    .upload-dropzone,
+    .manual-selection,
+    .manual-popover,
+    .selected-text,
+    .confirm-dialog,
+    .dialog-anchor,
+    .preview-document,
+    .preview-paragraph,
+    .library-upload-card,
+    .library-table-card,
+    .library-rail,
+    .shell-topbar,
+    .mode-switch-panel,
+    .login-card,
+    .login-hero,
+    .login-form
+  ) {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .issue-card-header,
+    .issue-card-body,
+    .filter-row,
+    .preview-paragraph,
+    .manual-popover-header,
+    .manual-selection,
+    .panel-title,
+    .panel-heading
+  ) {
+  background: var(--surface-muted) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .issue-card-header h4,
+    .issue-card-body h4,
+    .panel-title,
+    .panel-heading,
+    .section-title h2,
+    .table-row strong,
+    .history-item strong,
+    .preview-paragraph h3,
+    .manual-popover-header h3,
+    .selected-text strong,
+    .metric strong,
+    .active-issue,
+    .mode-button,
+    .role-button,
+    .shell-nav-item,
+    .theme-toggle,
+    .upload-pick-button,
+    .detail-back-button,
+    .login-submit,
+    .upload-button,
+    .row-actions button,
+    .dialog-actions button,
+    .icon-button
+  ) {
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    p,
+    small,
+    .eyebrow,
+    .shell-brand span,
+    .shell-role-card p,
+    .history-item small,
+    .table-row small,
+    .table-head,
+    .mode-switch-panel p,
+    .library-upload-card p,
+    .placeholder-page p,
+    .assets-card p,
+    .loading-card p,
+    .manual-selection-hint,
+    .manual-form label span,
+    .preview-paragraph p,
+    .confirm-dialog p,
+    .issue-card-body p,
+    .project-meta,
+    .shell-role-pill,
+    .legend,
+    .preview-note,
+    .status-pill,
+    .mode-pill,
+    .empty-state,
+    .source,
+    .dialog-anchor
+  ) {
+  color: var(--text-secondary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .shell-nav-item.active,
+    .role-button.active,
+    .mode-button.active,
+    .row-actions .primary,
+    .upload-button,
+    .assets-card button,
+    .login-submit,
+    .manual-actions button,
+    .dialog-actions button.danger,
+    .shell-brand-mark
+  ) {
+  color: var(--text-on-accent) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .inline-issue,
+    .inline-issue.accepted,
+    .inline-issue.modified,
+    .inline-issue.rejected,
+    .anchor-text,
+    .selected-text,
+    .dialog-anchor,
+    .status-pill,
+    .mode-pill,
+    .filter,
+    .issue-card-header,
+    .issue-card-body,
+    .preview-paragraph,
+    .table-row,
+    .history-item
+  ) {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(.filter.active, .action-row button.selected) {
+  background: var(--primary-soft) !important;
+  border-color: var(--primary) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(.action-row button.reject.selected) {
+  background: rgba(255, 133, 133, 0.14) !important;
+  border-color: var(--danger) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell :is(
+    .manual-form input,
+    .manual-form textarea,
+    .upload-form-row input,
+    .login-form input,
+    .suggestion-editor textarea
+  ) {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell .upload-form-row input::placeholder,
+:root[data-theme="dark"] .platform-shell .login-form input::placeholder,
+:root[data-theme="dark"] .platform-shell .manual-form input::placeholder,
+:root[data-theme="dark"] .platform-shell .manual-form textarea::placeholder,
+:root[data-theme="dark"] .platform-shell .suggestion-editor textarea::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+:root[data-theme="dark"] .app-shell {
+  color: var(--text-primary);
+  background: var(--page-bg);
+}
+
+:root[data-theme="dark"] .app-shell * {
+  border-color: var(--border) !important;
+}
+
+:root[data-theme="dark"] .app-shell :is(
+    .topbar,
+    .summary-strip,
+    .mode-switch-panel,
+    .workspace,
+    .outline-panel,
+    .document-panel,
+    .issues-panel,
+    .processed-preview,
+    .panel-title,
+    .panel-heading,
+    .filter-row,
+    .filter,
+    .metric,
+    .active-issue,
+    .issue-card,
+    .issue-card-header,
+    .issue-card-body,
+    .manual-selection,
+    .manual-popover,
+    .manual-popover-header,
+    .manual-form,
+    .selected-text,
+    .preview-document,
+    .preview-paragraph,
+    .confirm-dialog,
+    .dialog-backdrop,
+    .dialog-anchor,
+    .history-item,
+    .table-row,
+    .table-head,
+    .upload-dropzone,
+    .upload-form-row input,
+    .theme-toggle,
+    .detail-back-button,
+    .row-actions button,
+    .action-row button,
+    .icon-button,
+    .login-submit,
+    .shell-role-pill
+  ) {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .app-shell :is(
+    .panel-heading,
+    .panel-title,
+    .filter-row,
+    .manual-selection,
+    .manual-popover-header,
+    .issue-card-header,
+    .preview-paragraph,
+    .table-head
+  ) {
+  background: var(--surface-muted) !important;
+}
+
+:root[data-theme="dark"] .app-shell :is(
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    strong,
+    button,
+    input,
+    textarea,
+    select,
+    .theme-toggle,
+    .detail-back-button,
+    .login-submit,
+    .row-actions button,
+    .action-row button,
+    .icon-button,
+    .upload-button,
+    .assets-card button
+  ) {
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .app-shell :is(
+    p,
+    small,
+    .eyebrow,
+    .metric span,
+    .issue-card-body p,
+    .manual-selection-hint,
+    .manual-form label span,
+    .preview-paragraph p,
+    .confirm-dialog p,
+    .history-item small,
+    .table-row small,
+    .source,
+    .project-meta,
+    .legend,
+    .preview-note,
+    .status-pill,
+    .mode-pill,
+    .empty-state,
+    .shell-brand span,
+    .shell-role-card p,
+    .suggestion-editor span
+  ) {
+  color: var(--text-secondary) !important;
+}
+
+:root[data-theme="dark"] .app-shell :is(
+    .shell-nav-item.active,
+    .mode-button.active,
+    .role-button.active,
+    .filter.active,
+    .action-row button.selected,
+    .action-row button.reject.selected,
+    .inline-issue.accepted,
+    .inline-issue.modified
+  ) {
+  color: var(--text-on-accent) !important;
+}
+
+:root[data-theme="dark"] .app-shell :is(
+    .inline-issue,
+    .inline-issue.accepted,
+    .inline-issue.modified,
+    .inline-issue.rejected,
+    .anchor-text,
+    .dialog-anchor,
+    .selected-text,
+    .preview-document,
+    .table-row,
+    .history-item,
+    .issue-card,
+    .issue-card-header,
+    .issue-card-body,
+    .manual-popover,
+    .manual-popover-arrow,
+    .manual-form input,
+    .manual-form textarea,
+    .suggestion-editor textarea,
+    .upload-dropzone,
+    .upload-form-row input,
+    .filter,
+    .metric,
+    .active-issue
+  ) {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+}
+
+:root[data-theme="dark"] .app-shell :is(
+    .manual-form input::placeholder,
+    .manual-form textarea::placeholder,
+    .suggestion-editor textarea::placeholder,
+    .upload-form-row input::placeholder
+  ) {
+  color: var(--text-tertiary) !important;
 }

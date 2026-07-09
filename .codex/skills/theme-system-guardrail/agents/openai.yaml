@@ -1,0 +1,4 @@
+interface:
+  display_name: "Theme System Guardrail"
+  short_description: "Global theme token audit and dark/light color cleanup"
+  default_prompt: "Use this skill when updating global theme colors, semantic tokens, borders, surfaces, text colors, or when auditing the app for stray hardcoded colors and inconsistent dark-mode rendering."

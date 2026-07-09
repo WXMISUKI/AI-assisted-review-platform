@@ -8,6 +8,12 @@ schema: spec-driven
 #     Tech stack: TypeScript, React, Node.js
 #     We use conventional commits
 #     Domain: e-commerce platform
+context: |
+  Tech stack: TypeScript, React, Vite.
+  Domain: enterprise AI-assisted construction plan review platform.
+  Theme system: semantic tokens live in src/styles.css and must stay soft, readable, and consistent across light/dark themes.
+  Theme changes should prefer root tokens and shared wrappers over one-off component overrides.
+  Use the local skill .codex/skills/theme-system-guardrail/ for color audits and dark-mode cleanup.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
