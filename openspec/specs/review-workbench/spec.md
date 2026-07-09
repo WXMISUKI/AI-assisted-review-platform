@@ -164,3 +164,10 @@ The system SHALL display the processed preview as a continuous document flow sui
 - **WHEN** the processed preview is displayed
 - **THEN** paragraphs appear in document order in a scrollable continuous preview instead of separate cards
 
+### Requirement: Workbench as document detail page
+The review workbench SHALL function as the document detail page entered from the document library and review task flow.
+
+#### Scenario: User opens completed review task
+- **WHEN** the user opens a document whose AI review task is ready
+- **THEN** the system displays the review workbench with document content and review issues
+
