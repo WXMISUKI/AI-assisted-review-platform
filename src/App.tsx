@@ -2,15 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Database,
-  FileText,
   GitCompareArrows,
   LayoutDashboard,
   LogOut,
   LucideIcon,
-  Menu,
-  Play,
   Plus,
   ShieldCheck,
+  SunMoon,
   Sparkles,
   Upload,
   Users,
@@ -42,6 +40,8 @@ interface UploadDraft {
   name: string;
   project: string;
 }
+
+type ThemeMode = "light" | "dark";
 
 const roleLabels: Record<Role, string> = {
   super_admin: "超管",
@@ -121,10 +121,16 @@ export function App() {
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
   const [dragging, setDragging] = useState(false);
   const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
   const loadingTimerRef = useRef<number | null>(null);
 
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
   const allowedModes: ReviewMode[] = session ? roleModes[session.role] : ["review", "revise"];
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    window.localStorage.setItem("app-theme", themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     if (activePage !== "review-loading" || !loadingDocId) {
@@ -159,6 +165,10 @@ export function App() {
   function handleLogout() {
     setSession(null);
     setActivePage("documents");
+  }
+
+  function toggleTheme() {
+    setThemeMode((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
   }
 
   function handleUpload(name: string, project: string) {
@@ -210,7 +220,21 @@ export function App() {
   }
 
   if (!session) {
-    return <LoginPage onSignIn={handleSignIn} />;
+    return <LoginPage onSignIn={handleSignIn} themeMode={themeMode} onToggleTheme={toggleTheme} />;
+  }
+
+  if (activePage === "review-detail" && selectedDocument) {
+    return (
+      <ReviewWorkbenchPage
+        allowedModes={allowedModes}
+        roleLabel={roleLabels[session.role]}
+        documentName={selectedDocument.name}
+        projectName={selectedDocument.project}
+        onBack={() => setActivePage("documents")}
+        themeMode={themeMode}
+        onToggleTheme={toggleTheme}
+      />
+    );
   }
 
   return (
@@ -259,24 +283,26 @@ export function App() {
       </aside>
 
       <section className="shell-main">
-        {activePage !== "review-detail" && (
-          <header className="shell-topbar">
-            <div>
-              <span className="eyebrow">默认入口</span>
-              <h1>{pageLabels[activePage as Exclude<ShellPage, "review-loading" | "review-detail">]}</h1>
-            </div>
-            <div className="shell-topbar-actions">
-              <span className="shell-role-pill">
-                <Users size={14} />
-                {roleLabels[session.role]}
-              </span>
-              <span className="shell-role-pill muted">
-                <GitCompareArrows size={14} />
-                {allowedModes.length === 2 ? "双模式可用" : `${modeName(allowedModes[0])} 可用`}
-              </span>
-            </div>
-          </header>
-        )}
+        <header className="shell-topbar">
+          <div>
+            <span className="eyebrow">默认入口</span>
+            <h1>{pageLabels[activePage as Exclude<ShellPage, "review-loading" | "review-detail">]}</h1>
+          </div>
+          <div className="shell-topbar-actions">
+            <button type="button" className="theme-toggle" onClick={toggleTheme}>
+              <SunMoon size={16} />
+              {themeMode === "light" ? "深色主题" : "浅色主题"}
+            </button>
+            <span className="shell-role-pill">
+              <Users size={14} />
+              {roleLabels[session.role]}
+            </span>
+            <span className="shell-role-pill muted">
+              <GitCompareArrows size={14} />
+              {allowedModes.length === 2 ? "双模式可用" : `${modeName(allowedModes[0])} 可用`}
+            </span>
+          </div>
+        </header>
 
         <div className="shell-content">
           {activePage === "documents" && (
@@ -305,21 +331,21 @@ export function App() {
               statusLabel={statusLabels[selectedDocument?.status ?? "uploaded"]}
             />
           )}
-
-          {activePage === "review-detail" && selectedDocument && (
-            <ReviewWorkbenchPage
-              allowedModes={allowedModes}
-              roleLabel={roleLabels[session.role]}
-              documentName={selectedDocument.name}
-            />
-          )}
         </div>
       </section>
     </div>
   );
 }
 
-function LoginPage({ onSignIn }: { onSignIn: (session: Session) => void }) {
+function LoginPage({
+  onSignIn,
+  themeMode,
+  onToggleTheme,
+}: {
+  onSignIn: (session: Session) => void;
+  themeMode: ThemeMode;
+  onToggleTheme: () => void;
+}) {
   const [username, setUsername] = useState("li.gong");
   const [password, setPassword] = useState("123456");
   const [role, setRole] = useState<Role>("supervisor");
@@ -334,6 +360,12 @@ function LoginPage({ onSignIn }: { onSignIn: (session: Session) => void }) {
         </div>
 
         <div className="login-form">
+          <div className="login-form-topline">
+            <button type="button" className="theme-toggle subtle" onClick={onToggleTheme}>
+              <SunMoon size={16} />
+              {themeMode === "light" ? "切换到深色" : "切换到浅色"}
+            </button>
+          </div>
           <label>
             <span>账号</span>
             <input value={username} onChange={(event) => setUsername(event.target.value)} />
@@ -393,12 +425,12 @@ function DocumentLibraryPage({
   onStartReview: (documentId: string) => void;
   onOpenDocument: (documentId: string) => void;
 }) {
-  const selectedDocument = documents[0];
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recentDocs = documents.slice(0, 5);
 
   function submitUpload() {
     const name = uploadDraft.name.trim() || `施工方案_${Date.now()}.pdf`;
-    const project = uploadDraft.project.trim() || "未命名项目";
+    const project = uploadDraft.project.trim() || "未知项目";
     onUpload(name, project);
   }
 
@@ -429,25 +461,47 @@ function DocumentLibraryPage({
             <h2>拖拽或选择文件，建立新的审查任务</h2>
             <p>上传后可点击开始审核，系统会先模拟文档解析与智能体审查的加载过程。</p>
           </div>
-          <div
-            className={dragging ? "upload-dropzone dragging" : "upload-dropzone"}
-            onDragOver={(event) => {
-              event.preventDefault();
-              onDragChange(true);
-            }}
-            onDragLeave={() => onDragChange(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              onDragChange(false);
-              const file = event.dataTransfer.files[0];
-              if (file) {
-                onUpload(file.name, "拖拽导入项目");
-              }
-            }}
-          >
-            <Upload size={22} />
-            <span>拖拽文件到此处</span>
-            <small>支持 PDF、Word（当前为 mock）</small>
+          <div className={dragging ? "upload-dropzone dragging" : "upload-dropzone"}>
+            <input
+              ref={fileInputRef}
+              className="upload-input"
+              type="file"
+              accept=".pdf,.doc,.docx"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  onUpload(file.name, uploadDraft.project.trim() || "未知项目");
+                  event.target.value = "";
+                }
+              }}
+            />
+            <div
+              className="upload-dropzone-body"
+              onDragOver={(event) => {
+                event.preventDefault();
+                onDragChange(true);
+              }}
+              onDragLeave={() => onDragChange(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                onDragChange(false);
+                const file = event.dataTransfer.files[0];
+                if (file) {
+                  onUpload(file.name, uploadDraft.project.trim() || "未知项目");
+                }
+              }}
+            >
+              <Upload size={22} />
+              <span>拖拽文件到此处</span>
+              <small>支持 PDF、Word（当前为 mock）</small>
+            </div>
+            <button
+              type="button"
+              className="upload-pick-button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              选择文件
+            </button>
           </div>
 
           <div className="upload-form-row">
@@ -524,25 +578,6 @@ function DocumentLibraryPage({
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="detail-preview-card">
-          <div className="section-title row">
-            <div>
-              <span className="eyebrow">快速预览</span>
-              <h2>{selectedDocument?.name ?? "未选择文档"}</h2>
-            </div>
-            <span className="library-meta">{selectedDocument?.project}</span>
-          </div>
-          {selectedDocument ? (
-            <div className="quick-preview">
-              <p>状态：{statusLabels[selectedDocument.status]}</p>
-              <p>建议模式：{modeName(selectedDocument.mode)}</p>
-              <p>问题数量：{selectedDocument.issueCount}</p>
-            </div>
-          ) : (
-            <p className="placeholder-text">尚未选择文档。</p>
-          )}
         </div>
       </section>
     </div>
@@ -631,6 +666,19 @@ function NavButton({
       <span>{label}</span>
     </button>
   );
+}
+
+function getInitialTheme(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const storedTheme = window.localStorage.getItem("app-theme");
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function modeName(mode?: ReviewMode) {

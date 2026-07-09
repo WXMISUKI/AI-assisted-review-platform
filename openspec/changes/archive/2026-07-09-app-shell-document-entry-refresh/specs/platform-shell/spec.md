@@ -1,8 +1,5 @@
-# platform-shell Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change platform-framework-blueprint. Update Purpose after archive.
-## Requirements
 ### Requirement: Role-based login entry
 The system SHALL provide a login entry that routes users into the platform according to their role.
 
@@ -36,6 +33,8 @@ The system SHALL provide navigation entries for document library, knowledge base
 - **WHEN** the knowledge base page is selected
 - **THEN** the system shows a placeholder page if the capability is not yet implemented
 
+## ADDED Requirements
+
 ### Requirement: Persistent user controls
 The system SHALL keep the current user's identity, role, theme controls, and logout action visible in the platform shell whenever the shell is displayed.
 
@@ -68,4 +67,3 @@ The system SHALL open document detail as a dedicated full-screen work area with 
 #### Scenario: User returns to the library
 - **WHEN** the user clicks the back action from document detail
 - **THEN** the system returns to the document library view
-

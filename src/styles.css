@@ -1,15 +1,55 @@
 :root {
-  color: #1b2430;
+  --page-bg: #eef2f5;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border: #d8e0e6;
+  --border-soft: #e7edf2;
+  --ink: #1b2430;
+  --ink-muted: #536477;
+  --ink-subtle: #7a8998;
+  --primary: #0f766e;
+  --primary-hover: #0b5f59;
+  --primary-soft: #e8f7f3;
+  --info: #175cd3;
+  --warning: #b45f06;
+  --danger: #b42318;
+  --success: #177245;
+  --shadow: 0 24px 60px rgba(23, 35, 50, 0.12);
+  color: var(--ink);
   background:
     radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 24%),
     radial-gradient(circle at top right, rgba(23, 92, 211, 0.07), transparent 18%),
-    #eef2f5;
+    var(--page-bg);
   font-family:
     Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="dark"] {
+  --page-bg: #0f172a;
+  --surface: #111827;
+  --surface-muted: #0b1220;
+  --border: #243244;
+  --border-soft: #1b2837;
+  --ink: #e5eef7;
+  --ink-muted: #9fb2c7;
+  --ink-subtle: #7f93a8;
+  --primary: #2dd4bf;
+  --primary-hover: #14b8a6;
+  --primary-soft: rgba(45, 212, 191, 0.14);
+  --info: #60a5fa;
+  --warning: #f59e0b;
+  --danger: #f87171;
+  --success: #34d399;
+  --shadow: 0 28px 72px rgba(0, 0, 0, 0.28);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(45, 212, 191, 0.12), transparent 24%),
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.08), transparent 18%),
+    var(--page-bg);
 }
 
 * {
@@ -1405,4 +1445,163 @@ h4 {
   border-color: #b42318;
   background: #b42318;
   color: #ffffff;
+}
+
+body {
+  color: var(--ink);
+  background: var(--page-bg);
+}
+
+.shell-sidebar {
+  background: var(--surface);
+  border-right-color: var(--border);
+  color: var(--ink);
+}
+
+.shell-nav-item,
+.shell-role-card,
+.shell-logout,
+.shell-topbar,
+.login-card,
+.login-hero,
+.login-form,
+.library-rail,
+.library-upload-card,
+.library-table-card,
+.placeholder-page,
+.assets-card,
+.loading-card,
+.topbar,
+.mode-switch-panel,
+.metric,
+.active-issue,
+.outline-panel,
+.document-panel,
+.issues-panel,
+.processed-preview,
+.confirm-dialog {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.shell-nav-item:hover,
+.outline-item:hover {
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+.shell-nav-item.active,
+.role-button.active,
+.mode-button.active,
+.row-actions .primary,
+.upload-button,
+.assets-card button,
+.login-submit,
+.manual-actions button,
+.dialog-actions button.danger,
+.shell-brand-mark {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.shell-nav-item.active,
+.role-button.active,
+.mode-button.active {
+  border-color: var(--primary);
+}
+
+.shell-role-pill,
+.project-meta span,
+.legend,
+.preview-note,
+.status-pill,
+.mode-pill {
+  border-color: var(--border);
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+}
+
+.shell-topbar-actions,
+.login-form-topline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-toggle,
+.theme-toggle.subtle,
+.upload-pick-button,
+.detail-back-button,
+.row-actions button,
+.dialog-actions button,
+.icon-button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.theme-toggle:hover,
+.theme-toggle.subtle:hover,
+.upload-pick-button:hover,
+.detail-back-button:hover,
+.row-actions button:hover,
+.dialog-actions button:hover,
+.icon-button:hover {
+  border-color: var(--primary);
+  color: var(--primary-hover);
+}
+
+.upload-dropzone {
+  background: var(--surface-muted);
+  border-color: var(--border);
+}
+
+.upload-dropzone.dragging {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+
+.upload-input {
+  display: none;
+}
+
+.upload-dropzone-body {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+}
+
+.upload-pick-button {
+  justify-self: center;
+  margin-top: 12px;
+}
+
+.empty-state {
+  border-color: var(--border);
+  color: var(--ink-muted);
+}
+
+.preview-document,
+.selected-text,
+.manual-popover,
+.dialog-anchor,
+.document-paragraph.active,
+.manual-selection.active,
+.table-row,
+.history-item {
+  background: var(--surface);
+}
+
+.preview-document {
+  background: var(--surface-muted);
+}
+
+.preview-paragraph {
+  border-color: var(--border-soft);
+  background: var(--surface);
+}
+
+.confirm-dialog {
+  box-shadow: var(--shadow);
 }

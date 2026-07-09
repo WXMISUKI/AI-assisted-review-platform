@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   Check,
   ChevronRight,
   ClipboardCheck,
@@ -11,6 +12,7 @@ import {
   PencilLine,
   Plus,
   ShieldAlert,
+  SunMoon,
   Trash2,
   X,
 } from "lucide-react";
@@ -34,6 +36,10 @@ export interface ReviewWorkbenchPageProps {
   allowedModes?: ReviewMode[];
   roleLabel?: string;
   documentName?: string;
+  projectName?: string;
+  onBack?: () => void;
+  themeMode?: "light" | "dark";
+  onToggleTheme?: () => void;
 }
 
 interface SelectionDraft {
@@ -97,6 +103,10 @@ export function ReviewWorkbenchPage({
   allowedModes = ["review", "revise"],
   roleLabel = "监理",
   documentName = "施工方案智能审查工作台",
+  projectName = "南京综合楼项目",
+  onBack,
+  themeMode = "light",
+  onToggleTheme,
 }: ReviewWorkbenchPageProps = {}) {
   const [issues, setIssues] = useState<ReviewIssue[]>(initialReviewIssues);
   const [activeIssueId, setActiveIssueId] = useState(initialReviewIssues[0]?.id ?? "");
@@ -301,12 +311,26 @@ export function ReviewWorkbenchPage({
   return (
     <main className="app-shell">
       <header className="topbar">
+        {onBack ? (
+          <button type="button" className="detail-back-button" onClick={onBack}>
+            <ArrowLeft size={16} />
+            返回文档库
+          </button>
+        ) : (
+          <span className="detail-back-spacer" aria-hidden="true" />
+        )}
         <div>
           <span className="eyebrow">AI-assisted review platform · MVP</span>
           <h1>{documentName}</h1>
         </div>
         <div className="project-meta" aria-label="项目摘要">
-          <span>南京综合楼项目</span>
+          {onToggleTheme && (
+            <button type="button" className="theme-toggle subtle" onClick={onToggleTheme}>
+              <SunMoon size={16} />
+              {themeMode === "light" ? "深色主题" : "浅色主题"}
+            </button>
+          )}
+          <span>{projectName}</span>
           <span>{roleLabel}</span>
           <span>Mock 数据</span>
         </div>
