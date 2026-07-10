@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -116,6 +117,7 @@ export function ReviewWorkbenchPage({
   );
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [selectionDraft, setSelectionDraft] = useState<SelectionDraft | null>(null);
+  const [popoverDragging, setPopoverDragging] = useState(false);
   const [selectionMessage, setSelectionMessage] = useState("拖选原文中的一段文字，可新增人工标注。");
   const [manualForm, setManualForm] = useState<ManualAnnotationForm>({
     title: "",
@@ -142,6 +144,62 @@ export function ReviewWorkbenchPage({
   const activeIssue = issues.find((issue) => issue.id === activeIssueId) ?? issues[0];
   const visibleModes: ReviewMode[] =
     allowedModes.length > 0 ? allowedModes : ["review", "revise"];
+  const dragStateRef = useRef<{
+    startX: number;
+    startY: number;
+    startTop: number;
+    startLeft: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!popoverDragging) {
+      return;
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const dragState = dragStateRef.current;
+      if (!dragState) {
+        return;
+      }
+
+      const width = Math.min(POPOVER_WIDTH, window.innerWidth - POPOVER_MARGIN * 2);
+      const maxTop = Math.max(
+        POPOVER_MARGIN,
+        window.innerHeight - POPOVER_MARGIN - POPOVER_ESTIMATED_HEIGHT,
+      );
+      const maxLeft = Math.max(POPOVER_MARGIN, window.innerWidth - POPOVER_MARGIN - width);
+
+      const nextLeft = clampValue(
+        dragState.startLeft + (event.clientX - dragState.startX),
+        POPOVER_MARGIN,
+        maxLeft,
+      );
+      const nextTop = clampValue(
+        dragState.startTop + (event.clientY - dragState.startY),
+        POPOVER_MARGIN,
+        maxTop,
+      );
+
+      setSelectionDraft((currentDraft) =>
+        currentDraft ? { ...currentDraft, popover: { top: nextTop, left: nextLeft } } : currentDraft,
+      );
+    }
+
+    function finishDrag() {
+      dragStateRef.current = null;
+      setPopoverDragging(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishDrag);
+    window.addEventListener("blur", finishDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishDrag);
+      window.removeEventListener("blur", finishDrag);
+    };
+  }, [popoverDragging]);
 
   function focusIssue(issueId: string, target: "paragraph" | "card" = "paragraph") {
     const issue = issues.find((item) => item.id === issueId);
@@ -261,6 +319,8 @@ export function ReviewWorkbenchPage({
 
   function cancelSelectionDraft() {
     setSelectionDraft(null);
+    setPopoverDragging(false);
+    dragStateRef.current = null;
     setManualForm({ title: "", reason: "", basis: "", suggestion: "" });
     setSelectionMessage("拖选原文中的一段文字，可新增人工标注。");
     window.getSelection()?.removeAllRanges();
@@ -306,6 +366,26 @@ export function ReviewWorkbenchPage({
     window.requestAnimationFrame(() => {
       cardRefs.current[issueId]?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
+  }
+
+  function startPopoverDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!selectionDraft || event.button !== 0) {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, input, textarea, select, a")) {
+      return;
+    }
+
+    event.preventDefault();
+    dragStateRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startTop: selectionDraft.popover.top,
+      startLeft: selectionDraft.popover.left,
+    };
+    setPopoverDragging(true);
   }
 
   return (
@@ -414,6 +494,8 @@ export function ReviewWorkbenchPage({
               onFormChange={(nextForm) => setManualForm(nextForm)}
               onCancel={cancelSelectionDraft}
               onCreate={createManualIssue}
+              onDragStart={startPopoverDrag}
+              dragging={popoverDragging}
             />
           )}
           <div className="document-scroll">
@@ -532,6 +614,10 @@ function getClampedPopoverPosition(rect: DOMRect): SelectionDraft["popover"] {
   };
 }
 
+function clampValue(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function ManualSelectionPanel({
   draft,
   message,
@@ -555,16 +641,20 @@ function ManualAnnotationPopover({
   onFormChange,
   onCancel,
   onCreate,
+  onDragStart,
+  dragging,
 }: {
   draft: SelectionDraft;
   form: ManualAnnotationForm;
   onFormChange: (form: ManualAnnotationForm) => void;
   onCancel: () => void;
   onCreate: () => void;
+  onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  dragging: boolean;
 }) {
   return (
     <section
-      className="manual-popover"
+      className={dragging ? "manual-popover dragging" : "manual-popover"}
       style={{
         top: draft.popover.top,
         left: draft.popover.left,
@@ -572,7 +662,7 @@ function ManualAnnotationPopover({
       }}
     >
       <div className="manual-popover-arrow" />
-      <div className="manual-popover-header">
+      <div className="manual-popover-header" onPointerDown={onDragStart}>
         <div>
           <span className="eyebrow">人工标注</span>
           <h3>就地补充审查意见</h3>

@@ -105,14 +105,6 @@ The system SHALL display the manual annotation form near the selected document t
 - **WHEN** the selected text is close to a viewport edge
 - **THEN** the popover remains visible within the viewport bounds
 
-#### Scenario: User creates annotation from popover
-- **WHEN** the user submits the popover form
-- **THEN** the system creates the manual issue and closes the popover without scrolling the document to the top
-
-#### Scenario: User cancels annotation from popover
-- **WHEN** the user cancels the popover form
-- **THEN** the system clears the selection draft and removes the popover
-
 ### Requirement: Review mode switch
 The system SHALL provide a mode switch between review mode and review-revise mode, with review mode selected by default.
 
@@ -135,6 +127,10 @@ The system SHALL allow users to switch an issue decision between accepted and re
 - **WHEN** the user clicks reject on an accepted issue
 - **THEN** the reject button is highlighted and the issue is marked rejected
 
+#### Scenario: User changes rejected issue back to accepted
+- **WHEN** the user clicks accept on a rejected issue
+- **THEN** the accept button is highlighted and the issue returns to the accepted state
+
 ### Requirement: Mode-specific preview behavior
 The system SHALL render the processed preview according to the selected mode.
 
@@ -153,10 +149,6 @@ The system SHALL allow users to delete manually created issues after confirmatio
 - **WHEN** the user clicks delete on a manual issue
 - **THEN** the system shows a confirmation prompt before removing the issue
 
-#### Scenario: User confirms deletion
-- **WHEN** the user confirms deletion
-- **THEN** the manual issue is removed from document highlights, issue cards, filters, and preview calculations
-
 ### Requirement: Long document preview
 The system SHALL display the processed preview as a continuous document flow suitable for long content.
 
@@ -174,4 +166,11 @@ The review workbench SHALL function as the document detail page entered from the
 #### Scenario: User opens workbench from shell
 - **WHEN** the user clicks a ready document in the library
 - **THEN** the system loads the workbench inside the platform shell without losing shell navigation
+
+### Requirement: Draggable annotation popover
+The system SHALL allow the manual annotation popover to be dragged without losing the current selection draft.
+
+#### Scenario: User drags the popover
+- **WHEN** the user drags the popover header to a new position
+- **THEN** the popover moves to the new position and keeps the selected text context intact
 

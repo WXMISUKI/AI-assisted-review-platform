@@ -37,15 +37,11 @@ The system SHALL provide navigation entries for document library, knowledge base
 - **THEN** the system shows a placeholder page if the capability is not yet implemented
 
 ### Requirement: Persistent user controls
-The system SHALL keep the current user's identity, role, theme controls, and logout action visible in the platform shell whenever the shell is displayed.
+The system SHALL keep the current user's identity, role, theme switch, and logout action visible whenever the platform shell is displayed.
 
 #### Scenario: Shell is rendered
 - **WHEN** a logged-in user opens any shell-backed page
-- **THEN** the system shows the user's identity and logout action without requiring navigation into another menu
-
-#### Scenario: Theme control is available
-- **WHEN** the platform shell is rendered
-- **THEN** the user can switch the visual theme from a persistent shell control
+- **THEN** the system shows the user's identity, role, theme switch, and logout action without requiring navigation into another menu
 
 ### Requirement: Light enterprise shell presentation
 The system SHALL present the platform shell in a light, enterprise-oriented visual style by default.
@@ -68,4 +64,11 @@ The system SHALL open document detail as a dedicated full-screen work area with 
 #### Scenario: User returns to the library
 - **WHEN** the user clicks the back action from document detail
 - **THEN** the system returns to the document library view
+
+### Requirement: Unified semantic theme tokens
+The system SHALL render the shell using shared semantic tokens for backgrounds, borders, text, and state colors across light and dark themes.
+
+#### Scenario: User switches theme
+- **WHEN** the user toggles between light and dark theme
+- **THEN** the shell updates the shared tokens without leaving hardcoded white panels or unreadable dark text behind
 
