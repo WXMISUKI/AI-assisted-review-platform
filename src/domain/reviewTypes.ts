@@ -8,6 +8,8 @@ export type StatusFilter = "all" | IssueStatus;
 
 export type ReviewMode = "review" | "revise";
 
+export type DocumentStatus = "uploaded" | "parsing" | "reviewing" | "ready" | "completed" | "failed";
+
 export type ReviewEngineSource = "rule" | "semantic" | "hybrid";
 
 export type ReviewCheckDomain =
@@ -173,3 +175,53 @@ export interface RevisedPlanSnapshotAsset extends ReviewResultBase {
 }
 
 export type ReviewResultAsset = SupervisorReportAsset | RevisedPlanSnapshotAsset;
+
+export interface ReviewStreamingStage {
+  id: string;
+  title: string;
+  detail: string;
+  progress: number;
+  outlineItems: string[];
+  documentSnippets: string[];
+  issueSummaries: string[];
+  hazardLabel?: string;
+  basisTrace?: {
+    complete: number;
+    partial: number;
+    missing: number;
+  };
+}
+
+export interface ReviewTask {
+  id: string;
+  name: string;
+  project: string;
+  uploader: string;
+  updatedAt: string;
+  status: DocumentStatus;
+  issueCount: number;
+  mode: ReviewMode;
+  paragraphs: DocumentParagraph[];
+  issues: ReviewIssue[];
+  streamStageIndex: number;
+  resultAsset?: ReviewResultAsset;
+}
+
+export interface ReviewSession {
+  task: ReviewTask;
+  paragraphs: DocumentParagraph[];
+  issues: ReviewIssue[];
+  processedParagraphs: DocumentParagraph[];
+}
+
+export interface ReviewStorageSnapshot {
+  schemaVersion: number;
+  tasks: ReviewTask[];
+}
+
+export interface CreateReviewTaskInput {
+  name: string;
+  project: string;
+  uploader: string;
+  mode: ReviewMode;
+}

@@ -19,7 +19,10 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { documentParagraphs, initialReviewIssues } from "./domain/mockReview";
+import {
+  documentParagraphs as defaultDocumentParagraphs,
+  initialReviewIssues,
+} from "./domain/mockReview";
 import type {
   DocumentParagraph,
   IssueSeverity,
@@ -49,6 +52,16 @@ export interface ReviewWorkbenchPageProps {
   themeMode?: "light" | "dark";
   onToggleTheme?: () => void;
   onComplete?: (payload: ReviewCompletionPayload) => void;
+  paragraphs?: DocumentParagraph[];
+  initialIssues?: ReviewIssue[];
+  onIssueResolve?: (
+    issueId: string,
+    status: Extract<IssueStatus, "accepted" | "rejected">,
+    editedText: string,
+  ) => void;
+  onIssueDraftChange?: (issueId: string, suggestion: string) => void;
+  onManualIssueAdd?: (issue: ReviewIssue) => void;
+  onManualIssueDelete?: (issueId: string) => void;
 }
 
 interface SelectionDraft {
@@ -148,9 +161,15 @@ export function ReviewWorkbenchPage({
   themeMode = "light",
   onToggleTheme,
   onComplete,
+  paragraphs = defaultDocumentParagraphs,
+  initialIssues: initialIssuesProp = initialReviewIssues,
+  onIssueResolve,
+  onIssueDraftChange,
+  onManualIssueAdd,
+  onManualIssueDelete,
 }: ReviewWorkbenchPageProps = {}) {
-  const [issues, setIssues] = useState<ReviewIssue[]>(initialReviewIssues);
-  const [activeIssueId, setActiveIssueId] = useState(initialReviewIssues[0]?.id ?? "");
+  const [issues, setIssues] = useState<ReviewIssue[]>(initialIssuesProp);
+  const [activeIssueId, setActiveIssueId] = useState(initialIssuesProp[0]?.id ?? "");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [reviewMode, setReviewMode] = useState<ReviewMode>(() =>
     allowedModes.includes("review") ? "review" : allowedModes[0] ?? "revise",
@@ -167,7 +186,7 @@ export function ReviewWorkbenchPage({
     suggestion: "",
   });
   const [draftSuggestions, setDraftSuggestions] = useState<Record<string, string>>(
-    Object.fromEntries(initialReviewIssues.map((issue) => [issue.id, issue.finding.suggestion])),
+    Object.fromEntries(initialIssuesProp.map((issue) => [issue.id, issue.finding.suggestion])),
   );
   const paragraphRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -175,8 +194,8 @@ export function ReviewWorkbenchPage({
   const counts = useMemo(() => getIssueCounts(issues), [issues]);
   const reviewComplete = useMemo(() => isReviewComplete(issues), [issues]);
   const processedParagraphs = useMemo(
-    () => buildProcessedParagraphs(documentParagraphs, issues, reviewMode),
-    [issues, reviewMode],
+    () => buildProcessedParagraphs(paragraphs, issues, reviewMode),
+    [issues, paragraphs, reviewMode],
   );
   const filteredIssues = useMemo(
     () => issues.filter((issue) => matchesFilter(issue, filter)),
@@ -192,6 +211,18 @@ export function ReviewWorkbenchPage({
     startTop: number;
     startLeft: number;
   } | null>(null);
+
+  useEffect(() => {
+    setIssues(initialIssuesProp);
+    setActiveIssueId((currentActiveId) =>
+      initialIssuesProp.some((issue) => issue.id === currentActiveId)
+        ? currentActiveId
+        : initialIssuesProp[0]?.id ?? "",
+    );
+    setDraftSuggestions(
+      Object.fromEntries(initialIssuesProp.map((issue) => [issue.id, issue.finding.suggestion])),
+    );
+  }, [initialIssuesProp]);
 
   useEffect(() => {
     if (!popoverDragging) {
@@ -260,13 +291,15 @@ export function ReviewWorkbenchPage({
   }
 
   function updateIssue(issueId: string, status: "accepted" | "rejected") {
+    const editedText = draftSuggestions[issueId] || "";
     setIssues((currentIssues) =>
       currentIssues.map((issue) =>
         issue.id === issueId
-          ? resolveIssue(issue, status, draftSuggestions[issueId] || issue.finding.suggestion)
+          ? resolveIssue(issue, status, editedText || issue.finding.suggestion)
           : issue,
       ),
     );
+    onIssueResolve?.(issueId, status, editedText);
     setActiveIssueId(issueId);
   }
 
@@ -278,6 +311,7 @@ export function ReviewWorkbenchPage({
       return nextDrafts;
     });
     setDeleteCandidateId(null);
+    onManualIssueDelete?.(issueId);
     setActiveIssueId((currentActiveId) => {
       if (currentActiveId !== issueId) {
         return currentActiveId;
@@ -293,6 +327,7 @@ export function ReviewWorkbenchPage({
       ...currentDrafts,
       [issueId]: value,
     }));
+    onIssueDraftChange?.(issueId, value);
   }
 
   function captureSelection(paragraph: DocumentParagraph, textElement: HTMLParagraphElement | null) {
@@ -402,6 +437,7 @@ export function ReviewWorkbenchPage({
       ...currentDrafts,
       [issueId]: newIssue.finding.suggestion,
     }));
+    onManualIssueAdd?.(newIssue);
     setFilter("all");
     setActiveIssueId(issueId);
     cancelSelectionDraft();
@@ -522,7 +558,7 @@ export function ReviewWorkbenchPage({
             <FileText size={18} />
             <span>方案章节</span>
           </div>
-          {documentParagraphs.map((paragraph) => (
+          {paragraphs.map((paragraph) => (
             <button
               key={paragraph.id}
               className="outline-item"
@@ -567,7 +603,7 @@ export function ReviewWorkbenchPage({
             />
           )}
           <div className="document-scroll">
-            {documentParagraphs.map((paragraph) => (
+            {paragraphs.map((paragraph) => (
               <DocumentParagraphBlock
                 key={paragraph.id}
                 paragraph={paragraph}

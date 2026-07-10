@@ -20,11 +20,26 @@ import {
 } from "lucide-react";
 import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
 import type {
+  DocumentStatus,
   ReviewCompletionPayload,
   ReviewMode,
   ReviewResultAsset,
+  ReviewStreamingStage,
+  ReviewTask,
 } from "./domain/reviewTypes";
-import { createReviewResultAsset } from "./domain/reviewUtils";
+import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
+import {
+  addManualTaskIssue,
+  completeReviewTask,
+  createDocumentTask,
+  deleteManualTaskIssue,
+  listReviewTasks,
+  markReviewTaskReady,
+  resolveTaskIssue,
+  startReviewTask,
+  updateReviewTaskStreamStage,
+  updateTaskIssueDraft,
+} from "./domain/reviewSessionService";
 
 type Role = "super_admin" | "supervisor" | "contractor";
 type ShellPage =
@@ -34,24 +49,13 @@ type ShellPage =
   | "review-loading"
   | "review-detail"
   | "review-result";
-type DocumentStatus = "uploaded" | "parsing" | "reviewing" | "ready" | "completed" | "failed";
 
 interface Session {
   username: string;
   role: Role;
 }
 
-interface LibraryDocument {
-  id: string;
-  name: string;
-  project: string;
-  uploader: string;
-  updatedAt: string;
-  status: DocumentStatus;
-  issueCount: number;
-  mode: ReviewMode;
-  resultAsset?: ReviewResultAsset;
-}
+type LibraryDocument = ReviewTask;
 
 interface UploadDraft {
   name: string;
@@ -60,21 +64,7 @@ interface UploadDraft {
 
 type ThemeMode = "light" | "dark";
 
-interface StreamingStage {
-  id: string;
-  title: string;
-  detail: string;
-  progress: number;
-  outlineItems: string[];
-  documentSnippets: string[];
-  issueSummaries: string[];
-  hazardLabel?: string;
-  basisTrace?: {
-    complete: number;
-    partial: number;
-    missing: number;
-  };
-}
+type StreamingStage = ReviewStreamingStage;
 
 interface AgentKernelProfile {
   name: string;
@@ -117,168 +107,6 @@ const statusLabels: Record<DocumentStatus, string> = {
   failed: "失败",
 };
 
-const mockDocuments: LibraryDocument[] = [
-  {
-    id: "doc-001",
-    name: "南京综合楼施工组织设计.pdf",
-    project: "南京综合楼项目",
-    uploader: "张工",
-    updatedAt: "2026-07-09 09:12",
-    status: "ready",
-    issueCount: 4,
-    mode: "review",
-  },
-  {
-    id: "doc-002",
-    name: "塔吊专项施工方案.docx",
-    project: "南京综合楼项目",
-    uploader: "李工",
-    updatedAt: "2026-07-08 18:43",
-    status: "reviewing",
-    issueCount: 0,
-    mode: "revise",
-  },
-  {
-    id: "doc-003",
-    name: "脚手架专项方案（整改版）.pdf",
-    project: "西湖机电安装项目",
-    uploader: "王工",
-    updatedAt: "2026-07-07 15:20",
-    status: "completed",
-    issueCount: 6,
-    mode: "review",
-  },
-  {
-    id: "doc-004",
-    name: "临时用电方案（初稿）.pdf",
-    project: "东苑住宅项目",
-    uploader: "陈工",
-    updatedAt: "2026-07-09 08:20",
-    status: "uploaded",
-    issueCount: 0,
-    mode: "revise",
-  },
-];
-
-const mockStreamingStages: StreamingStage[] = [
-  {
-    id: "upload",
-    title: "建立审查任务",
-    detail: "已接收文件，正在创建文档解析任务。",
-    progress: 12,
-    outlineItems: [],
-    documentSnippets: ["正在读取文件元数据与项目基础信息。"],
-    issueSummaries: [],
-  },
-  {
-    id: "parse",
-    title: "解析文档结构",
-    detail: "识别章节、段落、表格与可锚定文本位置。",
-    progress: 28,
-    outlineItems: ["一、工程概况", "二、脚手架工程"],
-    documentSnippets: ["工程概况已解析，识别到项目规模、工期与施工组织描述。"],
-    issueSummaries: [],
-  },
-  {
-    id: "hazard",
-    title: "危大等级判定",
-    detail: "依据附录范围和项目场景判断是否触发危大/超危大程序。",
-    progress: 38,
-    outlineItems: ["一、工程概况", "二、脚手架工程"],
-    documentSnippets: [
-      "外脚手架高度 24m，触发危大工程管理校验。",
-      "塔吊附着和临时用电将进入专业技术与程序合规复核。",
-    ],
-    issueSummaries: ["危大工程：需要专项方案审批、交底和验收闭环。"],
-    hazardLabel: "危大工程 · 需程序核验",
-    basisTrace: { complete: 1, partial: 1, missing: 0 },
-  },
-  {
-    id: "basis",
-    title: "匹配审查依据",
-    detail: "匹配专项施工方案编制内容、危大工程与监理审查条款。",
-    progress: 46,
-    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着"],
-    documentSnippets: [
-      "脚手架章节已进入规则匹配，正在核对搭设高度与交底要求。",
-      "塔吊章节已定位到安装、附着与验收相关段落。",
-    ],
-    issueSummaries: ["发现 1 条疑似编制内容缺项，等待语义复核。"],
-    hazardLabel: "危大工程 · 需程序核验",
-    basisTrace: { complete: 2, partial: 1, missing: 0 },
-  },
-  {
-    id: "rule",
-    title: "规则引擎遍历",
-    detail: "执行编制内容、程序节点、签字盖章、量化阈值等确定性校验。",
-    progress: 58,
-    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着"],
-    documentSnippets: [
-      "规则命中：脚手架工程不应按普通分项工程管理。",
-      "规则命中：塔吊附着固定方式缺少可靠构造与验收资料。",
-    ],
-    issueSummaries: [
-      "危大工程管理方式不符合要求。",
-      "塔吊附着固定方式存在重大风险。",
-    ],
-    hazardLabel: "危大工程 · 需程序核验",
-    basisTrace: { complete: 3, partial: 1, missing: 0 },
-  },
-  {
-    id: "semantic",
-    title: "语义审查与风险研判",
-    detail: "分析措施针对性、工序逻辑与整改建议。",
-    progress: 68,
-    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着", "四、安全管理措施"],
-    documentSnippets: [
-      "已识别安全管理措施章节，正在判断责任矩阵和检查频次是否可执行。",
-      "正在核对临时用电、验收程序与应急措施是否形成闭环。",
-    ],
-    issueSummaries: [
-      "脚手架搭设章节缺少验收责任主体。",
-      "安全交底描述偏模板化，缺少双方签字确认要求。",
-    ],
-    hazardLabel: "危大工程 · 需程序核验",
-    basisTrace: { complete: 3, partial: 2, missing: 0 },
-  },
-  {
-    id: "issues",
-    title: "生成结构化问题",
-    detail: "正在生成原文锚点、依据、理由与建议修改。",
-    progress: 86,
-    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着", "四、安全管理措施"],
-    documentSnippets: [
-      "已生成可回溯锚点，问题将展示在右侧意见面板。",
-      "正在合并重复问题并计算风险等级。",
-    ],
-    issueSummaries: [
-      "脚手架搭设章节缺少验收责任主体。",
-      "安全交底描述偏模板化，缺少双方签字确认要求。",
-      "塔吊附着验收流程缺少监理复核节点。",
-    ],
-    hazardLabel: "危大工程 · 需程序核验",
-    basisTrace: { complete: 4, partial: 1, missing: 0 },
-  },
-  {
-    id: "complete",
-    title: "审查结果准备完成",
-    detail: "标注、依据和处理动作已准备，即将进入审查工作台。",
-    progress: 100,
-    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着", "四、安全管理措施"],
-    documentSnippets: [
-      "AI 审查已完成。进入详情后可逐条接受、拒绝或补充人工标注。",
-    ],
-    issueSummaries: [
-      "脚手架搭设章节缺少验收责任主体。",
-      "安全交底描述偏模板化，缺少双方签字确认要求。",
-      "塔吊附着验收流程缺少监理复核节点。",
-      "临时用电方案缺少独立编制条件核验。",
-    ],
-    hazardLabel: "危大工程 · 需程序核验",
-    basisTrace: { complete: 4, partial: 0, missing: 0 },
-  },
-];
-
 const constructionReviewAgentProfile: AgentKernelProfile = {
   name: "施工方案审查智能体",
   schemaVersion: "review-kernel-2.1-mock",
@@ -302,10 +130,11 @@ const constructionReviewAgentProfile: AgentKernelProfile = {
 };
 
 export function App() {
+  const initialTasks = useMemo(() => listReviewTasks(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [activePage, setActivePage] = useState<ShellPage>("documents");
-  const [selectedDocId, setSelectedDocId] = useState(mockDocuments[0]?.id ?? "");
-  const [documents, setDocuments] = useState<LibraryDocument[]>(mockDocuments);
+  const [selectedDocId, setSelectedDocId] = useState(initialTasks[0]?.id ?? "");
+  const [documents, setDocuments] = useState<LibraryDocument[]>(initialTasks);
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
   const [dragging, setDragging] = useState(false);
   const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
@@ -330,7 +159,10 @@ export function App() {
     loadingTimerRef.current = window.setInterval(() => {
       setStreamStageIndex((currentIndex) => {
         const nextIndex = currentIndex + 1;
-        if (nextIndex < mockStreamingStages.length) {
+        if (nextIndex < reviewStreamingStages.length) {
+          setDocuments((currentDocs) =>
+            updateReviewTaskStreamStage(currentDocs, loadingDocId, nextIndex),
+          );
           return nextIndex;
         }
 
@@ -340,11 +172,7 @@ export function App() {
         }
 
         window.setTimeout(() => {
-          setDocuments((currentDocs) =>
-            currentDocs.map((doc) =>
-              doc.id === loadingDocId ? { ...doc, status: "ready", updatedAt: nowString() } : doc,
-            ),
-          );
+          setDocuments((currentDocs) => markReviewTaskReady(currentDocs, loadingDocId));
           setSelectedDocId(loadingDocId);
           setActivePage("review-detail");
           setLoadingDocId(null);
@@ -364,7 +192,7 @@ export function App() {
 
   function handleSignIn(nextSession: Session) {
     setSession(nextSession);
-    setSelectedDocId(mockDocuments[0]?.id ?? "");
+    setSelectedDocId(documents[0]?.id ?? "");
     setActivePage("documents");
   }
 
@@ -378,18 +206,15 @@ export function App() {
   }
 
   function handleUpload(name: string, project: string) {
-    const newDoc: LibraryDocument = {
-      id: `doc-${Date.now()}`,
+    const nextDocuments = createDocumentTask(documents, {
       name,
       project,
       uploader: session?.username ?? "当前用户",
-      updatedAt: nowString(),
-      status: "uploaded",
-      issueCount: 0,
       mode: session?.role === "contractor" ? "revise" : "review",
-    };
+    });
+    const newDoc = nextDocuments[0];
 
-    setDocuments((currentDocs) => [newDoc, ...currentDocs]);
+    setDocuments(nextDocuments);
     setSelectedDocId(newDoc.id);
     setUploadDraft({ name: "", project: "" });
   }
@@ -398,13 +223,7 @@ export function App() {
     setSelectedDocId(documentId);
     setLoadingDocId(documentId);
     setStreamStageIndex(0);
-    setDocuments((currentDocs) =>
-      currentDocs.map((doc) =>
-        doc.id === documentId
-          ? { ...doc, status: "reviewing", updatedAt: nowString() }
-          : doc,
-      ),
-    );
+    setDocuments((currentDocs) => startReviewTask(currentDocs, documentId));
     setActivePage("review-loading");
   }
 
@@ -426,7 +245,14 @@ export function App() {
       return;
     }
 
-    if (doc.status === "reviewing" || doc.status === "parsing" || doc.status === "uploaded") {
+    if (doc.status === "reviewing" || doc.status === "parsing") {
+      setLoadingDocId(documentId);
+      setStreamStageIndex(doc.streamStageIndex);
+      setActivePage("review-loading");
+      return;
+    }
+
+    if (doc.status === "uploaded") {
       startReview(documentId);
     }
   }
@@ -447,24 +273,53 @@ export function App() {
       return;
     }
 
-    const resultAsset = createReviewResultAsset(payload);
+    const { tasks } = completeReviewTask(documents, selectedDocument.id, payload);
 
-    setDocuments((currentDocs) =>
-      currentDocs.map((doc) =>
-        doc.id === selectedDocument.id
-          ? {
-              ...doc,
-              status: "completed",
-              mode: payload.mode,
-              issueCount: resultAsset.issueStats.total,
-              updatedAt: nowString(),
-              resultAsset,
-            }
-          : doc,
-      ),
-    );
+    setDocuments(tasks);
     setSelectedDocId(selectedDocument.id);
     setActivePage("review-result");
+  }
+
+  function updateSelectedIssueResolution(
+    issueId: string,
+    status: "accepted" | "rejected",
+    editedText: string,
+  ) {
+    if (!selectedDocument) {
+      return;
+    }
+
+    setDocuments((currentDocs) =>
+      resolveTaskIssue(currentDocs, selectedDocument.id, issueId, status, editedText),
+    );
+  }
+
+  function updateSelectedIssueDraft(issueId: string, suggestion: string) {
+    if (!selectedDocument) {
+      return;
+    }
+
+    setDocuments((currentDocs) =>
+      updateTaskIssueDraft(currentDocs, selectedDocument.id, issueId, suggestion),
+    );
+  }
+
+  function addSelectedManualIssue(issue: Parameters<typeof addManualTaskIssue>[2]) {
+    if (!selectedDocument) {
+      return;
+    }
+
+    setDocuments((currentDocs) => addManualTaskIssue(currentDocs, selectedDocument.id, issue));
+  }
+
+  function deleteSelectedManualIssue(issueId: string) {
+    if (!selectedDocument) {
+      return;
+    }
+
+    setDocuments((currentDocs) =>
+      deleteManualTaskIssue(currentDocs, selectedDocument.id, issueId),
+    );
   }
 
   if (!session) {
@@ -482,6 +337,12 @@ export function App() {
         themeMode={themeMode}
         onToggleTheme={toggleTheme}
         onComplete={completeReview}
+        paragraphs={selectedDocument.paragraphs}
+        initialIssues={selectedDocument.issues}
+        onIssueResolve={updateSelectedIssueResolution}
+        onIssueDraftChange={updateSelectedIssueDraft}
+        onManualIssueAdd={addSelectedManualIssue}
+        onManualIssueDelete={deleteSelectedManualIssue}
       />
     );
   }
@@ -599,8 +460,8 @@ export function App() {
               document={selectedDocument}
               roleLabel={roleLabels[session.role]}
               statusLabel={statusLabels[selectedDocument?.status ?? "uploaded"]}
-              stage={mockStreamingStages[streamStageIndex] ?? mockStreamingStages[0]}
-              stages={mockStreamingStages}
+              stage={reviewStreamingStages[streamStageIndex] ?? reviewStreamingStages[0]}
+              stages={reviewStreamingStages}
               stageIndex={streamStageIndex}
             />
           )}
@@ -1345,15 +1206,6 @@ function formatResultTime(value: string) {
     return value;
   }
 
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate(),
-  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
-    date.getMinutes(),
-  ).padStart(2, "0")}`;
-}
-
-function nowString() {
-  const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate(),
   ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
