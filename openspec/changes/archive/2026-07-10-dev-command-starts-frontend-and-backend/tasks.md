@@ -11,6 +11,6 @@
 ## 3. Documentation And Verification
 
 - [x] 3.1 Update README local development commands.
-- [ ] 3.2 Run typecheck and OpenSpec validation.
-- [ ] 3.3 Smoke-test the new full-stack dev command starts both processes.
-- [ ] 3.4 Archive the completed OpenSpec change.
+- [x] 3.2 Run typecheck and OpenSpec validation.
+- [x] 3.3 Smoke-test the new full-stack dev command starts both processes.
+- [x] 3.4 Archive the completed OpenSpec change.
