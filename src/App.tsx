@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  CheckCircle2,
+  Clock3,
   Database,
+  FileSearch,
   GitCompareArrows,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   LucideIcon,
   Plus,
@@ -42,6 +46,16 @@ interface UploadDraft {
 }
 
 type ThemeMode = "light" | "dark";
+
+interface StreamingStage {
+  id: string;
+  title: string;
+  detail: string;
+  progress: number;
+  outlineItems: string[];
+  documentSnippets: string[];
+  issueSummaries: string[];
+}
 
 const roleLabels: Record<Role, string> = {
   super_admin: "超管",
@@ -113,6 +127,86 @@ const mockDocuments: LibraryDocument[] = [
   },
 ];
 
+const mockStreamingStages: StreamingStage[] = [
+  {
+    id: "upload",
+    title: "建立审查任务",
+    detail: "已接收文件，正在创建文档解析任务。",
+    progress: 12,
+    outlineItems: [],
+    documentSnippets: ["正在读取文件元数据与项目基础信息。"],
+    issueSummaries: [],
+  },
+  {
+    id: "parse",
+    title: "解析文档结构",
+    detail: "识别章节、段落、表格与可锚定文本位置。",
+    progress: 28,
+    outlineItems: ["一、工程概况", "二、脚手架工程"],
+    documentSnippets: ["工程概况已解析，识别到项目规模、工期与施工组织描述。"],
+    issueSummaries: [],
+  },
+  {
+    id: "basis",
+    title: "匹配审查依据",
+    detail: "匹配专项施工方案编制内容、危大工程与监理审查条款。",
+    progress: 46,
+    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着"],
+    documentSnippets: [
+      "脚手架章节已进入规则匹配，正在核对搭设高度与交底要求。",
+      "塔吊章节已定位到安装、附着与验收相关段落。",
+    ],
+    issueSummaries: ["发现 1 条疑似编制内容缺项，等待语义复核。"],
+  },
+  {
+    id: "semantic",
+    title: "语义审查与风险研判",
+    detail: "分析措施针对性、工序逻辑与整改建议。",
+    progress: 68,
+    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着", "四、安全管理措施"],
+    documentSnippets: [
+      "已识别安全管理措施章节，正在判断责任矩阵和检查频次是否可执行。",
+      "正在核对临时用电、验收程序与应急措施是否形成闭环。",
+    ],
+    issueSummaries: [
+      "脚手架搭设章节缺少验收责任主体。",
+      "安全交底描述偏模板化，缺少双方签字确认要求。",
+    ],
+  },
+  {
+    id: "issues",
+    title: "生成结构化问题",
+    detail: "正在生成原文锚点、依据、理由与建议修改。",
+    progress: 86,
+    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着", "四、安全管理措施"],
+    documentSnippets: [
+      "已生成可回溯锚点，问题将展示在右侧意见面板。",
+      "正在合并重复问题并计算风险等级。",
+    ],
+    issueSummaries: [
+      "脚手架搭设章节缺少验收责任主体。",
+      "安全交底描述偏模板化，缺少双方签字确认要求。",
+      "塔吊附着验收流程缺少监理复核节点。",
+    ],
+  },
+  {
+    id: "complete",
+    title: "审查结果准备完成",
+    detail: "标注、依据和处理动作已准备，即将进入审查工作台。",
+    progress: 100,
+    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着", "四、安全管理措施"],
+    documentSnippets: [
+      "AI 审查已完成。进入详情后可逐条接受、拒绝或补充人工标注。",
+    ],
+    issueSummaries: [
+      "脚手架搭设章节缺少验收责任主体。",
+      "安全交底描述偏模板化，缺少双方签字确认要求。",
+      "塔吊附着验收流程缺少监理复核节点。",
+      "临时用电方案缺少独立编制条件核验。",
+    ],
+  },
+];
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [activePage, setActivePage] = useState<ShellPage>("documents");
@@ -121,6 +215,7 @@ export function App() {
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
   const [dragging, setDragging] = useState(false);
   const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
+  const [streamStageIndex, setStreamStageIndex] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
   const loadingTimerRef = useRef<number | null>(null);
 
@@ -137,20 +232,37 @@ export function App() {
       return;
     }
 
-    loadingTimerRef.current = window.setTimeout(() => {
-      setDocuments((currentDocs) =>
-        currentDocs.map((doc) =>
-          doc.id === loadingDocId ? { ...doc, status: "ready", updatedAt: nowString() } : doc,
-        ),
-      );
-      setSelectedDocId(loadingDocId);
-      setActivePage("review-detail");
-      setLoadingDocId(null);
-    }, 1800);
+    setStreamStageIndex(0);
+    loadingTimerRef.current = window.setInterval(() => {
+      setStreamStageIndex((currentIndex) => {
+        const nextIndex = currentIndex + 1;
+        if (nextIndex < mockStreamingStages.length) {
+          return nextIndex;
+        }
+
+        if (loadingTimerRef.current) {
+          window.clearInterval(loadingTimerRef.current);
+          loadingTimerRef.current = null;
+        }
+
+        window.setTimeout(() => {
+          setDocuments((currentDocs) =>
+            currentDocs.map((doc) =>
+              doc.id === loadingDocId ? { ...doc, status: "ready", updatedAt: nowString() } : doc,
+            ),
+          );
+          setSelectedDocId(loadingDocId);
+          setActivePage("review-detail");
+          setLoadingDocId(null);
+        }, 650);
+
+        return currentIndex;
+      });
+    }, 850);
 
     return () => {
       if (loadingTimerRef.current) {
-        window.clearTimeout(loadingTimerRef.current);
+        window.clearInterval(loadingTimerRef.current);
         loadingTimerRef.current = null;
       }
     };
@@ -191,6 +303,7 @@ export function App() {
   function startReview(documentId: string) {
     setSelectedDocId(documentId);
     setLoadingDocId(documentId);
+    setStreamStageIndex(0);
     setDocuments((currentDocs) =>
       currentDocs.map((doc) =>
         doc.id === documentId
@@ -329,6 +442,9 @@ export function App() {
               document={selectedDocument}
               roleLabel={roleLabels[session.role]}
               statusLabel={statusLabels[selectedDocument?.status ?? "uploaded"]}
+              stage={mockStreamingStages[streamStageIndex] ?? mockStreamingStages[0]}
+              stages={mockStreamingStages}
+              stageIndex={streamStageIndex}
             />
           )}
         </div>
@@ -626,27 +742,117 @@ function ReviewLoadingPage({
   document,
   roleLabel,
   statusLabel,
+  stage,
+  stages,
+  stageIndex,
 }: {
   document?: LibraryDocument;
   roleLabel: string;
   statusLabel: string;
+  stage: StreamingStage;
+  stages: StreamingStage[];
+  stageIndex: number;
 }) {
   return (
-    <div className="loading-page">
-      <div className="loading-card">
-        <Sparkles size={24} />
-        <span className="eyebrow">任务执行中</span>
-        <h2>{document?.name ?? "文档审查任务"}</h2>
-        <p>
-          {roleLabel}正在等待文档解析和施工方案审查智能体完成处理。{statusLabel}
-        </p>
-        <div className="loading-bar">
-          <span />
+    <div className="streaming-review-page">
+      <section className="streaming-hero">
+        <div>
+          <span className="eyebrow">AI 审核执行中 · {statusLabel}</span>
+          <h2>{document?.name ?? "文档审查任务"}</h2>
+          <p>{roleLabel}可在详情页观察解析、依据匹配、问题生成的流式进度。当前为 mock 演示。</p>
         </div>
-        <small>即使离开页面，后台任务也会继续执行。</small>
+        <div className="streaming-progress">
+          <strong>{stage.progress}%</strong>
+          <span>{stage.title}</span>
+        </div>
+      </section>
+
+      <div className="streaming-progress-bar" aria-label="AI 审核进度">
+        <span style={{ width: `${stage.progress}%` }} />
       </div>
+
+      <section className="streaming-layout" aria-label="流式审核工作台">
+        <aside className="streaming-panel streaming-outline">
+          <div className="streaming-panel-title">
+            <ListChecks size={18} />
+            <span>目录识别</span>
+          </div>
+          {stage.outlineItems.length > 0 ? (
+            stage.outlineItems.map((item) => (
+              <div key={item} className="streaming-outline-item">
+                <CheckCircle2 size={15} />
+                {item}
+              </div>
+            ))
+          ) : (
+            <p className="streaming-empty">等待章节结构解析。</p>
+          )}
+        </aside>
+
+        <section className="streaming-panel streaming-document">
+          <div className="streaming-panel-title">
+            <FileSearch size={18} />
+            <span>文档解析与依据匹配</span>
+          </div>
+          <div className="streaming-stage-card">
+            <Sparkles size={18} />
+            <div>
+              <strong>{stage.title}</strong>
+              <p>{stage.detail}</p>
+            </div>
+          </div>
+          <div className="streaming-snippets">
+            {stage.documentSnippets.map((snippet, index) => (
+              <article key={`${stage.id}-${index}`}>
+                <span>片段 {index + 1}</span>
+                <p>{snippet}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <aside className="streaming-panel streaming-issues">
+          <div className="streaming-panel-title">
+            <Clock3 size={18} />
+            <span>问题生成</span>
+          </div>
+          <div className="streaming-timeline">
+            {stages.map((item, index) => (
+              <div
+                key={item.id}
+                className={
+                  index < stageIndex
+                    ? "streaming-step done"
+                    : index === stageIndex
+                      ? "streaming-step active"
+                      : "streaming-step"
+                }
+              >
+                <span />
+                <p>{item.title}</p>
+              </div>
+            ))}
+          </div>
+          <div className="streaming-issue-list">
+            {stage.issueSummaries.length > 0 ? (
+              stage.issueSummaries.map((issue, index) => (
+                <div key={`${issue}-${index}`} className="streaming-issue-item">
+                  <AlertBadge index={index + 1} />
+                  <p>{issue}</p>
+                </div>
+              ))
+            ) : (
+              <p className="streaming-empty">AI 尚未输出结构化问题。</p>
+            )}
+          </div>
+        </aside>
+      </section>
     </div>
   );
+}
+
+function AlertBadge({ index }: { index: number }) {
+  return <span className="streaming-issue-badge">#{index}</span>;
 }
 
 function NavButton({
