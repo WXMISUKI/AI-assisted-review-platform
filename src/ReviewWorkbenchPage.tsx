@@ -8,10 +8,12 @@ import {
   ClipboardCheck,
   FileText,
   GitCompareArrows,
+  ListChecks,
   LocateFixed,
   MousePointer2,
   PencilLine,
   Plus,
+  ScrollText,
   ShieldAlert,
   SunMoon,
   Trash2,
@@ -22,6 +24,9 @@ import type {
   DocumentParagraph,
   IssueSeverity,
   IssueStatus,
+  ReviewCheckDomain,
+  ReviewEngineSource,
+  ReviewOutputScenario,
   ReviewMode,
   ReviewIssue,
   StatusFilter,
@@ -82,6 +87,37 @@ const statusTone: Record<IssueStatus, string> = {
   rejected: "rejected",
   modified: "modified",
 };
+
+const engineLabels: Record<ReviewEngineSource, string> = {
+  rule: "规则引擎",
+  semantic: "语义推理",
+  hybrid: "规则+语义",
+};
+
+const domainLabels: Record<ReviewCheckDomain, string> = {
+  "preparation-content": "编制内容",
+  "procedure-compliance": "程序合规",
+  "professional-technical": "专业技术",
+  "implementation-consistency": "实施一致性",
+};
+
+const scenarioLabels: Record<ReviewOutputScenario, string> = {
+  "contractor-self-check": "施工自查",
+  "supervisor-formal-review": "监理审查",
+  "expert-review-assistance": "专家论证辅助",
+};
+
+const complianceLabels = {
+  "mandatory-clause": "强制性条文",
+  "general-norm": "一般规范",
+  optimization: "优化建议",
+} as const;
+
+const priorityLabels = {
+  primary: "主依据",
+  supporting: "辅助依据",
+  "project-overrides": "项目承诺优先",
+} as const;
 
 const POPOVER_WIDTH = 430;
 const POPOVER_ESTIMATED_HEIGHT = 500;
@@ -869,6 +905,8 @@ function IssueCard({
   onRequestDelete: () => void;
   refSetter: (node: HTMLDivElement | null) => void;
 }) {
+  const primaryReference = issue.kernel?.basisReferences[0];
+
   return (
     <article
       ref={refSetter}
@@ -883,8 +921,32 @@ function IssueCard({
       </button>
 
       <div className="issue-card-body">
+        {issue.kernel && (
+          <div className="kernel-summary" aria-label="审查内核摘要">
+            <span>{scenarioLabels[issue.kernel.outputScenario]}</span>
+            <span>{domainLabels[issue.kernel.checkDomain]}</span>
+            <span>{engineLabels[issue.kernel.engineSource]}</span>
+            <span>{complianceLabels[issue.kernel.complianceCategory]}</span>
+          </div>
+        )}
+
         <h3>{issue.finding.title}</h3>
         <p className="anchor-text">“{issue.anchor.text}”</p>
+
+        {issue.kernel && primaryReference && (
+          <section className="kernel-primary-basis">
+            <h4>
+              <ScrollText size={15} />
+              主要依据
+            </h4>
+            <p>
+              <strong>{primaryReference.sourceTitle}</strong>
+              {primaryReference.version ? `（${primaryReference.version}）` : ""}
+              {primaryReference.clauseNumber ? ` · ${primaryReference.clauseNumber}` : ""}
+            </p>
+            <small>{primaryReference.summary}</small>
+          </section>
+        )}
 
         <section>
           <h4>
@@ -901,6 +963,73 @@ function IssueCard({
           </h4>
           <p>{issue.finding.basis}</p>
         </section>
+
+        {issue.kernel && (
+          <details className="traceability-details">
+            <summary>
+              <ListChecks size={15} />
+              溯源与整改闭环
+            </summary>
+            <div className="traceability-content">
+              <div className="traceability-block">
+                <strong>校验项</strong>
+                <p>{issue.kernel.checkItem}</p>
+              </div>
+              <div className="reference-list">
+                {issue.kernel.basisReferences.map((reference, index) => (
+                  <article key={`${issue.id}-reference-${index}`} className="reference-item">
+                    <div>
+                      <span className="reference-priority">
+                        {priorityLabels[reference.priority]}
+                      </span>
+                      <strong>{reference.sourceTitle}</strong>
+                    </div>
+                    <p>
+                      {reference.version ? `${reference.version} ` : ""}
+                      {reference.clauseNumber ? `${reference.clauseNumber} ` : ""}
+                      {reference.locator ? `${reference.locator} ` : ""}
+                    </p>
+                    <small>{reference.summary}</small>
+                  </article>
+                ))}
+              </div>
+              {issue.kernel.rectification && (
+                <div className="rectification-grid">
+                  <div>
+                    <strong>整改要求</strong>
+                    <p>{issue.kernel.rectification.requirement}</p>
+                  </div>
+                  <div>
+                    <strong>核验标准</strong>
+                    <p>{issue.kernel.rectification.verificationStandard}</p>
+                  </div>
+                  <div>
+                    <strong>整改时限</strong>
+                    <p>{issue.kernel.rectification.deadline}</p>
+                  </div>
+                  <div>
+                    <strong>复核流程</strong>
+                    <p>{issue.kernel.rectification.recheckProcess}</p>
+                  </div>
+                </div>
+              )}
+              {issue.kernel.expertReview && (
+                <div className="expert-review-box">
+                  <strong>专家论证辅助</strong>
+                  <ul>
+                    {issue.kernel.expertReview.points.map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                  <p>{issue.kernel.expertReview.expertQualification}</p>
+                  <p>{issue.kernel.expertReview.participantRequirement}</p>
+                  <p>{issue.kernel.expertReview.conclusionHandling}</p>
+                  <p>{issue.kernel.expertReview.modificationVerification}</p>
+                </div>
+              )}
+            </div>
+          </details>
+        )}
 
         <label className="suggestion-editor">
           <span>

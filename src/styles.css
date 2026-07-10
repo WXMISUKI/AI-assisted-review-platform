@@ -726,6 +726,64 @@ button {
   gap: 14px;
 }
 
+.agent-profile-card {
+  align-content: start;
+}
+
+.agent-profile-meta,
+.agent-profile-block div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-profile-meta {
+  margin-top: 4px;
+}
+
+.agent-profile-meta span,
+.agent-profile-block span,
+.knowledge-binding-item span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.agent-profile-block {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 12px;
+}
+
+.agent-profile-block strong,
+.knowledge-binding-item strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.knowledge-binding-list {
+  display: grid;
+  gap: 8px;
+}
+
+.knowledge-binding-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-muted);
+}
+
 .assets-card button {
   justify-self: start;
   border: 0;
@@ -806,6 +864,28 @@ button {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--primary), var(--info));
   transition: width 360ms ease;
+}
+
+.streaming-kernel-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.streaming-kernel-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.streaming-kernel-strip strong {
+  color: var(--ink);
 }
 
 .streaming-layout {
@@ -1646,6 +1726,141 @@ h4 {
   padding: 8px;
   background: #fff8ec;
   color: #714300;
+}
+
+.kernel-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kernel-summary span,
+.reference-priority {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.kernel-summary span:first-child {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+.kernel-primary-basis {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-muted);
+}
+
+.kernel-primary-basis p {
+  margin-top: 7px;
+  color: var(--ink);
+}
+
+.kernel-primary-basis small,
+.reference-item small {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.traceability-details {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.traceability-details summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.traceability-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.traceability-content {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border-soft);
+  padding: 10px;
+  background: var(--surface-muted);
+}
+
+.traceability-block strong,
+.reference-item strong,
+.rectification-grid strong,
+.expert-review-box strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reference-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reference-item {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--surface);
+}
+
+.reference-item > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.reference-item p {
+  margin-top: 6px;
+  color: var(--ink-subtle);
+}
+
+.rectification-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.rectification-grid div,
+.expert-review-box {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--surface);
+}
+
+.rectification-grid p,
+.expert-review-box p {
+  margin-top: 5px;
+}
+
+.expert-review-box ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .suggestion-editor {

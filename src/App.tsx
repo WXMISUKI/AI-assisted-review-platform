@@ -55,6 +55,26 @@ interface StreamingStage {
   outlineItems: string[];
   documentSnippets: string[];
   issueSummaries: string[];
+  hazardLabel?: string;
+  basisTrace?: {
+    complete: number;
+    partial: number;
+    missing: number;
+  };
+}
+
+interface AgentKernelProfile {
+  name: string;
+  schemaVersion: string;
+  promptAsset: string;
+  engines: string[];
+  checkDomains: string[];
+  outputScenarios: string[];
+  basisCategories: string[];
+  knowledgeBindings: Array<{
+    name: string;
+    status: string;
+  }>;
 }
 
 const roleLabels: Record<Role, string> = {
@@ -147,6 +167,20 @@ const mockStreamingStages: StreamingStage[] = [
     issueSummaries: [],
   },
   {
+    id: "hazard",
+    title: "危大等级判定",
+    detail: "依据附录范围和项目场景判断是否触发危大/超危大程序。",
+    progress: 38,
+    outlineItems: ["一、工程概况", "二、脚手架工程"],
+    documentSnippets: [
+      "外脚手架高度 24m，触发危大工程管理校验。",
+      "塔吊附着和临时用电将进入专业技术与程序合规复核。",
+    ],
+    issueSummaries: ["危大工程：需要专项方案审批、交底和验收闭环。"],
+    hazardLabel: "危大工程 · 需程序核验",
+    basisTrace: { complete: 1, partial: 1, missing: 0 },
+  },
+  {
     id: "basis",
     title: "匹配审查依据",
     detail: "匹配专项施工方案编制内容、危大工程与监理审查条款。",
@@ -157,6 +191,25 @@ const mockStreamingStages: StreamingStage[] = [
       "塔吊章节已定位到安装、附着与验收相关段落。",
     ],
     issueSummaries: ["发现 1 条疑似编制内容缺项，等待语义复核。"],
+    hazardLabel: "危大工程 · 需程序核验",
+    basisTrace: { complete: 2, partial: 1, missing: 0 },
+  },
+  {
+    id: "rule",
+    title: "规则引擎遍历",
+    detail: "执行编制内容、程序节点、签字盖章、量化阈值等确定性校验。",
+    progress: 58,
+    outlineItems: ["一、工程概况", "二、脚手架工程", "三、塔吊安装与附着"],
+    documentSnippets: [
+      "规则命中：脚手架工程不应按普通分项工程管理。",
+      "规则命中：塔吊附着固定方式缺少可靠构造与验收资料。",
+    ],
+    issueSummaries: [
+      "危大工程管理方式不符合要求。",
+      "塔吊附着固定方式存在重大风险。",
+    ],
+    hazardLabel: "危大工程 · 需程序核验",
+    basisTrace: { complete: 3, partial: 1, missing: 0 },
   },
   {
     id: "semantic",
@@ -172,6 +225,8 @@ const mockStreamingStages: StreamingStage[] = [
       "脚手架搭设章节缺少验收责任主体。",
       "安全交底描述偏模板化，缺少双方签字确认要求。",
     ],
+    hazardLabel: "危大工程 · 需程序核验",
+    basisTrace: { complete: 3, partial: 2, missing: 0 },
   },
   {
     id: "issues",
@@ -188,6 +243,8 @@ const mockStreamingStages: StreamingStage[] = [
       "安全交底描述偏模板化，缺少双方签字确认要求。",
       "塔吊附着验收流程缺少监理复核节点。",
     ],
+    hazardLabel: "危大工程 · 需程序核验",
+    basisTrace: { complete: 4, partial: 1, missing: 0 },
   },
   {
     id: "complete",
@@ -204,8 +261,32 @@ const mockStreamingStages: StreamingStage[] = [
       "塔吊附着验收流程缺少监理复核节点。",
       "临时用电方案缺少独立编制条件核验。",
     ],
+    hazardLabel: "危大工程 · 需程序核验",
+    basisTrace: { complete: 4, partial: 0, missing: 0 },
   },
 ];
+
+const constructionReviewAgentProfile: AgentKernelProfile = {
+  name: "施工方案审查智能体",
+  schemaVersion: "review-kernel-2.1-mock",
+  promptAsset: "专项施工方案审查 Prompt v0.3",
+  engines: ["强规则引擎", "大模型语义推理", "结构化结论生成"],
+  checkDomains: ["编制内容", "程序合规", "专家论证", "分专业技术校验"],
+  outputScenarios: ["施工单位内审辅助", "监理正式审查", "专家论证辅助"],
+  basisCategories: [
+    "JT/T 1495-2024",
+    "JTG F90-2015",
+    "JTG G10-2016",
+    "招投标/合同/图纸",
+    "施工安全风险评估报告",
+  ],
+  knowledgeBindings: [
+    { name: "规范知识图谱", status: "预留入口" },
+    { name: "项目招投标与合同文件", status: "待接入" },
+    { name: "设计图纸与施工组织设计", status: "待接入" },
+    { name: "安全风险评估报告", status: "待接入" },
+  ],
+};
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -721,10 +802,28 @@ function DataAssetsPage({
 
   return (
     <div className="assets-grid">
-      <section className="assets-card">
+      <section className="assets-card agent-profile-card">
         <span className="eyebrow">智能体</span>
-        <h2>页面暂未开发</h2>
-        <p>这里将配置施工方案审查智能体和审核报告生成智能体。</p>
+        <h2>{constructionReviewAgentProfile.name}</h2>
+        <p>
+          已按 PDF 2.1 内核预留规则引擎、语义推理、依据追溯和三类输出场景。
+        </p>
+        <div className="agent-profile-meta">
+          <span>{constructionReviewAgentProfile.schemaVersion}</span>
+          <span>{constructionReviewAgentProfile.promptAsset}</span>
+        </div>
+        <AgentProfileBlock title="引擎链路" items={constructionReviewAgentProfile.engines} />
+        <AgentProfileBlock title="校验域" items={constructionReviewAgentProfile.checkDomains} />
+        <AgentProfileBlock title="输出场景" items={constructionReviewAgentProfile.outputScenarios} />
+        <AgentProfileBlock title="审查依据" items={constructionReviewAgentProfile.basisCategories} />
+        <div className="knowledge-binding-list">
+          {constructionReviewAgentProfile.knowledgeBindings.map((binding) => (
+            <div key={binding.name} className="knowledge-binding-item">
+              <strong>{binding.name}</strong>
+              <span>{binding.status}</span>
+            </div>
+          ))}
+        </div>
         <button type="button" className="primary" onClick={onOpenDocument}>
           先去文档库
         </button>
@@ -734,6 +833,19 @@ function DataAssetsPage({
         <h2>{editable ? "可维护" : "只读"}</h2>
         <p>后续支持提示词新增、修改、版本管理和绑定智能体。当前仅展示入口。</p>
       </section>
+    </div>
+  );
+}
+
+function AgentProfileBlock({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="agent-profile-block">
+      <strong>{title}</strong>
+      <div>
+        {items.map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -766,6 +878,24 @@ function ReviewLoadingPage({
           <span>{stage.title}</span>
         </div>
       </section>
+
+      {(stage.hazardLabel || stage.basisTrace) && (
+        <section className="streaming-kernel-strip" aria-label="审查内核状态">
+          {stage.hazardLabel && (
+            <span>
+              <strong>危大判定</strong>
+              {stage.hazardLabel}
+            </span>
+          )}
+          {stage.basisTrace && (
+            <span>
+              <strong>依据追溯</strong>
+              完整 {stage.basisTrace.complete} · 部分 {stage.basisTrace.partial} · 缺失{" "}
+              {stage.basisTrace.missing}
+            </span>
+          )}
+        </section>
+      )}
 
       <div className="streaming-progress-bar" aria-label="AI 审核进度">
         <span style={{ width: `${stage.progress}%` }} />
