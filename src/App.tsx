@@ -26,6 +26,7 @@ import type {
   ReviewResultAsset,
   ReviewStreamingStage,
   ReviewTask,
+  ReviewTaskOcrJob,
 } from "./domain/reviewTypes";
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import {
@@ -46,6 +47,7 @@ import {
   fetchOcrStatus,
   runLlmConnectivityCheck,
   runReviewStreamConnectivityCheck,
+  submitStoredObjectOcrJob,
   uploadMinioDocument,
   type BackendHealthResult,
   type MinioStatusResult,
@@ -255,12 +257,26 @@ export function App() {
         return;
       }
 
+      const ocrResult = await submitStoredObjectOcrJob(uploadResult.object.key);
+      const ocrSubmittedAt = new Date().toISOString();
+      const ocrJob = {
+        jobId: ocrResult.jobId ?? null,
+        state: ocrResult.ok && ocrResult.jobId ? "submitted" : "failed",
+        submittedAt: ocrSubmittedAt,
+        sourceObjectKey: uploadResult.object.key,
+        message: ocrResult.ok
+          ? ocrResult.status || "OCR 任务已提交。"
+          : ocrResult.message || ocrResult.status || "OCR 任务提交失败。",
+      } as const;
+
       createUploadedTask({
         name: uploadDraft.name.trim() || uploadResult.object.originalFilename || file.name,
         project: uploadDraft.project.trim() || "未知项目",
         uploader: session?.username ?? "当前用户",
         mode: session?.role === "contractor" ? "revise" : "review",
+        status: ocrResult.ok && ocrResult.jobId ? "parsing" : "failed",
         sourceObject: uploadResult.object,
+        ocrJob,
       });
     } catch (error) {
       setDocumentUploadError(error instanceof Error ? error.message : "文件上传到对象存储失败。");
@@ -755,6 +771,7 @@ function DocumentLibraryPage({
                   <small>
                     上传人：{doc.uploader}
                     {doc.sourceObject ? ` · 已存储 ${formatFileSize(doc.sourceObject.size)}` : " · mock"}
+                    {doc.ocrJob ? ` · ${formatOcrJobLabel(doc.ocrJob)}` : ""}
                   </small>
                 </div>
                 <span>{doc.project}</span>
@@ -1472,4 +1489,16 @@ function formatFileSize(value: number) {
   }
 
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatOcrJobLabel(job: ReviewTaskOcrJob) {
+  if (job.state === "failed") {
+    return `OCR失败：${job.message ?? "提交失败"}`;
+  }
+
+  if (job.jobId) {
+    return `OCR已提交 #${job.jobId.slice(-8)}`;
+  }
+
+  return "OCR已提交";
 }

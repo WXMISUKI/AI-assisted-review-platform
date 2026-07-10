@@ -56,13 +56,14 @@ export function createDocumentTask(
     project: input.project,
     uploader: input.uploader,
     updatedAt: nowString(),
-    status: "uploaded",
+    status: input.status ?? "uploaded",
     issueCount: 0,
     mode: input.mode,
     paragraphs: cloneParagraphs(documentParagraphs),
     issues: cloneIssues(),
     streamStageIndex: 0,
     sourceObject: input.sourceObject,
+    ocrJob: input.ocrJob,
   };
 
   return saveReviewTasks([newTask, ...tasks]);

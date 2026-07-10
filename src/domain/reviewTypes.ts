@@ -200,6 +200,16 @@ export interface ReviewTaskSourceObject {
   size: number;
 }
 
+export type OcrJobState = "submitted" | "pending" | "running" | "done" | "failed";
+
+export interface ReviewTaskOcrJob {
+  jobId: string | null;
+  state: OcrJobState;
+  submittedAt: string;
+  sourceObjectKey?: string;
+  message?: string;
+}
+
 export interface ReviewTask {
   id: string;
   name: string;
@@ -213,6 +223,7 @@ export interface ReviewTask {
   issues: ReviewIssue[];
   streamStageIndex: number;
   sourceObject?: ReviewTaskSourceObject;
+  ocrJob?: ReviewTaskOcrJob;
   resultAsset?: ReviewResultAsset;
 }
 
@@ -233,5 +244,7 @@ export interface CreateReviewTaskInput {
   project: string;
   uploader: string;
   mode: ReviewMode;
+  status?: DocumentStatus;
   sourceObject?: ReviewTaskSourceObject;
+  ocrJob?: ReviewTaskOcrJob;
 }

@@ -67,6 +67,19 @@ export interface MinioUploadResult {
   message?: string;
 }
 
+export interface StoredObjectOcrSubmitResult {
+  ok: boolean;
+  jobId?: string;
+  status?: string;
+  message?: string;
+  statusCode?: number;
+  sourceObject?: {
+    bucket: string;
+    key: string;
+    expiresIn: number;
+  };
+}
+
 export interface ReviewStreamEvent {
   type: string;
   stageId: string;
@@ -109,6 +122,17 @@ export async function uploadMinioDocument(file: File) {
     body: formData,
   });
   return readJson<MinioUploadResult>(response);
+}
+
+export async function submitStoredObjectOcrJob(key: string) {
+  const response = await fetch("/api/ocr/jobs/object", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ key }),
+  });
+  return readJson<StoredObjectOcrSubmitResult>(response);
 }
 
 export function runReviewStreamConnectivityCheck(timeoutMs = 5000) {
