@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   BookOpen,
   CheckCircle2,
   Clock3,
@@ -18,10 +19,21 @@ import {
   Users,
 } from "lucide-react";
 import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
-import type { ReviewMode } from "./domain/reviewTypes";
+import type {
+  ReviewCompletionPayload,
+  ReviewMode,
+  ReviewResultAsset,
+} from "./domain/reviewTypes";
+import { createReviewResultAsset } from "./domain/reviewUtils";
 
 type Role = "super_admin" | "supervisor" | "contractor";
-type ShellPage = "documents" | "knowledge-base" | "data-assets" | "review-loading" | "review-detail";
+type ShellPage =
+  | "documents"
+  | "knowledge-base"
+  | "data-assets"
+  | "review-loading"
+  | "review-detail"
+  | "review-result";
 type DocumentStatus = "uploaded" | "parsing" | "reviewing" | "ready" | "completed" | "failed";
 
 interface Session {
@@ -38,6 +50,7 @@ interface LibraryDocument {
   status: DocumentStatus;
   issueCount: number;
   mode: ReviewMode;
+  resultAsset?: ReviewResultAsset;
 }
 
 interface UploadDraft {
@@ -89,7 +102,7 @@ const roleModes: Record<Role, ReviewMode[]> = {
   contractor: ["revise"],
 };
 
-const pageLabels: Record<Exclude<ShellPage, "review-loading" | "review-detail">, string> = {
+const pageLabels: Record<Exclude<ShellPage, "review-loading" | "review-detail" | "review-result">, string> = {
   documents: "文档库",
   "knowledge-base": "知识库",
   "data-assets": "数据资产",
@@ -403,6 +416,11 @@ export function App() {
 
     setSelectedDocId(documentId);
 
+    if (doc.resultAsset) {
+      setActivePage("review-result");
+      return;
+    }
+
     if (doc.status === "ready" || doc.status === "completed") {
       setActivePage("review-detail");
       return;
@@ -411,6 +429,42 @@ export function App() {
     if (doc.status === "reviewing" || doc.status === "parsing" || doc.status === "uploaded") {
       startReview(documentId);
     }
+  }
+
+  function openResult(documentId: string) {
+    const doc = documents.find((item) => item.id === documentId);
+    if (!doc?.resultAsset) {
+      openDocument(documentId);
+      return;
+    }
+
+    setSelectedDocId(documentId);
+    setActivePage("review-result");
+  }
+
+  function completeReview(payload: ReviewCompletionPayload) {
+    if (!selectedDocument) {
+      return;
+    }
+
+    const resultAsset = createReviewResultAsset(payload);
+
+    setDocuments((currentDocs) =>
+      currentDocs.map((doc) =>
+        doc.id === selectedDocument.id
+          ? {
+              ...doc,
+              status: "completed",
+              mode: payload.mode,
+              issueCount: resultAsset.issueStats.total,
+              updatedAt: nowString(),
+              resultAsset,
+            }
+          : doc,
+      ),
+    );
+    setSelectedDocId(selectedDocument.id);
+    setActivePage("review-result");
   }
 
   if (!session) {
@@ -424,6 +478,18 @@ export function App() {
         roleLabel={roleLabels[session.role]}
         documentName={selectedDocument.name}
         projectName={selectedDocument.project}
+        onBack={() => setActivePage("documents")}
+        themeMode={themeMode}
+        onToggleTheme={toggleTheme}
+        onComplete={completeReview}
+      />
+    );
+  }
+
+  if (activePage === "review-result" && selectedDocument?.resultAsset) {
+    return (
+      <ResultPreviewPage
+        document={selectedDocument}
         onBack={() => setActivePage("documents")}
         themeMode={themeMode}
         onToggleTheme={toggleTheme}
@@ -480,7 +546,16 @@ export function App() {
         <header className="shell-topbar">
           <div>
             <span className="eyebrow">默认入口</span>
-            <h1>{pageLabels[activePage as Exclude<ShellPage, "review-loading" | "review-detail">]}</h1>
+            <h1>
+              {
+                pageLabels[
+                  activePage as Exclude<
+                    ShellPage,
+                    "review-loading" | "review-detail" | "review-result"
+                  >
+                ]
+              }
+            </h1>
           </div>
           <div className="shell-topbar-actions">
             <button type="button" className="theme-toggle" onClick={toggleTheme}>
@@ -509,6 +584,7 @@ export function App() {
               onDragChange={setDragging}
               onStartReview={startReview}
               onOpenDocument={openDocument}
+              onOpenResult={openResult}
             />
           )}
 
@@ -612,6 +688,7 @@ function DocumentLibraryPage({
   onDragChange,
   onStartReview,
   onOpenDocument,
+  onOpenResult,
 }: {
   documents: LibraryDocument[];
   uploadDraft: UploadDraft;
@@ -621,6 +698,7 @@ function DocumentLibraryPage({
   onDragChange: (value: boolean) => void;
   onStartReview: (documentId: string) => void;
   onOpenDocument: (documentId: string) => void;
+  onOpenResult: (documentId: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recentDocs = documents.slice(0, 5);
@@ -762,7 +840,11 @@ function DocumentLibraryPage({
                   <button type="button" onClick={() => onOpenDocument(doc.id)}>
                     查看
                   </button>
-                  {doc.status === "ready" || doc.status === "completed" ? (
+                  {doc.resultAsset ? (
+                    <button type="button" className="primary" onClick={() => onOpenResult(doc.id)}>
+                      {doc.resultAsset.type === "supervisor-report" ? "查看报告" : "查看结果"}
+                    </button>
+                  ) : doc.status === "ready" || doc.status === "completed" ? (
                     <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
                       打开详情
                     </button>
@@ -777,6 +859,224 @@ function DocumentLibraryPage({
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ResultPreviewPage({
+  document,
+  onBack,
+  themeMode,
+  onToggleTheme,
+}: {
+  document: LibraryDocument;
+  onBack: () => void;
+  themeMode: ThemeMode;
+  onToggleTheme: () => void;
+}) {
+  const asset = document.resultAsset;
+
+  if (!asset) {
+    return null;
+  }
+
+  return (
+    <main className="result-page">
+      <header className="topbar result-topbar">
+        <button type="button" className="detail-back-button" onClick={onBack}>
+          <ArrowLeft size={16} />
+          返回文档库
+        </button>
+        <div>
+          <span className="eyebrow">审查结果资产 · Mock Preview</span>
+          <h1>{asset.documentName}</h1>
+        </div>
+        <div className="project-meta" aria-label="结果页操作">
+          <button type="button" className="theme-toggle subtle" onClick={onToggleTheme}>
+            <SunMoon size={16} />
+            {themeMode === "light" ? "深色主题" : "浅色主题"}
+          </button>
+          <span>{resultTypeName(asset)}</span>
+          <span>{asset.projectName}</span>
+        </div>
+      </header>
+
+      <section className="result-hero">
+        <div>
+          <span className="eyebrow">生成时间</span>
+          <h2>{formatResultTime(asset.createdAt)}</h2>
+          <p>
+            该页面用于验证审查完成后的业务产物结构。当前导出、盖章流转与后端归档接口均为预留。
+          </p>
+        </div>
+        <button type="button" className="export-disabled" disabled>
+          导出 PDF/Word 待接入
+        </button>
+      </section>
+
+      <section className="result-metrics" aria-label="结果统计">
+        <MetricBlock label="问题总数" value={asset.issueStats.total} />
+        <MetricBlock label="已接受" value={asset.issueStats.accepted} tone="success" />
+        <MetricBlock label="已拒绝" value={asset.issueStats.rejected} tone="danger" />
+        <MetricBlock label="工作模式" value={modeName(asset.mode)} />
+      </section>
+
+      {asset.type === "supervisor-report" ? (
+        <SupervisorReportPreview asset={asset} />
+      ) : (
+        <RevisedSnapshotPreview asset={asset} />
+      )}
+    </main>
+  );
+}
+
+function SupervisorReportPreview({
+  asset,
+}: {
+  asset: Extract<ReviewResultAsset, { type: "supervisor-report" }>;
+}) {
+  return (
+    <section className="result-layout">
+      <article className="result-card result-card-wide">
+        <span className="eyebrow">审核概况</span>
+        <h2>监理审核报告</h2>
+        <p>{asset.summary}</p>
+      </article>
+
+      <article className="result-card">
+        <span className="eyebrow">重大风险</span>
+        <h2>风险摘要</h2>
+        <ul className="result-list">
+          {asset.majorRisks.map((risk) => (
+            <li key={risk}>{risk}</li>
+          ))}
+        </ul>
+      </article>
+
+      <article className="result-card">
+        <span className="eyebrow">整改建议</span>
+        <h2>闭环要求</h2>
+        <ul className="result-list">
+          {asset.rectificationSuggestions.map((suggestion, index) => (
+            <li key={`${suggestion}-${index}`}>{suggestion}</li>
+          ))}
+        </ul>
+      </article>
+
+      <article className="result-card result-card-wide">
+        <span className="eyebrow">逐条审查意见</span>
+        <h2>意见明细</h2>
+        <div className="result-opinion-list">
+          {asset.issueOpinions.map((opinion) => (
+            <section key={opinion.issueId} className="result-opinion">
+              <div>
+                <strong>{opinion.issueId}</strong>
+                <span className={`severity severity-${opinion.severity}`}>
+                  {severityName(opinion.severity)}
+                </span>
+                <span className={`decision-chip ${opinion.decision}`}>
+                  {opinion.decision === "accepted" ? "已接受" : "已拒绝"}
+                </span>
+              </div>
+              <h3>{opinion.title}</h3>
+              <p>{opinion.opinion}</p>
+              <small>{opinion.basis}</small>
+            </section>
+          ))}
+        </div>
+      </article>
+
+      <article className="result-card result-card-wide">
+        <span className="eyebrow">结论</span>
+        <h2>审核结论</h2>
+        <p>{asset.conclusion}</p>
+      </article>
+    </section>
+  );
+}
+
+function RevisedSnapshotPreview({
+  asset,
+}: {
+  asset: Extract<ReviewResultAsset, { type: "revised-plan-snapshot" }>;
+}) {
+  return (
+    <section className="result-layout">
+      <article className="result-card result-card-wide">
+        <span className="eyebrow">处理摘要</span>
+        <h2>整改后方案快照</h2>
+        <p>{asset.processingSummary}</p>
+      </article>
+
+      <article className="result-card">
+        <span className="eyebrow">已采纳修改</span>
+        <h2>替换记录</h2>
+        <div className="change-list">
+          {asset.acceptedChanges.length > 0 ? (
+            asset.acceptedChanges.map((change) => (
+              <section key={change.issueId} className="change-item">
+                <strong>{change.issueId}</strong>
+                <p>
+                  <span>原文</span>
+                  {change.originalText}
+                </p>
+                <p>
+                  <span>修改后</span>
+                  {change.revisedText}
+                </p>
+              </section>
+            ))
+          ) : (
+            <p className="result-empty">本次没有采纳修改。</p>
+          )}
+        </div>
+      </article>
+
+      <article className="result-card">
+        <span className="eyebrow">拒绝保留项</span>
+        <h2>原文保留</h2>
+        <ul className="result-list">
+          {asset.rejectedItems.length > 0 ? (
+            asset.rejectedItems.map((item) => (
+              <li key={item.issueId}>
+                {item.issueId} {item.title}：{item.reason}
+              </li>
+            ))
+          ) : (
+            <li>本次没有拒绝项。</li>
+          )}
+        </ul>
+      </article>
+
+      <article className="result-card result-card-wide">
+        <span className="eyebrow">整改后方案全文</span>
+        <h2>预览正文</h2>
+        <div className="result-document">
+          {asset.processedParagraphs.map((paragraph) => (
+            <section key={paragraph.id} className="result-paragraph">
+              <h3>{paragraph.section}</h3>
+              <p>{paragraph.text}</p>
+            </section>
+          ))}
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function MetricBlock({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "neutral" | "success" | "danger";
+}) {
+  return (
+    <div className={`result-metric result-metric-${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -1021,6 +1321,35 @@ function modeName(mode?: ReviewMode) {
   if (mode === "review") return "审查模式";
   if (mode === "revise") return "审查修改模式";
   return "未设置";
+}
+
+function resultTypeName(asset: ReviewResultAsset) {
+  return asset.type === "supervisor-report" ? "审核报告" : "整改后方案";
+}
+
+function severityName(severity: "critical" | "high" | "medium" | "low") {
+  const labels = {
+    critical: "重大",
+    high: "高",
+    medium: "中",
+    low: "低",
+  } as const;
+
+  return labels[severity];
+}
+
+function formatResultTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
 }
 
 function nowString() {

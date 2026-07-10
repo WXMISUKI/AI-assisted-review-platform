@@ -28,12 +28,14 @@ import type {
   ReviewEngineSource,
   ReviewOutputScenario,
   ReviewMode,
+  ReviewCompletionPayload,
   ReviewIssue,
   StatusFilter,
 } from "./domain/reviewTypes";
 import {
   buildProcessedParagraphs,
   getIssueCounts,
+  isReviewComplete,
   matchesFilter,
   resolveIssue,
 } from "./domain/reviewUtils";
@@ -46,6 +48,7 @@ export interface ReviewWorkbenchPageProps {
   onBack?: () => void;
   themeMode?: "light" | "dark";
   onToggleTheme?: () => void;
+  onComplete?: (payload: ReviewCompletionPayload) => void;
 }
 
 interface SelectionDraft {
@@ -144,6 +147,7 @@ export function ReviewWorkbenchPage({
   onBack,
   themeMode = "light",
   onToggleTheme,
+  onComplete,
 }: ReviewWorkbenchPageProps = {}) {
   const [issues, setIssues] = useState<ReviewIssue[]>(initialReviewIssues);
   const [activeIssueId, setActiveIssueId] = useState(initialReviewIssues[0]?.id ?? "");
@@ -152,6 +156,7 @@ export function ReviewWorkbenchPage({
     allowedModes.includes("review") ? "review" : allowedModes[0] ?? "revise",
   );
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
+  const [completionConfirmOpen, setCompletionConfirmOpen] = useState(false);
   const [selectionDraft, setSelectionDraft] = useState<SelectionDraft | null>(null);
   const [popoverDragging, setPopoverDragging] = useState(false);
   const [selectionMessage, setSelectionMessage] = useState("拖选原文中的一段文字，可新增人工标注。");
@@ -168,6 +173,7 @@ export function ReviewWorkbenchPage({
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const counts = useMemo(() => getIssueCounts(issues), [issues]);
+  const reviewComplete = useMemo(() => isReviewComplete(issues), [issues]);
   const processedParagraphs = useMemo(
     () => buildProcessedParagraphs(documentParagraphs, issues, reviewMode),
     [issues, reviewMode],
@@ -424,6 +430,17 @@ export function ReviewWorkbenchPage({
     setPopoverDragging(true);
   }
 
+  function confirmCompletion() {
+    onComplete?.({
+      mode: reviewMode,
+      documentName,
+      projectName,
+      issues,
+      processedParagraphs,
+    });
+    setCompletionConfirmOpen(false);
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -469,18 +486,33 @@ export function ReviewWorkbenchPage({
           <h2>{modeCopy[reviewMode].title}</h2>
           <p>{modeCopy[reviewMode].note}</p>
         </div>
-        <div className="mode-switch" role="tablist" aria-label="工作模式">
-          {visibleModes.map((mode) => (
-            <button
-              key={mode}
-              className={reviewMode === mode ? "mode-button active" : "mode-button"}
-              type="button"
-              onClick={() => setReviewMode(mode)}
-            >
-              <GitCompareArrows size={16} />
-              {modeCopy[mode].label}
-            </button>
-          ))}
+        <div className="mode-actions">
+          <div className="mode-switch" role="tablist" aria-label="工作模式">
+            {visibleModes.map((mode) => (
+              <button
+                key={mode}
+                className={reviewMode === mode ? "mode-button active" : "mode-button"}
+                type="button"
+                onClick={() => setReviewMode(mode)}
+              >
+                <GitCompareArrows size={16} />
+                {modeCopy[mode].label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="completion-button"
+            disabled={!reviewComplete}
+            onClick={() => setCompletionConfirmOpen(true)}
+          >
+            <ClipboardCheck size={16} />
+            {reviewComplete
+              ? reviewMode === "review"
+                ? "生成审核报告"
+                : "生成整改后方案"
+              : `还剩 ${counts.pending} 项待处理`}
+          </button>
         </div>
       </section>
 
@@ -620,6 +652,15 @@ export function ReviewWorkbenchPage({
           issue={issues.find((issue) => issue.id === deleteCandidateId) ?? null}
           onCancel={() => setDeleteCandidateId(null)}
           onConfirm={() => deleteManualIssue(deleteCandidateId)}
+        />
+      )}
+
+      {completionConfirmOpen && (
+        <CompletionConfirmDialog
+          mode={reviewMode}
+          counts={counts}
+          onCancel={() => setCompletionConfirmOpen(false)}
+          onConfirm={confirmCompletion}
         />
       )}
     </main>
@@ -782,6 +823,52 @@ function DeleteConfirmDialog({
         <div className="dialog-actions">
           <button type="button" className="danger" onClick={onConfirm}>
             删除标注
+          </button>
+          <button type="button" onClick={onCancel}>
+            取消
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CompletionConfirmDialog({
+  mode,
+  counts,
+  onCancel,
+  onConfirm,
+}: {
+  mode: ReviewMode;
+  counts: ReturnType<typeof getIssueCounts>;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const resultLabel = mode === "review" ? "监理专属审核报告" : "整改后方案快照";
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        className="confirm-dialog completion-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="完成审查确认"
+      >
+        <div className="dialog-icon success">
+          <ClipboardCheck size={22} />
+        </div>
+        <h2>确认完成本次审查？</h2>
+        <p>
+          系统将基于当前接受/拒绝结果生成{resultLabel}。生成后会回写到文档库，后续可从文档记录查看。
+        </p>
+        <div className="completion-dialog-stats">
+          <span>问题总数 {counts.total}</span>
+          <span>已接受 {counts.accepted}</span>
+          <span>已拒绝 {counts.rejected}</span>
+        </div>
+        <div className="dialog-actions">
+          <button type="button" className="danger completion-confirm" onClick={onConfirm}>
+            生成{mode === "review" ? "报告" : "结果"}
           </button>
           <button type="button" onClick={onCancel}>
             取消

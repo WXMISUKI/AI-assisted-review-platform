@@ -117,3 +117,59 @@ export interface IssueCounts {
   rejected: number;
   modified: number;
 }
+
+export type ReviewResultType = "supervisor-report" | "revised-plan-snapshot";
+
+export interface ReviewCompletionPayload {
+  mode: ReviewMode;
+  documentName: string;
+  projectName: string;
+  issues: ReviewIssue[];
+  processedParagraphs: DocumentParagraph[];
+}
+
+export interface ReviewResultBase {
+  id: string;
+  type: ReviewResultType;
+  documentName: string;
+  projectName: string;
+  mode: ReviewMode;
+  createdAt: string;
+  issueStats: IssueCounts;
+  acceptedIssueIds: string[];
+  rejectedIssueIds: string[];
+}
+
+export interface SupervisorReportAsset extends ReviewResultBase {
+  type: "supervisor-report";
+  summary: string;
+  majorRisks: string[];
+  issueOpinions: Array<{
+    issueId: string;
+    title: string;
+    severity: IssueSeverity;
+    decision: Extract<IssueStatus, "accepted" | "rejected">;
+    opinion: string;
+    basis: string;
+  }>;
+  rectificationSuggestions: string[];
+  conclusion: string;
+}
+
+export interface RevisedPlanSnapshotAsset extends ReviewResultBase {
+  type: "revised-plan-snapshot";
+  processingSummary: string;
+  acceptedChanges: Array<{
+    issueId: string;
+    originalText: string;
+    revisedText: string;
+  }>;
+  rejectedItems: Array<{
+    issueId: string;
+    title: string;
+    reason: string;
+  }>;
+  processedParagraphs: DocumentParagraph[];
+}
+
+export type ReviewResultAsset = SupervisorReportAsset | RevisedPlanSnapshotAsset;
