@@ -11,6 +11,16 @@
   --text-secondary: #617284;
   --text-tertiary: #8a97a6;
   --text-on-accent: #ffffff;
+  --button-bg: #ffffff;
+  --button-bg-hover: #f5f8fb;
+  --button-border: #cbd5df;
+  --button-foreground: #26384b;
+  --button-muted-foreground: #536477;
+  --button-primary-bg: #0f766e;
+  --button-primary-hover: #0b5f59;
+  --button-primary-foreground: #ffffff;
+  --button-danger-bg: #b42318;
+  --button-danger-foreground: #ffffff;
   --primary: #0f766e;
   --primary-hover: #0b5f59;
   --primary-soft: #e8f7f3;
@@ -66,6 +76,16 @@
   --text-secondary: #b6c1cf;
   --text-tertiary: #93a3b8;
   --text-on-accent: #f5fbff;
+  --button-bg: rgba(27, 38, 56, 0.96);
+  --button-bg-hover: rgba(34, 47, 68, 0.96);
+  --button-border: #3b5069;
+  --button-foreground: var(--text-primary);
+  --button-muted-foreground: var(--text-secondary);
+  --button-primary-bg: #31d6c7;
+  --button-primary-hover: #58e4d8;
+  --button-primary-foreground: #09131d;
+  --button-danger-bg: rgba(180, 35, 24, 0.88);
+  --button-danger-foreground: #f5fbff;
   --primary: #31d6c7;
   --primary-hover: #58e4d8;
   --primary-soft: rgba(49, 214, 199, 0.14);
@@ -125,6 +145,10 @@ textarea {
 
 button {
   cursor: pointer;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
 }
 
 .app-shell {
@@ -291,17 +315,52 @@ button {
 }
 
 .login-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 24px;
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.2), transparent 25%),
-    radial-gradient(circle at bottom right, rgba(23, 92, 211, 0.14), transparent 20%),
+    linear-gradient(135deg, rgba(15, 118, 110, 0.16), transparent 38%),
+    linear-gradient(225deg, rgba(23, 92, 211, 0.12), transparent 34%),
     linear-gradient(180deg, #eef5f7 0%, #e9eef4 100%);
+  background-size: 180% 180%;
+  animation: login-shell-drift 18s ease-in-out infinite alternate;
+}
+
+.login-shell::before,
+.login-shell::after {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  pointer-events: none;
+}
+
+.login-shell::before {
+  background:
+    linear-gradient(115deg, rgba(15, 118, 110, 0.12), transparent 36%),
+    linear-gradient(290deg, rgba(23, 92, 211, 0.08), transparent 34%);
+  filter: blur(20px);
+  opacity: 0.8;
+  animation: login-shell-flow 24s ease-in-out infinite alternate;
+}
+
+.login-shell::after {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.06) 0 1px,
+      transparent 1px 88px
+    );
+  opacity: 0.42;
+  animation: login-shell-grid 30s linear infinite;
 }
 
 .login-card {
+  position: relative;
+  z-index: 1;
   width: min(1080px, 100%);
   display: grid;
   grid-template-columns: 1.15fr 0.85fr;
@@ -360,17 +419,24 @@ button {
 
 .role-button {
   min-height: 42px;
-  border: 1px solid #cbd5df;
+  border: 1px solid var(--button-border);
   border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink-muted);
+  background: var(--button-bg);
+  color: var(--button-muted-foreground);
   font-weight: 700;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
 }
 
 .role-button.active {
-  border-color: #0f766e;
-  background: #e8f7f3;
-  color: #0f645e;
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.12) inset;
 }
 
 .login-submit {
@@ -381,8 +447,8 @@ button {
   min-height: 44px;
   border: 0;
   border-radius: 8px;
-  background: #0f766e;
-  color: #ffffff;
+  background: var(--button-primary-bg);
+  color: var(--button-primary-foreground);
   font-weight: 800;
 }
 
@@ -690,6 +756,33 @@ button {
   }
   100% {
     transform: translateX(320%);
+  }
+}
+
+@keyframes login-shell-drift {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 100% 100%;
+  }
+}
+
+@keyframes login-shell-flow {
+  0% {
+    transform: translate3d(-1.5%, -1%, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(1.5%, 1%, 0) scale(1.04);
+  }
+}
+
+@keyframes login-shell-grid {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(2.5%, -2%, 0);
   }
 }
 
@@ -1101,19 +1194,19 @@ h4 {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid #0f766e;
+  border: 1px solid var(--button-primary-bg);
   border-radius: 7px;
   padding: 0 12px;
-  background: #0f766e;
-  color: #ffffff;
+  background: var(--button-primary-bg);
+  color: var(--button-primary-foreground);
   font-size: 13px;
   font-weight: 800;
 }
 
 .manual-actions button.secondary {
-  border-color: #cbd5df;
-  background: #ffffff;
-  color: #445365;
+  border-color: var(--button-border);
+  background: var(--button-bg);
+  color: var(--button-foreground);
 }
 
 .document-paragraph {
@@ -1490,18 +1583,18 @@ h4 {
 
 .dialog-actions button {
   min-height: 38px;
-  border: 1px solid #cbd5df;
+  border: 1px solid var(--button-border);
   border-radius: 7px;
   padding: 0 14px;
-  background: #ffffff;
-  color: #26384b;
+  background: var(--button-bg);
+  color: var(--button-foreground);
   font-weight: 800;
 }
 
 .dialog-actions button.danger {
-  border-color: #b42318;
-  background: #b42318;
-  color: #ffffff;
+  border-color: var(--button-danger-bg);
+  background: var(--button-danger-bg);
+  color: var(--button-danger-foreground);
 }
 
 body {
@@ -1593,9 +1686,9 @@ body {
 .row-actions button,
 .dialog-actions button,
 .icon-button {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--ink);
+  border: 1px solid var(--button-border);
+  background: var(--button-bg);
+  color: var(--button-foreground);
 }
 
 .theme-toggle:hover,
@@ -1606,6 +1699,7 @@ body {
 .dialog-actions button:hover,
 .icon-button:hover {
   border-color: var(--primary);
+  background: var(--button-bg-hover);
   color: var(--primary-hover);
 }
 
@@ -1701,15 +1795,44 @@ body {
 
 :root[data-theme="dark"] .login-shell {
   background:
-    radial-gradient(circle at top left, rgba(49, 214, 199, 0.08), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(122, 176, 255, 0.06), transparent 18%),
-    var(--page-bg);
+    linear-gradient(135deg, rgba(49, 214, 199, 0.12), transparent 36%),
+    linear-gradient(225deg, rgba(122, 176, 255, 0.1), transparent 34%),
+    linear-gradient(180deg, #162032 0%, #111a29 100%);
+}
+
+:root[data-theme="dark"] .login-shell::before {
+  background:
+    linear-gradient(115deg, rgba(49, 214, 199, 0.12), transparent 36%),
+    linear-gradient(290deg, rgba(122, 176, 255, 0.08), transparent 34%);
+  opacity: 0.7;
+}
+
+:root[data-theme="dark"] .login-shell::after {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.045) 0 1px,
+      transparent 1px 96px
+    );
+  opacity: 0.28;
 }
 
 :root[data-theme="dark"] .role-button {
-  background: var(--surface-muted);
-  border-color: var(--border);
+  background: var(--button-bg);
+  border-color: var(--button-border);
+  color: var(--button-muted-foreground);
+}
+
+:root[data-theme="dark"] .role-button.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
   color: var(--text-primary);
+  box-shadow: 0 0 0 1px rgba(49, 214, 199, 0.2) inset;
+}
+
+:root[data-theme="dark"] .login-submit {
+  background: var(--button-primary-bg);
+  color: var(--button-primary-foreground);
 }
 
 :root[data-theme="dark"] .shell-nav-item {
@@ -1788,10 +1911,11 @@ body {
 :root[data-theme="dark"] .detail-back-button,
 :root[data-theme="dark"] .row-actions button,
 :root[data-theme="dark"] .dialog-actions button,
-:root[data-theme="dark"] .icon-button {
-  background: rgba(17, 26, 39, 0.96);
+:root[data-theme="dark"] .icon-button,
+:root[data-theme="dark"] .manual-actions button.secondary {
+  background: var(--button-bg);
   border-color: var(--border);
-  color: var(--ink);
+  color: var(--button-foreground);
 }
 
 :root[data-theme="dark"] .preview-document {
@@ -2333,4 +2457,46 @@ body {
     .upload-form-row input::placeholder
   ) {
   color: var(--text-tertiary) !important;
+}
+
+:root[data-theme="dark"] .login-shell .role-button {
+  background: var(--button-bg) !important;
+  border-color: var(--button-border) !important;
+  color: var(--button-muted-foreground) !important;
+}
+
+:root[data-theme="dark"] .login-shell .role-button.active {
+  background: var(--primary-soft) !important;
+  border-color: var(--primary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 1px rgba(49, 214, 199, 0.2) inset;
+}
+
+:root[data-theme="dark"] .login-shell .login-submit {
+  background: var(--button-primary-bg) !important;
+  color: var(--button-primary-foreground) !important;
+}
+
+:root[data-theme="dark"] .app-shell .manual-actions button:not(.secondary),
+:root[data-theme="dark"] .app-shell .row-actions .primary,
+:root[data-theme="dark"] .app-shell .upload-button,
+:root[data-theme="dark"] .app-shell .assets-card button,
+:root[data-theme="dark"] .app-shell .dialog-actions button.danger,
+:root[data-theme="dark"] .app-shell .shell-brand-mark {
+  background: var(--button-primary-bg) !important;
+  border-color: var(--button-primary-bg) !important;
+  color: var(--button-primary-foreground) !important;
+}
+
+:root[data-theme="dark"] .app-shell .manual-actions button.secondary,
+:root[data-theme="dark"] .app-shell .dialog-actions button:not(.danger),
+:root[data-theme="dark"] .app-shell .theme-toggle,
+:root[data-theme="dark"] .app-shell .theme-toggle.subtle,
+:root[data-theme="dark"] .app-shell .upload-pick-button,
+:root[data-theme="dark"] .app-shell .detail-back-button,
+:root[data-theme="dark"] .app-shell .row-actions button:not(.primary),
+:root[data-theme="dark"] .app-shell .icon-button {
+  background: var(--button-bg) !important;
+  border-color: var(--button-border) !important;
+  color: var(--button-foreground) !important;
 }
