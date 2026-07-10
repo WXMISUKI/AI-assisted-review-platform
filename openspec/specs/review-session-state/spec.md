@@ -51,3 +51,10 @@ The review session state contract SHALL avoid UI-only fields that prevent later 
 - **WHEN** a future backend replaces the mock repository
 - **THEN** the UI can continue using the same service-level operations for task listing, task loading, issue resolution, streaming updates, and completion
 
+### Requirement: Backend event compatibility
+The review session state SHALL reserve a backend event contract compatible with future replacement of mock streaming updates.
+
+#### Scenario: Backend review event is received
+- **WHEN** a backend event contains stage id, title, detail, progress, and issue summaries
+- **THEN** it can be mapped to the existing review session streaming state without changing page-level UI contracts
+

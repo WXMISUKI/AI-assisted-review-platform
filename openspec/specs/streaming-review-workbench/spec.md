@@ -36,3 +36,10 @@ The streaming review workbench SHALL consume ordered review events from the revi
 - **WHEN** the mock stream advances to the next stage
 - **THEN** the task session state records the current stage index so the review flow can resume consistently
 
+### Requirement: Backend stream readiness
+The streaming review workbench SHALL be compatible with backend server-sent review events.
+
+#### Scenario: Backend streaming is enabled later
+- **WHEN** review events arrive over SSE
+- **THEN** the workbench can consume the same ordered event fields currently used by mock streaming stages
+

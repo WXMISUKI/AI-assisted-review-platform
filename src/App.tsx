@@ -40,6 +40,16 @@ import {
   updateReviewTaskStreamStage,
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
+import {
+  fetchBackendHealth,
+  fetchOcrStatus,
+  runLlmConnectivityCheck,
+  runReviewStreamConnectivityCheck,
+  type BackendHealthResult,
+  type OcrStatusResult,
+  type ProviderCheckResult,
+  type ReviewStreamEvent,
+} from "./domain/backendConnectivity";
 
 type Role = "super_admin" | "supervisor" | "contractor";
 type ShellPage =
@@ -960,6 +970,38 @@ function DataAssetsPage({
   onOpenDocument: () => void;
 }) {
   const editable = role === "super_admin";
+  const [checkingConnectivity, setCheckingConnectivity] = useState(false);
+  const [healthResult, setHealthResult] = useState<BackendHealthResult | null>(null);
+  const [llmResult, setLlmResult] = useState<ProviderCheckResult | null>(null);
+  const [ocrResult, setOcrResult] = useState<OcrStatusResult | null>(null);
+  const [streamEvents, setStreamEvents] = useState<ReviewStreamEvent[]>([]);
+  const [connectivityError, setConnectivityError] = useState("");
+
+  async function runConnectivityChecks() {
+    setCheckingConnectivity(true);
+    setConnectivityError("");
+    setStreamEvents([]);
+
+    try {
+      const health = await fetchBackendHealth();
+      setHealthResult(health);
+
+      const ocr = await fetchOcrStatus();
+      setOcrResult(ocr);
+
+      const llm = await runLlmConnectivityCheck();
+      setLlmResult(llm);
+
+      const events = await runReviewStreamConnectivityCheck();
+      setStreamEvents(events);
+    } catch (error) {
+      setConnectivityError(
+        error instanceof Error ? error.message : "后端连通性检查失败。",
+      );
+    } finally {
+      setCheckingConnectivity(false);
+    }
+  }
 
   return (
     <div className="assets-grid">
@@ -994,7 +1036,88 @@ function DataAssetsPage({
         <h2>{editable ? "可维护" : "只读"}</h2>
         <p>后续支持提示词新增、修改、版本管理和绑定智能体。当前仅展示入口。</p>
       </section>
+      <section className="assets-card connectivity-card">
+        <div className="section-title row">
+          <div>
+            <span className="eyebrow">后端连通性</span>
+            <h2>智能体资源检查</h2>
+          </div>
+          <button type="button" className="primary" onClick={runConnectivityChecks}>
+            {checkingConnectivity ? "检查中..." : "运行检查"}
+          </button>
+        </div>
+        <p>用于验证本地 BFF、OpenAI-compatible LLM、PaddleOCR-VL 和 SSE 流式通道。不会显示任何密钥。</p>
+        {connectivityError && <div className="connectivity-error">{connectivityError}</div>}
+        <div className="connectivity-grid">
+          <ConnectivityStatus
+            title="后端 BFF"
+            status={healthResult?.ok ? "ready" : "pending"}
+            detail={
+              healthResult
+                ? `${healthResult.service ?? "backend"} · ${healthResult.timestamp ?? "无时间戳"}`
+                : "等待检查"
+            }
+          />
+          <ConnectivityStatus
+            title="LLM"
+            status={llmResult?.ok ? "ready" : llmResult ? "failed" : "pending"}
+            detail={
+              llmResult
+                ? llmResult.preview || llmResult.message || llmResult.status || "已返回"
+                : healthResult?.providers?.openai?.configured
+                  ? `已配置 ${healthResult.providers.openai.model}`
+                  : "等待配置或检查"
+            }
+          />
+          <ConnectivityStatus
+            title="PaddleOCR-VL"
+            status={ocrResult?.ok ? "ready" : ocrResult ? "failed" : "pending"}
+            detail={
+              ocrResult
+                ? `${ocrResult.model} · ${ocrResult.hasToken ? "Token 已配置" : "Token 未配置"}`
+                : "等待检查"
+            }
+          />
+          <ConnectivityStatus
+            title="SSE 流式"
+            status={streamEvents.length > 0 ? "ready" : "pending"}
+            detail={
+              streamEvents.length > 0
+                ? `已收到 ${streamEvents.length} 个事件，最后：${
+                    streamEvents[streamEvents.length - 1]?.title
+                  }`
+                : "等待检查"
+            }
+          />
+        </div>
+      </section>
     </div>
+  );
+}
+
+function ConnectivityStatus({
+  title,
+  status,
+  detail,
+}: {
+  title: string;
+  status: "ready" | "pending" | "failed";
+  detail: string;
+}) {
+  const label = {
+    ready: "可用",
+    pending: "待检查",
+    failed: "失败",
+  }[status];
+
+  return (
+    <article className={`connectivity-status ${status}`}>
+      <div>
+        <strong>{title}</strong>
+        <span>{label}</span>
+      </div>
+      <p>{detail}</p>
+    </article>
   );
 }
 

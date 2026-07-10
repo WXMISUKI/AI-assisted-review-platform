@@ -6,16 +6,18 @@
   "description": "AI-assisted construction plan review platform MVP.",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "server:dev": "node server/index.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.6.0",
     "lucide-react": "^0.468.0",
-    "vite": "^5.4.20",
-    "typescript": "^5.5.4",
+    "openai": "^6.46.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.20"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

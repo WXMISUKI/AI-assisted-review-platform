@@ -793,6 +793,80 @@ button {
   font-weight: 800;
 }
 
+.connectivity-card {
+  grid-column: 1 / -1;
+}
+
+.connectivity-card .section-title.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.connectivity-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.connectivity-status {
+  min-height: 118px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-muted);
+}
+
+.connectivity-status div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.connectivity-status strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.connectivity-status span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--status-uploaded-bg);
+  color: var(--status-uploaded-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.connectivity-status.ready span {
+  background: var(--status-ready-bg);
+  color: var(--status-ready-text);
+}
+
+.connectivity-status.failed span {
+  background: var(--status-failed-bg);
+  color: var(--status-failed-text);
+}
+
+.connectivity-status p {
+  margin-top: 10px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.connectivity-error {
+  border: 1px solid var(--status-failed-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--status-failed-bg);
+  color: var(--status-failed-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .loading-page {
   display: grid;
   place-items: center;
