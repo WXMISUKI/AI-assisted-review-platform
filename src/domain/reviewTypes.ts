@@ -192,6 +192,14 @@ export interface ReviewStreamingStage {
   };
 }
 
+export interface ReviewTaskSourceObject {
+  bucket: string;
+  key: string;
+  originalFilename: string;
+  contentType: string;
+  size: number;
+}
+
 export interface ReviewTask {
   id: string;
   name: string;
@@ -204,6 +212,7 @@ export interface ReviewTask {
   paragraphs: DocumentParagraph[];
   issues: ReviewIssue[];
   streamStageIndex: number;
+  sourceObject?: ReviewTaskSourceObject;
   resultAsset?: ReviewResultAsset;
 }
 
@@ -224,4 +233,5 @@ export interface CreateReviewTaskInput {
   project: string;
   uploader: string;
   mode: ReviewMode;
+  sourceObject?: ReviewTaskSourceObject;
 }

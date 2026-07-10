@@ -1,8 +1,5 @@
-# backend-connectivity Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change backend-connectivity-and-agent-adapter-foundation. Update Purpose after archive.
-## Requirements
 ### Requirement: Safe backend configuration
 The system SHALL load LLM, OCR, and MinIO credentials from server-side environment variables only.
 
@@ -20,11 +17,3 @@ The system SHALL provide a local backend health endpoint for development.
 #### Scenario: Health endpoint is called
 - **WHEN** a client requests `/api/health`
 - **THEN** the backend returns service status, timestamp, and configured provider flags including LLM, OCR, and MinIO readiness metadata
-
-### Requirement: Frontend proxy support
-The system SHALL allow the Vite development server to proxy `/api` requests to the backend.
-
-#### Scenario: Frontend calls API
-- **WHEN** the Vite dev server receives an `/api` request
-- **THEN** it proxies the request to the local backend during development
-

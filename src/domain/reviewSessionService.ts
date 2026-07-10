@@ -62,6 +62,7 @@ export function createDocumentTask(
     paragraphs: cloneParagraphs(documentParagraphs),
     issues: cloneIssues(),
     streamStageIndex: 0,
+    sourceObject: input.sourceObject,
   };
 
   return saveReviewTasks([newTask, ...tasks]);

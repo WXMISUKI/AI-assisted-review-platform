@@ -1,6 +1,12 @@
 import { createServer } from "node:http";
+import Busboy from "busboy";
 import { config, getSafeProviderStatus } from "./config.mjs";
 import { checkLlmConnectivity } from "./llmClient.mjs";
+import {
+  checkMinioBucket,
+  createPresignedDocumentUrl,
+  uploadDocumentObject,
+} from "./minioClient.mjs";
 import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 
@@ -23,6 +29,64 @@ async function readJson(request) {
   }
 
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+function readMultipartUpload(request) {
+  return new Promise((resolve, reject) => {
+    const contentType = request.headers["content-type"] || "";
+    if (!contentType.includes("multipart/form-data")) {
+      reject(new Error("Content-Type must be multipart/form-data."));
+      return;
+    }
+
+    const busboy = Busboy({
+      headers: request.headers,
+      limits: {
+        files: 1,
+        fileSize: 100 * 1024 * 1024,
+      },
+    });
+    const chunks = [];
+    let upload = null;
+    let limitReached = false;
+
+    busboy.on("file", (fieldName, file, info) => {
+      if (fieldName !== "file") {
+        file.resume();
+        return;
+      }
+
+      upload = {
+        filename: info.filename || "document",
+        contentType: info.mimeType || "application/octet-stream",
+      };
+      file.on("data", (chunk) => chunks.push(chunk));
+      file.on("limit", () => {
+        limitReached = true;
+        file.resume();
+      });
+    });
+
+    busboy.on("error", reject);
+    busboy.on("finish", () => {
+      if (limitReached) {
+        reject(new Error("Uploaded file exceeds the 100MB limit."));
+        return;
+      }
+
+      if (!upload) {
+        reject(new Error("Multipart field `file` is required."));
+        return;
+      }
+
+      resolve({
+        ...upload,
+        buffer: Buffer.concat(chunks),
+      });
+    });
+
+    request.pipe(busboy);
+  });
 }
 
 function notFound(response) {
@@ -56,7 +120,11 @@ const server = createServer(async (request, response) => {
           "POST /api/llm/check",
           "GET /api/ocr/status",
           "POST /api/ocr/jobs/url",
+          "POST /api/ocr/jobs/object",
           "GET /api/ocr/jobs/:id",
+          "GET /api/minio/status",
+          "POST /api/minio/upload",
+          "POST /api/minio/presign",
           "GET /api/review-agent/stream",
         ],
       });
@@ -83,6 +151,29 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/minio/status") {
+      sendJson(response, 200, await checkMinioBucket());
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/minio/upload") {
+      const upload = await readMultipartUpload(request);
+      sendJson(response, 200, {
+        ok: true,
+        object: await uploadDocumentObject(upload),
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/minio/presign") {
+      const body = await readJson(request);
+      sendJson(response, 200, {
+        ok: true,
+        presigned: await createPresignedDocumentUrl(body.key, body.expiresIn),
+      });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/ocr/jobs/url") {
       const body = await readJson(request);
       if (!body.fileUrl || typeof body.fileUrl !== "string") {
@@ -94,6 +185,23 @@ const server = createServer(async (request, response) => {
       }
 
       sendJson(response, 200, await submitOcrUrlJob(body));
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/ocr/jobs/object") {
+      const body = await readJson(request);
+      const presigned = await createPresignedDocumentUrl(body.key, body.expiresIn);
+      sendJson(response, 200, {
+        ...(await submitOcrUrlJob({
+          fileUrl: presigned.url,
+          optionalPayload: body.optionalPayload,
+        })),
+        sourceObject: {
+          bucket: presigned.bucket,
+          key: presigned.key,
+          expiresIn: presigned.expiresIn,
+        },
+      });
       return;
     }
 

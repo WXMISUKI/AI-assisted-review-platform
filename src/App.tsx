@@ -42,10 +42,14 @@ import {
 } from "./domain/reviewSessionService";
 import {
   fetchBackendHealth,
+  fetchMinioStatus,
   fetchOcrStatus,
   runLlmConnectivityCheck,
   runReviewStreamConnectivityCheck,
+  uploadMinioDocument,
   type BackendHealthResult,
+  type MinioStatusResult,
+  type MinioUploadResult,
   type OcrStatusResult,
   type ProviderCheckResult,
   type ReviewStreamEvent,
@@ -147,6 +151,8 @@ export function App() {
   const [documents, setDocuments] = useState<LibraryDocument[]>(initialTasks);
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
   const [dragging, setDragging] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [documentUploadError, setDocumentUploadError] = useState("");
   const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
   const [streamStageIndex, setStreamStageIndex] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
@@ -215,10 +221,9 @@ export function App() {
     setThemeMode((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
   }
 
-  function handleUpload(name: string, project: string) {
+  function createUploadedTask(input: Parameters<typeof createDocumentTask>[1]) {
     const nextDocuments = createDocumentTask(documents, {
-      name,
-      project,
+      ...input,
       uploader: session?.username ?? "当前用户",
       mode: session?.role === "contractor" ? "revise" : "review",
     });
@@ -227,6 +232,41 @@ export function App() {
     setDocuments(nextDocuments);
     setSelectedDocId(newDoc.id);
     setUploadDraft({ name: "", project: "" });
+    setDocumentUploadError("");
+  }
+
+  function handleManualUpload(name: string, project: string) {
+    createUploadedTask({
+      name,
+      project,
+      uploader: session?.username ?? "当前用户",
+      mode: session?.role === "contractor" ? "revise" : "review",
+    });
+  }
+
+  async function handleFileUpload(file: File) {
+    setUploadingDocument(true);
+    setDocumentUploadError("");
+
+    try {
+      const uploadResult = await uploadMinioDocument(file);
+      if (!uploadResult.ok || !uploadResult.object) {
+        setDocumentUploadError(uploadResult.message || "文件上传到对象存储失败。");
+        return;
+      }
+
+      createUploadedTask({
+        name: uploadDraft.name.trim() || uploadResult.object.originalFilename || file.name,
+        project: uploadDraft.project.trim() || "未知项目",
+        uploader: session?.username ?? "当前用户",
+        mode: session?.role === "contractor" ? "revise" : "review",
+        sourceObject: uploadResult.object,
+      });
+    } catch (error) {
+      setDocumentUploadError(error instanceof Error ? error.message : "文件上传到对象存储失败。");
+    } finally {
+      setUploadingDocument(false);
+    }
   }
 
   function startReview(documentId: string) {
@@ -451,8 +491,11 @@ export function App() {
               uploadDraft={uploadDraft}
               dragging={dragging}
               onUploadDraftChange={setUploadDraft}
-              onUpload={handleUpload}
+              onManualUpload={handleManualUpload}
+              onFileUpload={handleFileUpload}
               onDragChange={setDragging}
+              uploading={uploadingDocument}
+              uploadError={documentUploadError}
               onStartReview={startReview}
               onOpenDocument={openDocument}
               onOpenResult={openResult}
@@ -555,8 +598,11 @@ function DocumentLibraryPage({
   uploadDraft,
   dragging,
   onUploadDraftChange,
-  onUpload,
+  onManualUpload,
+  onFileUpload,
   onDragChange,
+  uploading,
+  uploadError,
   onStartReview,
   onOpenDocument,
   onOpenResult,
@@ -565,8 +611,11 @@ function DocumentLibraryPage({
   uploadDraft: UploadDraft;
   dragging: boolean;
   onUploadDraftChange: (draft: UploadDraft) => void;
-  onUpload: (name: string, project: string) => void;
+  onManualUpload: (name: string, project: string) => void;
+  onFileUpload: (file: File) => void;
   onDragChange: (value: boolean) => void;
+  uploading: boolean;
+  uploadError: string;
   onStartReview: (documentId: string) => void;
   onOpenDocument: (documentId: string) => void;
   onOpenResult: (documentId: string) => void;
@@ -577,7 +626,7 @@ function DocumentLibraryPage({
   function submitUpload() {
     const name = uploadDraft.name.trim() || `施工方案_${Date.now()}.pdf`;
     const project = uploadDraft.project.trim() || "未知项目";
-    onUpload(name, project);
+    onManualUpload(name, project);
   }
 
   return (
@@ -616,7 +665,7 @@ function DocumentLibraryPage({
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
-                  onUpload(file.name, uploadDraft.project.trim() || "未知项目");
+                  onFileUpload(file);
                   event.target.value = "";
                 }
               }}
@@ -633,22 +682,24 @@ function DocumentLibraryPage({
                 onDragChange(false);
                 const file = event.dataTransfer.files[0];
                 if (file) {
-                  onUpload(file.name, uploadDraft.project.trim() || "未知项目");
+                  onFileUpload(file);
                 }
               }}
             >
               <Upload size={22} />
-              <span>拖拽文件到此处</span>
-              <small>支持 PDF、Word（当前为 mock）</small>
+              <span>{uploading ? "正在上传到对象存储" : "拖拽文件到此处"}</span>
+              <small>支持 PDF、Word，上传成功后写入文档库</small>
             </div>
             <button
               type="button"
               className="upload-pick-button"
               onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
             >
-              选择文件
+              {uploading ? "上传中..." : "选择文件"}
             </button>
           </div>
+          {uploadError && <div className="upload-error">{uploadError}</div>}
 
           <div className="upload-form-row">
             <label>
@@ -671,9 +722,9 @@ function DocumentLibraryPage({
                 placeholder="例如：南京综合楼项目"
               />
             </label>
-            <button type="button" className="upload-button" onClick={submitUpload}>
+            <button type="button" className="upload-button" onClick={submitUpload} disabled={uploading}>
               <Plus size={16} />
-              添加到文档库
+              添加 mock 文档
             </button>
           </div>
         </div>
@@ -701,7 +752,10 @@ function DocumentLibraryPage({
               <div key={doc.id} className="table-row">
                 <div>
                   <strong>{doc.name}</strong>
-                  <small>上传人：{doc.uploader}</small>
+                  <small>
+                    上传人：{doc.uploader}
+                    {doc.sourceObject ? ` · 已存储 ${formatFileSize(doc.sourceObject.size)}` : " · mock"}
+                  </small>
                 </div>
                 <span>{doc.project}</span>
                 <span className={`status-pill status-${doc.status}`}>{statusLabels[doc.status]}</span>
@@ -974,8 +1028,12 @@ function DataAssetsPage({
   const [healthResult, setHealthResult] = useState<BackendHealthResult | null>(null);
   const [llmResult, setLlmResult] = useState<ProviderCheckResult | null>(null);
   const [ocrResult, setOcrResult] = useState<OcrStatusResult | null>(null);
+  const [minioResult, setMinioResult] = useState<MinioStatusResult | null>(null);
+  const [minioUploadResult, setMinioUploadResult] = useState<MinioUploadResult | null>(null);
+  const [uploadingToMinio, setUploadingToMinio] = useState(false);
   const [streamEvents, setStreamEvents] = useState<ReviewStreamEvent[]>([]);
   const [connectivityError, setConnectivityError] = useState("");
+  const storageSmokeInputRef = useRef<HTMLInputElement | null>(null);
 
   async function runConnectivityChecks() {
     setCheckingConnectivity(true);
@@ -989,6 +1047,9 @@ function DataAssetsPage({
       const ocr = await fetchOcrStatus();
       setOcrResult(ocr);
 
+      const minio = await fetchMinioStatus();
+      setMinioResult(minio);
+
       const llm = await runLlmConnectivityCheck();
       setLlmResult(llm);
 
@@ -1000,6 +1061,27 @@ function DataAssetsPage({
       );
     } finally {
       setCheckingConnectivity(false);
+    }
+  }
+
+  async function handleMinioSmokeUpload(file?: File) {
+    if (!file) {
+      return;
+    }
+
+    setUploadingToMinio(true);
+    setConnectivityError("");
+
+    try {
+      const result = await uploadMinioDocument(file);
+      setMinioUploadResult(result);
+      if (!result.ok) {
+        setConnectivityError(result.message || "MinIO 上传验证失败。");
+      }
+    } catch (error) {
+      setConnectivityError(error instanceof Error ? error.message : "MinIO 上传验证失败。");
+    } finally {
+      setUploadingToMinio(false);
     }
   }
 
@@ -1079,6 +1161,19 @@ function DataAssetsPage({
             }
           />
           <ConnectivityStatus
+            title="MinIO 私有桶"
+            status={minioResult?.ok ? "ready" : minioResult ? "failed" : "pending"}
+            detail={
+              minioResult
+                ? `${minioResult.bucket ?? "未配置桶"} · ${
+                    minioResult.configured ? "配置完整" : "配置不完整"
+                  } · ${minioResult.hasPublicEndpoint ? "有公开端点" : "无公开端点"}`
+                : healthResult?.providers?.minio?.configured
+                  ? `已配置 ${healthResult.providers.minio.bucket}`
+                  : "等待配置或检查"
+            }
+          />
+          <ConnectivityStatus
             title="SSE 流式"
             status={streamEvents.length > 0 ? "ready" : "pending"}
             detail={
@@ -1089,6 +1184,37 @@ function DataAssetsPage({
                 : "等待检查"
             }
           />
+        </div>
+        <div className="storage-smoke-panel">
+          <div>
+            <strong>MinIO 上传验证</strong>
+            <p>选择一个小文件写入私有桶，用于确认服务器凭证、桶权限和对象写入链路。</p>
+            {minioUploadResult?.object && (
+              <small>
+                已写入 {minioUploadResult.object.bucket}/{minioUploadResult.object.key} ·{" "}
+                {formatFileSize(minioUploadResult.object.size)}
+              </small>
+            )}
+          </div>
+          <input
+            ref={storageSmokeInputRef}
+            type="file"
+            className="upload-input"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              void handleMinioSmokeUpload(file);
+              event.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => storageSmokeInputRef.current?.click()}
+            disabled={uploadingToMinio}
+          >
+            <Upload size={16} />
+            {uploadingToMinio ? "上传中..." : "选择文件验证"}
+          </button>
         </div>
       </section>
     </div>
@@ -1334,4 +1460,16 @@ function formatResultTime(value: string) {
   ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
     date.getMinutes(),
   ).padStart(2, "0")}`;
+}
+
+function formatFileSize(value: number) {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }

@@ -14,6 +14,15 @@ export interface BackendHealthResult {
       jobUrl: string;
       model: string;
     };
+    minio?: {
+      configured: boolean;
+      hasEndpoint: boolean;
+      hasPublicEndpoint: boolean;
+      hasAccessKey: boolean;
+      hasSecretKey: boolean;
+      bucket: string | null;
+      region: string;
+    };
   };
   message?: string;
 }
@@ -31,6 +40,31 @@ export interface OcrStatusResult {
   jobUrl: string;
   model: string;
   hasToken: boolean;
+}
+
+export interface MinioStatusResult {
+  ok: boolean;
+  configured: boolean;
+  hasEndpoint: boolean;
+  hasPublicEndpoint: boolean;
+  hasAccessKey: boolean;
+  hasSecretKey: boolean;
+  bucket: string | null;
+  region: string;
+  status?: string;
+  message?: string;
+}
+
+export interface MinioUploadResult {
+  ok: boolean;
+  object?: {
+    bucket: string;
+    key: string;
+    originalFilename: string;
+    contentType: string;
+    size: number;
+  };
+  message?: string;
 }
 
 export interface ReviewStreamEvent {
@@ -59,6 +93,22 @@ export async function runLlmConnectivityCheck() {
 export async function fetchOcrStatus() {
   const response = await fetch("/api/ocr/status");
   return readJson<OcrStatusResult>(response);
+}
+
+export async function fetchMinioStatus() {
+  const response = await fetch("/api/minio/status");
+  return readJson<MinioStatusResult>(response);
+}
+
+export async function uploadMinioDocument(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/minio/upload", {
+    method: "POST",
+    body: formData,
+  });
+  return readJson<MinioUploadResult>(response);
 }
 
 export function runReviewStreamConnectivityCheck(timeoutMs = 5000) {

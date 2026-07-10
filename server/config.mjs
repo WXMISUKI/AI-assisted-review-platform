@@ -46,6 +46,14 @@ export const config = {
     jobUrl: process.env.PADDLEOCR_JOB_URL || "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs",
     model: process.env.PADDLEOCR_MODEL || "PaddleOCR-VL-1.6",
   },
+  minio: {
+    endpoint: (process.env.MINIO_ENDPOINT || "").replace(/\/$/, ""),
+    publicEndpoint: (process.env.MINIO_PUBLIC_ENDPOINT || "").replace(/\/$/, ""),
+    accessKey: process.env.MINIO_ACCESS_KEY || "",
+    secretKey: process.env.MINIO_SECRET_KEY || "",
+    bucket: process.env.MINIO_BUCKET || "construction-review-docs",
+    region: process.env.MINIO_REGION || "us-east-1",
+  },
 };
 
 export function getSafeProviderStatus() {
@@ -60,6 +68,17 @@ export function getSafeProviderStatus() {
       hasToken: Boolean(config.paddleocr.token),
       jobUrl: config.paddleocr.jobUrl,
       model: config.paddleocr.model,
+    },
+    minio: {
+      configured: Boolean(
+        config.minio.endpoint && config.minio.accessKey && config.minio.secretKey && config.minio.bucket,
+      ),
+      hasEndpoint: Boolean(config.minio.endpoint),
+      hasPublicEndpoint: Boolean(config.minio.publicEndpoint),
+      hasAccessKey: Boolean(config.minio.accessKey),
+      hasSecretKey: Boolean(config.minio.secretKey),
+      bucket: config.minio.bucket || null,
+      region: config.minio.region,
     },
   };
 }
