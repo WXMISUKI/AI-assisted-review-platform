@@ -41,6 +41,7 @@ function readMultipartUpload(request) {
 
     const busboy = Busboy({
       headers: request.headers,
+      defParamCharset: "utf8",
       limits: {
         files: 1,
         fileSize: 100 * 1024 * 1024,

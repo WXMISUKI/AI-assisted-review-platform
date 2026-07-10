@@ -15,6 +15,8 @@ import type {
   ReviewMode,
   ReviewSession,
   ReviewTask,
+  ReviewTaskOcrJob,
+  ReviewTaskSourceObject,
 } from "./reviewTypes";
 
 function nowString() {
@@ -64,9 +66,35 @@ export function createDocumentTask(
     streamStageIndex: 0,
     sourceObject: input.sourceObject,
     ocrJob: input.ocrJob,
+    failure: input.status === "failed" ? input.failure : undefined,
   };
 
   return saveReviewTasks([newTask, ...tasks]);
+}
+
+export function updateDocumentTaskUploadResult(
+  tasks: ReviewTask[],
+  taskId: string,
+  input: {
+    status: "uploaded" | "parsing" | "failed";
+    sourceObject?: ReviewTaskSourceObject;
+    ocrJob?: ReviewTaskOcrJob;
+    failureMessage?: string;
+  },
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) => ({
+    ...task,
+    status: input.status,
+    sourceObject: input.sourceObject ?? task.sourceObject,
+    ocrJob: input.ocrJob ?? task.ocrJob,
+    failure: input.status === "failed"
+      ? {
+          message: input.failureMessage || input.ocrJob?.message || "文档上传或解析任务提交失败。",
+          failedAt: new Date().toISOString(),
+        }
+      : undefined,
+    updatedAt: nowString(),
+  }));
 }
 
 export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask[] {

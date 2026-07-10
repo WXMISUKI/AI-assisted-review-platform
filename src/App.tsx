@@ -38,6 +38,7 @@ import {
   markReviewTaskReady,
   resolveTaskIssue,
   startReviewTask,
+  updateDocumentTaskUploadResult,
   updateReviewTaskStreamStage,
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
@@ -115,6 +116,7 @@ const pageLabels: Record<Exclude<ShellPage, "review-loading" | "review-detail" |
 };
 
 const statusLabels: Record<DocumentStatus, string> = {
+  uploading: "上传中",
   uploaded: "待开始",
   parsing: "解析中",
   reviewing: "审查中",
@@ -237,6 +239,13 @@ export function App() {
     setDocumentUploadError("");
   }
 
+  function updateCreatedTaskUploadResult(
+    taskId: string,
+    input: Parameters<typeof updateDocumentTaskUploadResult>[2],
+  ) {
+    setDocuments((currentDocs) => updateDocumentTaskUploadResult(currentDocs, taskId, input));
+  }
+
   function handleManualUpload(name: string, project: string) {
     createUploadedTask({
       name,
@@ -249,11 +258,30 @@ export function App() {
   async function handleFileUpload(file: File) {
     setUploadingDocument(true);
     setDocumentUploadError("");
+    const taskName = uploadDraft.name.trim() || file.name;
+    const taskProject = uploadDraft.project.trim() || "未知项目";
+    const pendingTasks = createDocumentTask(documents, {
+      name: taskName,
+      project: taskProject,
+      uploader: session?.username ?? "当前用户",
+      mode: session?.role === "contractor" ? "revise" : "review",
+      status: "uploading",
+    });
+    const pendingTask = pendingTasks[0];
+
+    setDocuments(pendingTasks);
+    setSelectedDocId(pendingTask.id);
+    setUploadDraft({ name: "", project: "" });
 
     try {
       const uploadResult = await uploadMinioDocument(file);
       if (!uploadResult.ok || !uploadResult.object) {
-        setDocumentUploadError(uploadResult.message || "文件上传到对象存储失败。");
+        const message = uploadResult.message || "文件上传到对象存储失败。";
+        setDocumentUploadError(message);
+        updateCreatedTaskUploadResult(pendingTask.id, {
+          status: "failed",
+          failureMessage: message,
+        });
         return;
       }
 
@@ -269,17 +297,19 @@ export function App() {
           : ocrResult.message || ocrResult.status || "OCR 任务提交失败。",
       } as const;
 
-      createUploadedTask({
-        name: uploadDraft.name.trim() || uploadResult.object.originalFilename || file.name,
-        project: uploadDraft.project.trim() || "未知项目",
-        uploader: session?.username ?? "当前用户",
-        mode: session?.role === "contractor" ? "revise" : "review",
+      updateCreatedTaskUploadResult(pendingTask.id, {
         status: ocrResult.ok && ocrResult.jobId ? "parsing" : "failed",
         sourceObject: uploadResult.object,
         ocrJob,
+        failureMessage: ocrJob.state === "failed" ? ocrJob.message : undefined,
       });
     } catch (error) {
-      setDocumentUploadError(error instanceof Error ? error.message : "文件上传到对象存储失败。");
+      const message = error instanceof Error ? error.message : "文件上传到对象存储失败。";
+      setDocumentUploadError(message);
+      updateCreatedTaskUploadResult(pendingTask.id, {
+        status: "failed",
+        failureMessage: message,
+      });
     } finally {
       setUploadingDocument(false);
     }
@@ -654,7 +684,13 @@ function DocumentLibraryPage({
         </div>
         <div className="history-list">
           {recentDocs.map((doc) => (
-            <button key={doc.id} className="history-item" type="button" onClick={() => onOpenDocument(doc.id)}>
+            <button
+              key={doc.id}
+              className="history-item"
+              type="button"
+              title={`${doc.name}\n${doc.project}`}
+              onClick={() => onOpenDocument(doc.id)}
+            >
               <span>
                 <strong>{doc.name}</strong>
                 <small>{doc.project}</small>
@@ -740,7 +776,7 @@ function DocumentLibraryPage({
             </label>
             <button type="button" className="upload-button" onClick={submitUpload} disabled={uploading}>
               <Plus size={16} />
-              添加 mock 文档
+              添加演示文档
             </button>
           </div>
         </div>

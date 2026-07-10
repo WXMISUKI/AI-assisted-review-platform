@@ -8,7 +8,14 @@ export type StatusFilter = "all" | IssueStatus;
 
 export type ReviewMode = "review" | "revise";
 
-export type DocumentStatus = "uploaded" | "parsing" | "reviewing" | "ready" | "completed" | "failed";
+export type DocumentStatus =
+  | "uploading"
+  | "uploaded"
+  | "parsing"
+  | "reviewing"
+  | "ready"
+  | "completed"
+  | "failed";
 
 export type ReviewEngineSource = "rule" | "semantic" | "hybrid";
 
@@ -210,6 +217,11 @@ export interface ReviewTaskOcrJob {
   message?: string;
 }
 
+export interface ReviewTaskFailure {
+  message: string;
+  failedAt: string;
+}
+
 export interface ReviewTask {
   id: string;
   name: string;
@@ -224,6 +236,7 @@ export interface ReviewTask {
   streamStageIndex: number;
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
+  failure?: ReviewTaskFailure;
   resultAsset?: ReviewResultAsset;
 }
 
@@ -247,4 +260,5 @@ export interface CreateReviewTaskInput {
   status?: DocumentStatus;
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
+  failure?: ReviewTaskFailure;
 }

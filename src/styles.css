@@ -496,6 +496,7 @@ button {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+  min-width: 0;
 }
 
 .history-item {
@@ -508,16 +509,38 @@ button {
   padding: 12px;
   background: #ffffff;
   text-align: left;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.history-item > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .history-item strong {
   display: block;
   color: #203248;
   font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-item small {
   color: #6b7b8d;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item svg {
+  flex: 0 0 auto;
 }
 
 .library-main {
