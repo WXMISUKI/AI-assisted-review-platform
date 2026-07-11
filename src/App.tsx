@@ -15,7 +15,9 @@ import {
   ShieldCheck,
   SunMoon,
   Sparkles,
+  Trash2,
   Upload,
+  X,
   Users,
 } from "lucide-react";
 import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
@@ -33,6 +35,7 @@ import {
   addManualTaskIssue,
   completeReviewTask,
   createDocumentTask,
+  deleteDocumentTask,
   deleteManualTaskIssue,
   listReviewTasks,
   markReviewTaskReady,
@@ -154,15 +157,18 @@ export function App() {
   const [selectedDocId, setSelectedDocId] = useState(initialTasks[0]?.id ?? "");
   const [documents, setDocuments] = useState<LibraryDocument[]>(initialTasks);
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [documentUploadError, setDocumentUploadError] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
   const [streamStageIndex, setStreamStageIndex] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
   const loadingTimerRef = useRef<number | null>(null);
 
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
+  const deleteTargetDocument = documents.find((doc) => doc.id === deleteTargetId) ?? null;
   const allowedModes: ReviewMode[] = session ? roleModes[session.role] : ["review", "revise"];
 
   useEffect(() => {
@@ -239,13 +245,6 @@ export function App() {
     setDocumentUploadError("");
   }
 
-  function updateCreatedTaskUploadResult(
-    taskId: string,
-    input: Parameters<typeof updateDocumentTaskUploadResult>[2],
-  ) {
-    setDocuments((currentDocs) => updateDocumentTaskUploadResult(currentDocs, taskId, input));
-  }
-
   function handleManualUpload(name: string, project: string) {
     createUploadedTask({
       name,
@@ -255,33 +254,38 @@ export function App() {
     });
   }
 
-  async function handleFileUpload(file: File) {
+  function handleFileSelect(file: File) {
+    setStagedFile(file);
+    setDocumentUploadError("");
+    setUploadDraft((currentDraft) => ({
+      ...currentDraft,
+      name: currentDraft.name.trim() ? currentDraft.name : file.name,
+    }));
+  }
+
+  function clearStagedFile() {
+    setStagedFile(null);
+    setDocumentUploadError("");
+  }
+
+  async function handleAddDocument() {
+    if (!stagedFile) {
+      const name = uploadDraft.name.trim() || `演示文档_${Date.now()}.pdf`;
+      const project = uploadDraft.project.trim() || "未知项目";
+      handleManualUpload(name, project);
+      return;
+    }
+
     setUploadingDocument(true);
     setDocumentUploadError("");
-    const taskName = uploadDraft.name.trim() || file.name;
+    const taskName = uploadDraft.name.trim() || stagedFile.name;
     const taskProject = uploadDraft.project.trim() || "未知项目";
-    const pendingTasks = createDocumentTask(documents, {
-      name: taskName,
-      project: taskProject,
-      uploader: session?.username ?? "当前用户",
-      mode: session?.role === "contractor" ? "revise" : "review",
-      status: "uploading",
-    });
-    const pendingTask = pendingTasks[0];
-
-    setDocuments(pendingTasks);
-    setSelectedDocId(pendingTask.id);
-    setUploadDraft({ name: "", project: "" });
 
     try {
-      const uploadResult = await uploadMinioDocument(file);
+      const uploadResult = await uploadMinioDocument(stagedFile);
       if (!uploadResult.ok || !uploadResult.object) {
         const message = uploadResult.message || "文件上传到对象存储失败。";
         setDocumentUploadError(message);
-        updateCreatedTaskUploadResult(pendingTask.id, {
-          status: "failed",
-          failureMessage: message,
-        });
         return;
       }
 
@@ -297,22 +301,47 @@ export function App() {
           : ocrResult.message || ocrResult.status || "OCR 任务提交失败。",
       } as const;
 
-      updateCreatedTaskUploadResult(pendingTask.id, {
+      createUploadedTask({
+        name: taskName,
+        project: taskProject,
+        uploader: session?.username ?? "当前用户",
+        mode: session?.role === "contractor" ? "revise" : "review",
         status: ocrResult.ok && ocrResult.jobId ? "parsing" : "failed",
         sourceObject: uploadResult.object,
         ocrJob,
-        failureMessage: ocrJob.state === "failed" ? ocrJob.message : undefined,
+        failure: ocrJob.state === "failed"
+          ? { message: ocrJob.message || "OCR 任务提交失败。", failedAt: new Date().toISOString() }
+          : undefined,
       });
+      setStagedFile(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "文件上传到对象存储失败。";
       setDocumentUploadError(message);
-      updateCreatedTaskUploadResult(pendingTask.id, {
-        status: "failed",
-        failureMessage: message,
-      });
     } finally {
       setUploadingDocument(false);
     }
+  }
+
+  function requestDeleteDocument(documentId: string) {
+    setDeleteTargetId(documentId);
+  }
+
+  function cancelDeleteDocument() {
+    setDeleteTargetId(null);
+  }
+
+  function confirmDeleteDocument() {
+    if (!deleteTargetId) {
+      return;
+    }
+
+    const nextDocuments = deleteDocumentTask(documents, deleteTargetId);
+    setDocuments(nextDocuments);
+    if (selectedDocId === deleteTargetId) {
+      setSelectedDocId(nextDocuments[0]?.id ?? "");
+      setActivePage("documents");
+    }
+    setDeleteTargetId(null);
   }
 
   function startReview(documentId: string) {
@@ -535,16 +564,19 @@ export function App() {
             <DocumentLibraryPage
               documents={documents}
               uploadDraft={uploadDraft}
+              stagedFile={stagedFile}
               dragging={dragging}
               onUploadDraftChange={setUploadDraft}
-              onManualUpload={handleManualUpload}
-              onFileUpload={handleFileUpload}
+              onAddDocument={handleAddDocument}
+              onFileSelect={handleFileSelect}
+              onStagedFileRemove={clearStagedFile}
               onDragChange={setDragging}
               uploading={uploadingDocument}
               uploadError={documentUploadError}
               onStartReview={startReview}
               onOpenDocument={openDocument}
               onOpenResult={openResult}
+              onDeleteDocument={requestDeleteDocument}
             />
           )}
 
@@ -566,6 +598,26 @@ export function App() {
           )}
         </div>
       </section>
+      {deleteTargetDocument && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-doc-title">
+            <span className="eyebrow">删除文档</span>
+            <h2 id="delete-doc-title">确认删除该文档？</h2>
+            <p>
+              {deleteTargetDocument.name} 将从当前文档库和本地 mock 记录中移除。该操作不会删除已经上传到
+              MinIO 的源文件对象。
+            </p>
+            <div className="dialog-actions">
+              <button type="button" onClick={cancelDeleteDocument}>
+                取消
+              </button>
+              <button type="button" className="danger" onClick={confirmDeleteDocument}>
+                确认删除
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -642,38 +694,38 @@ function LoginPage({
 function DocumentLibraryPage({
   documents,
   uploadDraft,
+  stagedFile,
   dragging,
   onUploadDraftChange,
-  onManualUpload,
-  onFileUpload,
+  onAddDocument,
+  onFileSelect,
+  onStagedFileRemove,
   onDragChange,
   uploading,
   uploadError,
   onStartReview,
   onOpenDocument,
   onOpenResult,
+  onDeleteDocument,
 }: {
   documents: LibraryDocument[];
   uploadDraft: UploadDraft;
+  stagedFile: File | null;
   dragging: boolean;
   onUploadDraftChange: (draft: UploadDraft) => void;
-  onManualUpload: (name: string, project: string) => void;
-  onFileUpload: (file: File) => void;
+  onAddDocument: () => void;
+  onFileSelect: (file: File) => void;
+  onStagedFileRemove: () => void;
   onDragChange: (value: boolean) => void;
   uploading: boolean;
   uploadError: string;
   onStartReview: (documentId: string) => void;
   onOpenDocument: (documentId: string) => void;
   onOpenResult: (documentId: string) => void;
+  onDeleteDocument: (documentId: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recentDocs = documents.slice(0, 5);
-
-  function submitUpload() {
-    const name = uploadDraft.name.trim() || `施工方案_${Date.now()}.pdf`;
-    const project = uploadDraft.project.trim() || "未知项目";
-    onManualUpload(name, project);
-  }
 
   return (
     <div className="library-layout">
@@ -717,7 +769,7 @@ function DocumentLibraryPage({
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
-                  onFileUpload(file);
+                  onFileSelect(file);
                   event.target.value = "";
                 }
               }}
@@ -734,13 +786,13 @@ function DocumentLibraryPage({
                 onDragChange(false);
                 const file = event.dataTransfer.files[0];
                 if (file) {
-                  onFileUpload(file);
+                  onFileSelect(file);
                 }
               }}
             >
               <Upload size={22} />
               <span>{uploading ? "正在上传到对象存储" : "拖拽文件到此处"}</span>
-              <small>支持 PDF、Word，上传成功后写入文档库</small>
+              <small>支持 PDF、Word，确认添加后写入文档库</small>
             </div>
             <button
               type="button"
@@ -751,6 +803,18 @@ function DocumentLibraryPage({
               {uploading ? "上传中..." : "选择文件"}
             </button>
           </div>
+          {stagedFile && (
+            <div className="staged-file-card" title={stagedFile.name}>
+              <div>
+                <strong>{stagedFile.name}</strong>
+                <small>{formatFileSize(stagedFile.size)} · 待添加</small>
+              </div>
+              <button type="button" onClick={onStagedFileRemove} disabled={uploading}>
+                <X size={15} />
+                移除
+              </button>
+            </div>
+          )}
           {uploadError && <div className="upload-error">{uploadError}</div>}
 
           <div className="upload-form-row">
@@ -774,9 +838,9 @@ function DocumentLibraryPage({
                 placeholder="例如：南京综合楼项目"
               />
             </label>
-            <button type="button" className="upload-button" onClick={submitUpload} disabled={uploading}>
+            <button type="button" className="upload-button" onClick={onAddDocument} disabled={uploading}>
               <Plus size={16} />
-              添加演示文档
+              {stagedFile ? "添加文档" : "添加演示文档"}
             </button>
           </div>
         </div>
@@ -831,6 +895,14 @@ function DocumentLibraryPage({
                       开始审核
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="danger subtle"
+                    onClick={() => onDeleteDocument(doc.id)}
+                  >
+                    <Trash2 size={15} />
+                    删除
+                  </button>
                 </div>
               </div>
             ))}

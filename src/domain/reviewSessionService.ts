@@ -106,6 +106,10 @@ export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask
   }));
 }
 
+export function deleteDocumentTask(tasks: ReviewTask[], taskId: string): ReviewTask[] {
+  return saveReviewTasks(tasks.filter((task) => task.id !== taskId));
+}
+
 export function updateReviewTaskStreamStage(
   tasks: ReviewTask[],
   taskId: string,

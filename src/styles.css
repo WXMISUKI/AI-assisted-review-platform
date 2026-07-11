@@ -637,6 +637,53 @@ button {
   font-weight: 700;
 }
 
+.staged-file-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-muted);
+}
+
+.staged-file-card div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.staged-file-card strong,
+.staged-file-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staged-file-card strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.staged-file-card small {
+  color: var(--text-secondary);
+}
+
+.staged-file-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  border: 1px solid var(--button-border);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--button-bg);
+  color: var(--button-foreground);
+}
+
 .table-head,
 .table-row {
   display: grid;
@@ -722,6 +769,7 @@ button {
 
 .row-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
 }
@@ -737,6 +785,15 @@ button {
   border-color: #0f766e;
   background: #0f766e;
   color: #ffffff;
+}
+
+.row-actions .danger.subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--status-failed-bg);
+  background: transparent;
+  color: var(--status-failed-text);
 }
 
 .quick-preview {
