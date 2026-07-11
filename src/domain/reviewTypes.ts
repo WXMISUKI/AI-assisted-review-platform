@@ -61,6 +61,30 @@ export interface DocumentParagraph {
   text: string;
 }
 
+export interface RecoveredDocumentSection {
+  id: string;
+  title: string;
+  paragraphIds: string[];
+}
+
+export type StructureRecoveryStatus = "idle" | "recovering" | "done" | "failed";
+
+export interface StructureRecoveryProgress {
+  totalParagraphs: number;
+  recoveredParagraphs: number;
+  currentParagraphId?: string;
+  currentSection?: string;
+}
+
+export interface RecoveredDocumentStructure {
+  status: StructureRecoveryStatus;
+  sourceFormat: "mock" | "ocr-markdown" | "ocr-jsonl" | "ocr-text";
+  recoveredAt: string | null;
+  progress: StructureRecoveryProgress;
+  sections: RecoveredDocumentSection[];
+  paragraphs: DocumentParagraph[];
+}
+
 export interface ReviewAnchor {
   paragraphId: string;
   startOffset: number;
@@ -259,6 +283,7 @@ export interface ReviewTask {
   issueCount: number;
   mode: ReviewMode;
   paragraphs: DocumentParagraph[];
+  recoveredStructure?: RecoveredDocumentStructure;
   issues: ReviewIssue[];
   streamStageIndex: number;
   streamStageType?: ReviewPipelineStageType;
@@ -276,6 +301,7 @@ export interface ReviewTask {
 export interface ReviewSession {
   task: ReviewTask;
   paragraphs: DocumentParagraph[];
+  recoveredStructure?: RecoveredDocumentStructure;
   issues: ReviewIssue[];
   processedParagraphs: DocumentParagraph[];
 }
@@ -294,4 +320,5 @@ export interface CreateReviewTaskInput {
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
+  recoveredStructure?: RecoveredDocumentStructure;
 }

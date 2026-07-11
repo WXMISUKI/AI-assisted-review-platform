@@ -33,6 +33,7 @@ import type {
   ReviewMode,
   ReviewCompletionPayload,
   ReviewIssue,
+  RecoveredDocumentStructure,
   StatusFilter,
 } from "./domain/reviewTypes";
 import {
@@ -62,6 +63,7 @@ export interface ReviewWorkbenchPageProps {
   onIssueDraftChange?: (issueId: string, suggestion: string) => void;
   onManualIssueAdd?: (issue: ReviewIssue) => void;
   onManualIssueDelete?: (issueId: string) => void;
+  recoveredStructure?: RecoveredDocumentStructure;
 }
 
 interface SelectionDraft {
@@ -167,6 +169,7 @@ export function ReviewWorkbenchPage({
   onIssueDraftChange,
   onManualIssueAdd,
   onManualIssueDelete,
+  recoveredStructure,
 }: ReviewWorkbenchPageProps = {}) {
   const [issues, setIssues] = useState<ReviewIssue[]>(initialIssuesProp);
   const [activeIssueId, setActiveIssueId] = useState(initialIssuesProp[0]?.id ?? "");
@@ -190,12 +193,13 @@ export function ReviewWorkbenchPage({
   );
   const paragraphRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const reviewParagraphs = recoveredStructure?.paragraphs ?? paragraphs;
 
   const counts = useMemo(() => getIssueCounts(issues), [issues]);
   const reviewComplete = useMemo(() => isReviewComplete(issues), [issues]);
   const processedParagraphs = useMemo(
-    () => buildProcessedParagraphs(paragraphs, issues, reviewMode),
-    [issues, paragraphs, reviewMode],
+    () => buildProcessedParagraphs(reviewParagraphs, issues, reviewMode),
+    [issues, reviewParagraphs, reviewMode],
   );
   const filteredIssues = useMemo(
     () => issues.filter((issue) => matchesFilter(issue, filter)),
@@ -552,13 +556,36 @@ export function ReviewWorkbenchPage({
         </div>
       </section>
 
+      {recoveredStructure && (
+        <section className="structure-summary-strip" aria-label="结构恢复摘要">
+          <span>
+            <strong>结构恢复</strong>
+            {recoveredStructure.status === "done" ? "已完成" : recoveredStructure.status}
+          </span>
+          <span>
+            <strong>章节</strong>
+            {recoveredStructure.sections.length}
+          </span>
+          <span>
+            <strong>段落</strong>
+            {recoveredStructure.paragraphs.length}
+          </span>
+          {recoveredStructure.progress.currentSection && (
+            <span>
+              <strong>当前章节</strong>
+              {recoveredStructure.progress.currentSection}
+            </span>
+          )}
+        </section>
+      )}
+
       <section className="workspace">
         <aside className="outline-panel" aria-label="文档目录">
           <div className="panel-title">
             <FileText size={18} />
             <span>方案章节</span>
           </div>
-          {paragraphs.map((paragraph) => (
+          {reviewParagraphs.map((paragraph) => (
             <button
               key={paragraph.id}
               className="outline-item"
@@ -603,8 +630,8 @@ export function ReviewWorkbenchPage({
             />
           )}
           <div className="document-scroll">
-            {paragraphs.map((paragraph) => (
-              <DocumentParagraphBlock
+          {reviewParagraphs.map((paragraph) => (
+            <DocumentParagraphBlock
                 key={paragraph.id}
                 paragraph={paragraph}
                 issues={issues.filter((issue) => issue.anchor.paragraphId === paragraph.id)}

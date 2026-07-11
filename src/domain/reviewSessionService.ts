@@ -1,4 +1,5 @@
 import { documentParagraphs, initialReviewIssues } from "./mockReview";
+import { recoverStructureFromParagraphs } from "./ocrStructureRecovery";
 import { loadReviewTasks, saveReviewTasks } from "./reviewTaskRepository";
 import {
   buildProcessedParagraphs,
@@ -19,6 +20,7 @@ import type {
   ReviewTask,
   ReviewTaskOcrJob,
   ReviewTaskSourceObject,
+  RecoveredDocumentStructure,
 } from "./reviewTypes";
 
 function nowString() {
@@ -36,6 +38,20 @@ function cloneParagraphs(paragraphs: DocumentParagraph[]) {
 
 function cloneIssues() {
   return initialReviewIssues.map((issue) => structuredClone(issue));
+}
+
+function createIdleRecoveredStructure(): RecoveredDocumentStructure {
+  return {
+    status: "idle",
+    sourceFormat: "mock",
+    recoveredAt: null,
+    progress: {
+      totalParagraphs: 0,
+      recoveredParagraphs: 0,
+    },
+    sections: [],
+    paragraphs: [],
+  };
 }
 
 function updateTask(
@@ -65,6 +81,11 @@ export function createDocumentTask(
     mode: input.mode,
     paragraphs: cloneParagraphs(documentParagraphs),
     issues: cloneIssues(),
+    recoveredStructure:
+      input.recoveredStructure ??
+      (input.status === "uploaded" || input.status === "parsing"
+        ? createIdleRecoveredStructure()
+        : recoverStructureFromParagraphs(cloneParagraphs(documentParagraphs))),
     streamStageIndex: 0,
     sourceObject: input.sourceObject,
     ocrJob: input.ocrJob,
@@ -82,6 +103,7 @@ export function updateDocumentTaskUploadResult(
     sourceObject?: ReviewTaskSourceObject;
     ocrJob?: ReviewTaskOcrJob;
     failureMessage?: string;
+    recoveredStructure?: RecoveredDocumentStructure;
   },
 ): ReviewTask[] {
   return updateTask(tasks, taskId, (task) => ({
@@ -89,6 +111,7 @@ export function updateDocumentTaskUploadResult(
     status: input.status,
     sourceObject: input.sourceObject ?? task.sourceObject,
     ocrJob: input.ocrJob ?? task.ocrJob,
+    recoveredStructure: input.recoveredStructure ?? task.recoveredStructure,
     failure: input.status === "failed"
       ? {
           message: input.failureMessage || input.ocrJob?.message || "文档上传或解析任务提交失败。",
@@ -130,6 +153,11 @@ export function syncDocumentTaskOcrStatus(
       status:
         nextState === "done" ? "reviewing" : terminal ? (nextState === "failed" ? "failed" : "ready") : "parsing",
       streamStageIndex: nextState === "done" ? 0 : task.streamStageIndex,
+      recoveredStructure:
+        nextState === "done"
+          ? task.recoveredStructure ??
+            recoverStructureFromParagraphs(task.paragraphs, "ocr-jsonl", "recovering")
+          : task.recoveredStructure,
       ocrJob: {
         jobId: task.ocrJob?.jobId ?? null,
         state: nextState,
@@ -162,6 +190,13 @@ export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask
     streamParagraphTotal: task.streamParagraphTotal ?? task.paragraphs.length,
     streamCurrentParagraphId: task.streamCurrentParagraphId ?? task.paragraphs[0]?.id,
     streamParagraphLabel: task.streamParagraphLabel ?? task.paragraphs[0]?.section,
+    recoveredStructure:
+      task.recoveredStructure && task.recoveredStructure.status !== "done"
+        ? {
+            ...task.recoveredStructure,
+            status: "recovering",
+          }
+        : task.recoveredStructure,
     updatedAt: nowString(),
   }));
 }
@@ -219,6 +254,23 @@ export function markReviewTaskReady(
     streamParagraphTotal: snapshot?.streamParagraphTotal ?? task.streamParagraphTotal,
     streamCurrentParagraphId: snapshot?.streamCurrentParagraphId ?? task.streamCurrentParagraphId,
     streamParagraphLabel: snapshot?.streamParagraphLabel ?? task.streamParagraphLabel,
+    recoveredStructure: task.recoveredStructure
+      ? {
+          ...task.recoveredStructure,
+          status: "done",
+          recoveredAt: task.recoveredStructure.recoveredAt ?? new Date().toISOString(),
+          progress: {
+            totalParagraphs: task.recoveredStructure.paragraphs.length,
+            recoveredParagraphs: task.recoveredStructure.paragraphs.length,
+            currentSection:
+              task.recoveredStructure.paragraphs[0]?.section ??
+              task.recoveredStructure.progress.currentSection,
+            currentParagraphId:
+              task.recoveredStructure.paragraphs[0]?.id ??
+              task.recoveredStructure.progress.currentParagraphId,
+          },
+        }
+      : task.recoveredStructure,
     issueCount: getIssueCounts(task.issues).total,
     updatedAt: nowString(),
   }));
@@ -227,9 +279,10 @@ export function markReviewTaskReady(
 export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewSession {
   return {
     task,
-    paragraphs: task.paragraphs,
+    paragraphs: task.recoveredStructure?.paragraphs ?? task.paragraphs,
+    recoveredStructure: task.recoveredStructure,
     issues: task.issues,
-    processedParagraphs: buildProcessedParagraphs(task.paragraphs, task.issues, mode),
+    processedParagraphs: buildProcessedParagraphs(task.recoveredStructure?.paragraphs ?? task.paragraphs, task.issues, mode),
   };
 }
 

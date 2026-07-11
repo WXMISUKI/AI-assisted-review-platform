@@ -68,23 +68,16 @@ The document library SHALL not require a separate quick-preview pane before the 
 - **THEN** the primary actions focus on upload, open, continue, and report entry points
 
 ### Requirement: Detail-context streaming progress
-The document review task SHALL support showing AI processing progress from within the document detail context and SHALL separate OCR progress from review-agent progress.
+The document review task SHALL support a detail-context progress view that can show the current stage, current paragraph or section, and issue summaries while the pipeline is preparing the document.
 
-#### Scenario: User opens an in-progress review task
-- **WHEN** a document review task is parsing or reviewing
-- **THEN** the system displays a detail-like processing page with outline, document, and issue panels in a locked streaming state
+#### Scenario: User opens a task during review preparation
+- **WHEN** the user opens a document whose review preparation is not finished
+- **THEN** the system shows a locked detail page with stage-level and paragraph-level progress information
 
-#### Scenario: AI issue arrives during processing
-- **WHEN** a mock or backend streaming event provides a new issue
-- **THEN** the issues panel can show the issue incrementally before the final ready state
-
-#### Scenario: OCR progress is active
-- **WHEN** a document is still in OCR processing
-- **THEN** the detail-context page shows OCR progress instead of review-agent issue streaming
-
-#### Scenario: Review agent progress is active
-- **WHEN** OCR has completed and review preparation is underway
-- **THEN** the detail-context page shows outline, document, and issue panels in a locked streaming state until the workbench is ready
+#### Scenario: Streaming events arrive during preparation
+- **WHEN** the backend or mock pipeline emits a new progress update
+- **THEN** the task can update its current stage, progress percentage, and visible snippet summaries without changing the task identity
+- **THEN** the task transitions to failed state, preserves the failure message, and remains visible in the library
 
 ### Requirement: Kernel-aligned review stages
 The document review task SHALL expose stages that match the construction plan review kernel flow.
@@ -262,3 +255,22 @@ The document review task SHALL support a detail-context progress view that can s
 - **WHEN** the backend or mock pipeline emits a new progress update
 - **THEN** the task can update its current stage, progress percentage, and visible snippet summaries without changing the task identity
 - **THEN** the task transitions to failed state, preserves the failure message, and remains visible in the library
+
+### Requirement: Recovered structure in task aggregate
+The document review task SHALL store recovered document structure as part of the task aggregate.
+
+#### Scenario: Structure recovery succeeds
+- **WHEN** OCR output is normalized into sections and paragraphs
+- **THEN** the task stores the recovered structure together with the review task metadata
+
+#### Scenario: Recovered paragraphs are reopened
+- **WHEN** a user opens a task that already has recovered structure
+- **THEN** the detail page can render the recovered sections and paragraphs without recomputing OCR
+
+### Requirement: Structure recovery stage visibility
+The document review task SHALL expose a distinct structure-recovery stage between OCR completion and review preparation.
+
+#### Scenario: Structure recovery is active
+- **WHEN** OCR has completed but structure recovery is still running
+- **THEN** the task remains locked while showing the active structure-recovery progress
+

@@ -2,7 +2,6 @@
 
 ## Purpose
 TBD - created by archiving change review-orchestration-streaming-progress. Update Purpose after archive.
-
 ## Requirements
 ### Requirement: Post-OCR review pipeline
 The system SHALL represent review work after OCR as a staged pipeline that separates structure restoration, basis binding, review analysis, issue structuring, and result packaging.
@@ -47,3 +46,15 @@ The system SHALL reserve explicit agent roles for document structure restoration
 #### Scenario: Prompt binding is configured
 - **WHEN** an authorized user configures an agent role
 - **THEN** the system can associate that role with a dedicated prompt asset and schema version
+
+### Requirement: Structure-restoration stage
+The review pipeline SHALL include a structure-restoration stage that consumes OCR output before review analysis begins.
+
+#### Scenario: OCR completes
+- **WHEN** a document finishes OCR processing
+- **THEN** the pipeline enters structure restoration before basis binding and review analysis
+
+#### Scenario: Structure restoration is running
+- **WHEN** the structure-restoration agent is active
+- **THEN** the system can report the current paragraph or section being normalized and the progress of that recovery step
+

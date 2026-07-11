@@ -598,6 +598,7 @@ export function App() {
         onComplete={completeReview}
         paragraphs={selectedDocument.paragraphs}
         initialIssues={selectedDocument.issues}
+        recoveredStructure={selectedDocument.recoveredStructure}
         onIssueResolve={updateSelectedIssueResolution}
         onIssueDraftChange={updateSelectedIssueDraft}
         onManualIssueAdd={addSelectedManualIssue}

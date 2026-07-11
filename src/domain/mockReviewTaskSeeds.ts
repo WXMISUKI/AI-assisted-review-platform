@@ -1,4 +1,5 @@
 import { documentParagraphs, initialReviewIssues } from "./mockReview";
+import { recoverStructureFromParagraphs } from "./ocrStructureRecovery";
 import type { ReviewStreamingStage, ReviewTask } from "./reviewTypes";
 
 function cloneParagraphs() {
@@ -22,6 +23,7 @@ export function createSeedReviewTasks(): ReviewTask[] {
       issueCount: 4,
       mode: "review",
       paragraphs: cloneParagraphs(),
+      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
       issues: cloneIssues(),
       streamStageIndex: 0,
       streamStageType: "structure-restoration",
@@ -41,6 +43,7 @@ export function createSeedReviewTasks(): ReviewTask[] {
       issueCount: 0,
       mode: "revise",
       paragraphs: cloneParagraphs(),
+      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
       issues: cloneIssues(),
       streamStageIndex: 3,
       streamStageType: "rule-review",
@@ -60,6 +63,7 @@ export function createSeedReviewTasks(): ReviewTask[] {
       issueCount: 6,
       mode: "review",
       paragraphs: cloneParagraphs(),
+      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
       issues: cloneIssues(),
       streamStageIndex: 0,
       streamStageType: "result-packaging",
@@ -76,6 +80,7 @@ export function createSeedReviewTasks(): ReviewTask[] {
       issueCount: 0,
       mode: "revise",
       paragraphs: cloneParagraphs(),
+      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
       issues: cloneIssues(),
       streamStageIndex: 0,
       streamStageType: "structure-restoration",

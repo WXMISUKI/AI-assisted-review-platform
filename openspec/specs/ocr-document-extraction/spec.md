@@ -39,3 +39,17 @@ The frontend SHALL be able to submit a stored document object key to the backend
 - **WHEN** the frontend has a stored document object key after upload
 - **THEN** it posts the key to `/api/ocr/jobs/object` and receives either a job id or a normalized failure message
 
+### Requirement: OCR output normalization contract
+The backend SHALL expose OCR results in a shape that can be normalized into a review-ready document structure.
+
+#### Scenario: OCR result is received
+- **WHEN** the backend receives OCR markdown, JSONL, or page text output
+- **THEN** the result can be mapped into a normalized structure recovery input without losing ordering metadata
+
+### Requirement: Structured OCR handoff
+The backend SHALL preserve enough OCR output metadata for a downstream structure-recovery stage to rebuild document order and anchors.
+
+#### Scenario: OCR result is handed off
+- **WHEN** OCR completes successfully
+- **THEN** the backend can provide the downstream stage with page, block, and text metadata needed for structure recovery
+
