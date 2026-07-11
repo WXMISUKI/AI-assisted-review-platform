@@ -10,10 +10,12 @@ import type {
   CreateReviewTaskInput,
   DocumentParagraph,
   IssueStatus,
+  ReviewAgentKey,
   ReviewCompletionPayload,
   ReviewIssue,
   ReviewMode,
   ReviewSession,
+  ReviewPipelineStageType,
   ReviewTask,
   ReviewTaskOcrJob,
   ReviewTaskSourceObject,
@@ -97,11 +99,69 @@ export function updateDocumentTaskUploadResult(
   }));
 }
 
+export function syncDocumentTaskOcrStatus(
+  tasks: ReviewTask[],
+  taskId: string,
+  input: {
+    state?: "submitted" | "pending" | "running" | "done" | "failed";
+    progress?: ReviewTaskOcrJob["progress"];
+    message?: string;
+    errorMsg?: string | null;
+    resultUrl?: {
+      jsonUrl?: string;
+    } | null;
+  },
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) => {
+    const nextState =
+      input.state === "submitted" ? "pending" : input.state ?? task.ocrJob?.state ?? "pending";
+    const terminal = nextState === "done" || nextState === "failed";
+    const message =
+      input.errorMsg ||
+      input.message ||
+      (nextState === "done"
+        ? "OCR 任务已完成，正在进入审查准备。"
+        : nextState === "failed"
+          ? "OCR 任务失败。"
+          : "OCR 任务处理中。");
+
+    return {
+      ...task,
+      status:
+        nextState === "done" ? "reviewing" : terminal ? (nextState === "failed" ? "failed" : "ready") : "parsing",
+      streamStageIndex: nextState === "done" ? 0 : task.streamStageIndex,
+      ocrJob: {
+        jobId: task.ocrJob?.jobId ?? null,
+        state: nextState,
+        submittedAt: task.ocrJob?.submittedAt ?? nowString(),
+        sourceObjectKey: task.ocrJob?.sourceObjectKey,
+        message,
+        progress: input.progress ?? task.ocrJob?.progress ?? null,
+      },
+      failure:
+        nextState === "failed"
+          ? {
+              message,
+              failedAt: new Date().toISOString(),
+            }
+          : undefined,
+      issueCount: nextState === "done" ? getIssueCounts(task.issues).total : task.issueCount,
+      updatedAt: nowString(),
+    };
+  });
+}
+
 export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask[] {
   return updateTask(tasks, taskId, (task) => ({
     ...task,
     status: "reviewing",
     streamStageIndex: 0,
+    streamStageType: task.streamStageType ?? "structure-restoration",
+    streamAgentKey: task.streamAgentKey ?? "structure-restoration",
+    streamParagraphIndex: task.streamParagraphIndex ?? 1,
+    streamParagraphTotal: task.streamParagraphTotal ?? task.paragraphs.length,
+    streamCurrentParagraphId: task.streamCurrentParagraphId ?? task.paragraphs[0]?.id,
+    streamParagraphLabel: task.streamParagraphLabel ?? task.paragraphs[0]?.section,
     updatedAt: nowString(),
   }));
 }
@@ -113,18 +173,52 @@ export function deleteDocumentTask(tasks: ReviewTask[], taskId: string): ReviewT
 export function updateReviewTaskStreamStage(
   tasks: ReviewTask[],
   taskId: string,
-  streamStageIndex: number,
+  snapshot: {
+    streamStageIndex: number;
+    streamStageType?: ReviewPipelineStageType;
+    streamAgentKey?: ReviewAgentKey;
+    streamParagraphIndex?: number;
+    streamParagraphTotal?: number;
+    streamCurrentParagraphId?: string;
+    streamParagraphLabel?: string;
+  },
 ): ReviewTask[] {
   return updateTask(tasks, taskId, (task) => ({
     ...task,
-    streamStageIndex,
+    streamStageIndex: snapshot.streamStageIndex,
+    streamStageType: snapshot.streamStageType ?? task.streamStageType,
+    streamAgentKey: snapshot.streamAgentKey ?? task.streamAgentKey,
+    streamParagraphIndex: snapshot.streamParagraphIndex ?? task.streamParagraphIndex,
+    streamParagraphTotal: snapshot.streamParagraphTotal ?? task.streamParagraphTotal,
+    streamCurrentParagraphId: snapshot.streamCurrentParagraphId ?? task.streamCurrentParagraphId,
+    streamParagraphLabel: snapshot.streamParagraphLabel ?? task.streamParagraphLabel,
+    updatedAt: nowString(),
   }));
 }
 
-export function markReviewTaskReady(tasks: ReviewTask[], taskId: string): ReviewTask[] {
+export function markReviewTaskReady(
+  tasks: ReviewTask[],
+  taskId: string,
+  snapshot?: {
+    streamStageIndex?: number;
+    streamStageType?: ReviewPipelineStageType;
+    streamAgentKey?: ReviewAgentKey;
+    streamParagraphIndex?: number;
+    streamParagraphTotal?: number;
+    streamCurrentParagraphId?: string;
+    streamParagraphLabel?: string;
+  },
+): ReviewTask[] {
   return updateTask(tasks, taskId, (task) => ({
     ...task,
     status: "ready",
+    streamStageIndex: snapshot?.streamStageIndex ?? task.streamStageIndex,
+    streamStageType: snapshot?.streamStageType ?? task.streamStageType,
+    streamAgentKey: snapshot?.streamAgentKey ?? task.streamAgentKey,
+    streamParagraphIndex: snapshot?.streamParagraphIndex ?? task.streamParagraphIndex,
+    streamParagraphTotal: snapshot?.streamParagraphTotal ?? task.streamParagraphTotal,
+    streamCurrentParagraphId: snapshot?.streamCurrentParagraphId ?? task.streamCurrentParagraphId,
+    streamParagraphLabel: snapshot?.streamParagraphLabel ?? task.streamParagraphLabel,
     issueCount: getIssueCounts(task.issues).total,
     updatedAt: nowString(),
   }));

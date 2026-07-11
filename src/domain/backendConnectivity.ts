@@ -42,6 +42,25 @@ export interface OcrStatusResult {
   hasToken: boolean;
 }
 
+export interface OcrJobProgress {
+  totalPages?: number;
+  extractedPages?: number;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface OcrJobStatusResult {
+  ok: boolean;
+  state?: "submitted" | "pending" | "running" | "done" | "failed";
+  progress?: OcrJobProgress | null;
+  resultUrl?: {
+    jsonUrl?: string;
+  } | null;
+  errorMsg?: string | null;
+  message?: string;
+  statusCode?: number;
+}
+
 export interface MinioStatusResult {
   ok: boolean;
   configured: boolean;
@@ -83,9 +102,16 @@ export interface StoredObjectOcrSubmitResult {
 export interface ReviewStreamEvent {
   type: string;
   stageId: string;
+  stageType?: string;
   title: string;
   detail: string;
   progress: number;
+  agentKey?: string;
+  agentLabel?: string;
+  currentParagraphId?: string;
+  currentParagraphIndex?: number;
+  currentParagraphTotal?: number;
+  currentParagraphLabel?: string;
   issueSummaries: string[];
 }
 
@@ -106,6 +132,25 @@ export async function runLlmConnectivityCheck() {
 export async function fetchOcrStatus() {
   const response = await fetch("/api/ocr/status");
   return readJson<OcrStatusResult>(response);
+}
+
+export async function fetchOcrJobStatus(jobId: string): Promise<OcrJobStatusResult> {
+  const response = await fetch(`/api/ocr/jobs/${encodeURIComponent(jobId)}`);
+  const payload = (await response.json().catch(() => ({}))) as OcrJobStatusResult & {
+    data?: OcrJobStatusResult;
+  };
+
+  const normalized = "data" in payload && payload.data ? payload.data : payload;
+  if (!response.ok || normalized.ok === false) {
+    return {
+      ok: false,
+      state: "failed",
+      message: normalized.message || normalized.errorMsg || "PaddleOCR job status check failed.",
+      errorMsg: normalized.errorMsg || normalized.message || "PaddleOCR job status check failed.",
+    } as OcrJobStatusResult;
+  }
+
+  return normalized as OcrJobStatusResult;
 }
 
 export async function fetchMinioStatus() {

@@ -8,6 +8,17 @@ export type StatusFilter = "all" | IssueStatus;
 
 export type ReviewMode = "review" | "revise";
 
+export type ReviewPipelineStageType =
+  | "ocr"
+  | "structure-restoration"
+  | "basis-binding"
+  | "rule-review"
+  | "semantic-review"
+  | "issue-structuring"
+  | "result-packaging";
+
+export type ReviewAgentKey = "structure-restoration" | "construction-review" | "report-generation";
+
 export type DocumentStatus =
   | "uploading"
   | "uploaded"
@@ -185,9 +196,17 @@ export type ReviewResultAsset = SupervisorReportAsset | RevisedPlanSnapshotAsset
 
 export interface ReviewStreamingStage {
   id: string;
+  stageType?: ReviewPipelineStageType;
   title: string;
   detail: string;
   progress: number;
+  agentKey?: ReviewAgentKey;
+  agentLabel?: string;
+  currentParagraphId?: string;
+  currentParagraphIndex?: number;
+  currentParagraphTotal?: number;
+  currentParagraphLabel?: string;
+  currentSection?: string;
   outlineItems: string[];
   documentSnippets: string[];
   issueSummaries: string[];
@@ -209,12 +228,20 @@ export interface ReviewTaskSourceObject {
 
 export type OcrJobState = "submitted" | "pending" | "running" | "done" | "failed";
 
+export interface OcrJobProgress {
+  totalPages?: number;
+  extractedPages?: number;
+  startTime?: string;
+  endTime?: string;
+}
+
 export interface ReviewTaskOcrJob {
   jobId: string | null;
   state: OcrJobState;
   submittedAt: string;
   sourceObjectKey?: string;
   message?: string;
+  progress?: OcrJobProgress | null;
 }
 
 export interface ReviewTaskFailure {
@@ -234,6 +261,12 @@ export interface ReviewTask {
   paragraphs: DocumentParagraph[];
   issues: ReviewIssue[];
   streamStageIndex: number;
+  streamStageType?: ReviewPipelineStageType;
+  streamAgentKey?: ReviewAgentKey;
+  streamParagraphIndex?: number;
+  streamParagraphTotal?: number;
+  streamCurrentParagraphId?: string;
+  streamParagraphLabel?: string;
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;

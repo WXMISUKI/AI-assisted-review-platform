@@ -21,11 +21,14 @@ import {
   Users,
 } from "lucide-react";
 import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
+import { agentAssetCatalog, promptAssetRegistry } from "./domain/agentAssets";
 import type {
   DocumentStatus,
   ReviewCompletionPayload,
+  ReviewAgentKey,
   ReviewMode,
   ReviewResultAsset,
+  ReviewPipelineStageType,
   ReviewStreamingStage,
   ReviewTask,
   ReviewTaskOcrJob,
@@ -41,13 +44,14 @@ import {
   markReviewTaskReady,
   resolveTaskIssue,
   startReviewTask,
-  updateDocumentTaskUploadResult,
+  syncDocumentTaskOcrStatus,
   updateReviewTaskStreamStage,
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
 import {
   fetchBackendHealth,
   fetchMinioStatus,
+  fetchOcrJobStatus,
   fetchOcrStatus,
   runLlmConnectivityCheck,
   runReviewStreamConnectivityCheck,
@@ -56,6 +60,7 @@ import {
   type BackendHealthResult,
   type MinioStatusResult,
   type MinioUploadResult,
+  type OcrJobStatusResult,
   type OcrStatusResult,
   type ProviderCheckResult,
   type ReviewStreamEvent,
@@ -86,20 +91,6 @@ type ThemeMode = "light" | "dark";
 
 type StreamingStage = ReviewStreamingStage;
 
-interface AgentKernelProfile {
-  name: string;
-  schemaVersion: string;
-  promptAsset: string;
-  engines: string[];
-  checkDomains: string[];
-  outputScenarios: string[];
-  basisCategories: string[];
-  knowledgeBindings: Array<{
-    name: string;
-    status: string;
-  }>;
-}
-
 const roleLabels: Record<Role, string> = {
   super_admin: "超管",
   supervisor: "监理",
@@ -121,33 +112,27 @@ const pageLabels: Record<Exclude<ShellPage, "review-loading" | "review-detail" |
 const statusLabels: Record<DocumentStatus, string> = {
   uploading: "上传中",
   uploaded: "待开始",
-  parsing: "解析中",
-  reviewing: "审查中",
+  parsing: "OCR识别中",
+  reviewing: "审查准备中",
   ready: "待审核",
   completed: "已完成",
   failed: "失败",
 };
 
-const constructionReviewAgentProfile: AgentKernelProfile = {
-  name: "施工方案审查智能体",
-  schemaVersion: "review-kernel-2.1-mock",
-  promptAsset: "专项施工方案审查 Prompt v0.3",
-  engines: ["强规则引擎", "大模型语义推理", "结构化结论生成"],
-  checkDomains: ["编制内容", "程序合规", "专家论证", "分专业技术校验"],
-  outputScenarios: ["施工单位内审辅助", "监理正式审查", "专家论证辅助"],
-  basisCategories: [
-    "JT/T 1495-2024",
-    "JTG F90-2015",
-    "JTG G10-2016",
-    "招投标/合同/图纸",
-    "施工安全风险评估报告",
-  ],
-  knowledgeBindings: [
-    { name: "规范知识图谱", status: "预留入口" },
-    { name: "项目招投标与合同文件", status: "待接入" },
-    { name: "设计图纸与施工组织设计", status: "待接入" },
-    { name: "安全风险评估报告", status: "待接入" },
-  ],
+const agentKeyLabels: Record<ReviewAgentKey, string> = {
+  "structure-restoration": "文档结构恢复智能体",
+  "construction-review": "施工方案审查智能体",
+  "report-generation": "审查报告生成智能体",
+};
+
+const pipelineStageLabels: Record<ReviewPipelineStageType, string> = {
+  ocr: "OCR 识别",
+  "structure-restoration": "结构恢复",
+  "basis-binding": "依据匹配",
+  "rule-review": "规则审查",
+  "semantic-review": "语义研判",
+  "issue-structuring": "问题结构化",
+  "result-packaging": "结果包装",
 };
 
 export function App() {
@@ -165,7 +150,7 @@ export function App() {
   const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
   const [streamStageIndex, setStreamStageIndex] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
-  const loadingTimerRef = useRef<number | null>(null);
+  const documentsRef = useRef<LibraryDocument[]>(documents);
 
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
   const deleteTargetDocument = documents.find((doc) => doc.id === deleteTargetId) ?? null;
@@ -177,41 +162,183 @@ export function App() {
   }, [themeMode]);
 
   useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
+
+  useEffect(() => {
     if (activePage !== "review-loading" || !loadingDocId) {
       return;
     }
 
-    setStreamStageIndex(0);
-    loadingTimerRef.current = window.setInterval(() => {
-      setStreamStageIndex((currentIndex) => {
-        const nextIndex = currentIndex + 1;
-        if (nextIndex < reviewStreamingStages.length) {
-          setDocuments((currentDocs) =>
-            updateReviewTaskStreamStage(currentDocs, loadingDocId, nextIndex),
-          );
-          return nextIndex;
-        }
+    const currentDocument = documentsRef.current.find((doc) => doc.id === loadingDocId);
+    if (!currentDocument) {
+      return;
+    }
 
-        if (loadingTimerRef.current) {
-          window.clearInterval(loadingTimerRef.current);
-          loadingTimerRef.current = null;
-        }
+    let cancelled = false;
+    let timerId: number | null = null;
 
-        window.setTimeout(() => {
-          setDocuments((currentDocs) => markReviewTaskReady(currentDocs, loadingDocId));
-          setSelectedDocId(loadingDocId);
-          setActivePage("review-detail");
-          setLoadingDocId(null);
-        }, 650);
+    const finishReady = (nextDocuments: LibraryDocument[]) => {
+      if (cancelled) {
+        return;
+      }
 
-        return currentIndex;
+      documentsRef.current = nextDocuments;
+      setDocuments(nextDocuments);
+      setSelectedDocId(loadingDocId);
+      setActivePage("review-detail");
+      setLoadingDocId(null);
+    };
+
+    const finishFailed = (message: string, nextDocuments: LibraryDocument[]) => {
+      if (cancelled) {
+        return;
+      }
+
+      documentsRef.current = nextDocuments;
+      setDocuments(nextDocuments);
+      setDocumentUploadError(message);
+      setActivePage("documents");
+      setLoadingDocId(null);
+    };
+
+    const buildStageSnapshot = (stageIndex: number) => {
+      const stage = reviewStreamingStages[stageIndex] ?? reviewStreamingStages[0];
+      return {
+        streamStageIndex: stageIndex,
+        streamStageType: stage.stageType,
+        streamAgentKey: stage.agentKey,
+        streamParagraphIndex: stage.currentParagraphIndex,
+        streamParagraphTotal: stage.currentParagraphTotal,
+        streamCurrentParagraphId: stage.currentParagraphId,
+        streamParagraphLabel: stage.currentParagraphLabel ?? stage.currentSection,
+      };
+    };
+
+    const startReviewPreparation = (startIndex: number) => {
+      const initialSnapshot = buildStageSnapshot(startIndex);
+      setDocuments((currentDocs) => {
+        const nextDocuments = updateReviewTaskStreamStage(currentDocs, loadingDocId, initialSnapshot);
+        documentsRef.current = nextDocuments;
+        return nextDocuments;
       });
-    }, 850);
+      setStreamStageIndex(startIndex);
+      timerId = window.setInterval(() => {
+        setStreamStageIndex((currentIndex) => {
+          const nextIndex = currentIndex + 1;
+          if (nextIndex < reviewStreamingStages.length) {
+            setDocuments((currentDocs) => {
+              const nextDocuments = updateReviewTaskStreamStage(
+                currentDocs,
+                loadingDocId,
+                buildStageSnapshot(nextIndex),
+              );
+              documentsRef.current = nextDocuments;
+              return nextDocuments;
+            });
+            return nextIndex;
+          }
+
+          if (timerId) {
+            window.clearInterval(timerId);
+            timerId = null;
+          }
+
+          window.setTimeout(() => {
+            if (cancelled) {
+              return;
+            }
+
+            const nextDocuments = markReviewTaskReady(
+              documentsRef.current,
+              loadingDocId,
+              buildStageSnapshot(currentIndex),
+            );
+            finishReady(nextDocuments);
+          }, 650);
+
+          return currentIndex;
+        });
+      }, 850);
+    };
+
+    const pollOcrJob = async () => {
+      const jobId = currentDocument.ocrJob?.jobId;
+      if (!jobId) {
+        startReviewPreparation(currentDocument.streamStageIndex || 0);
+        return;
+      }
+
+      try {
+        const jobStatus = await fetchOcrJobStatus(jobId);
+        if (cancelled) {
+          return;
+        }
+
+        if (jobStatus.state === "done") {
+          const nextDocuments = syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, {
+            ...jobStatus,
+            state: "done",
+          });
+          documentsRef.current = nextDocuments;
+          setDocuments(nextDocuments);
+          startReviewPreparation(nextDocuments.find((doc) => doc.id === loadingDocId)?.streamStageIndex ?? 0);
+          return;
+        }
+
+        if (jobStatus.state === "failed") {
+          const message = jobStatus.errorMsg || jobStatus.message || "OCR 任务失败。";
+        const nextStageIndex = getOcrLoadingStageIndex(jobStatus);
+        setStreamStageIndex(nextStageIndex);
+        const nextDocuments = updateReviewTaskStreamStage(
+          syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, {
+            ...jobStatus,
+            state: "failed",
+            errorMsg: message,
+          }),
+          loadingDocId,
+          buildStageSnapshot(nextStageIndex),
+        );
+        finishFailed(message, nextDocuments);
+        return;
+        }
+
+        const nextStageIndex = getOcrLoadingStageIndex(jobStatus);
+        setStreamStageIndex(nextStageIndex);
+        const nextDocuments = syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, jobStatus);
+        documentsRef.current = nextDocuments;
+        setDocuments(nextDocuments);
+
+        timerId = window.setTimeout(pollOcrJob, 1800);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "OCR 状态查询失败，请稍后重试。";
+        const nextStageIndex = reviewStreamingStages.length - 1;
+        setStreamStageIndex(nextStageIndex);
+        const nextDocuments = updateReviewTaskStreamStage(
+          syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, {
+            state: "failed",
+            errorMsg: message,
+            message,
+          }),
+          loadingDocId,
+          buildStageSnapshot(nextStageIndex),
+        );
+        finishFailed(message, nextDocuments);
+      }
+    };
+
+    if (currentDocument.status === "parsing") {
+      pollOcrJob();
+    } else {
+      startReviewPreparation(currentDocument.streamStageIndex || 0);
+    }
 
     return () => {
-      if (loadingTimerRef.current) {
-        window.clearInterval(loadingTimerRef.current);
-        loadingTimerRef.current = null;
+      cancelled = true;
+      if (timerId) {
+        window.clearTimeout(timerId);
+        window.clearInterval(timerId);
       }
     };
   }, [activePage, loadingDocId]);
@@ -370,7 +497,14 @@ export function App() {
       return;
     }
 
-    if (doc.status === "reviewing" || doc.status === "parsing") {
+    if (doc.status === "parsing") {
+      setLoadingDocId(documentId);
+      setStreamStageIndex(0);
+      setActivePage("review-loading");
+      return;
+    }
+
+    if (doc.status === "reviewing") {
       setLoadingDocId(documentId);
       setStreamStageIndex(doc.streamStageIndex);
       setActivePage("review-loading");
@@ -872,6 +1006,7 @@ function DocumentLibraryPage({
                     上传人：{doc.uploader}
                     {doc.sourceObject ? ` · 已存储 ${formatFileSize(doc.sourceObject.size)}` : " · mock"}
                     {doc.ocrJob ? ` · ${formatOcrJobLabel(doc.ocrJob)}` : ""}
+                    {doc.failure ? ` · ${doc.failure.message}` : ""}
                   </small>
                 </div>
                 <span>{doc.project}</span>
@@ -889,6 +1024,14 @@ function DocumentLibraryPage({
                   ) : doc.status === "ready" || doc.status === "completed" ? (
                     <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
                       打开详情
+                    </button>
+                  ) : doc.status === "parsing" ? (
+                    <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
+                      查看识别进度
+                    </button>
+                  ) : doc.status === "reviewing" ? (
+                    <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
+                      继续审核
                     </button>
                   ) : (
                     <button type="button" className="primary" onClick={() => onStartReview(doc.id)}>
@@ -1212,36 +1355,59 @@ function DataAssetsPage({
 
   return (
     <div className="assets-grid">
-      <section className="assets-card agent-profile-card">
-        <span className="eyebrow">智能体</span>
-        <h2>{constructionReviewAgentProfile.name}</h2>
-        <p>
-          已按 PDF 2.1 内核预留规则引擎、语义推理、依据追溯和三类输出场景。
-        </p>
-        <div className="agent-profile-meta">
-          <span>{constructionReviewAgentProfile.schemaVersion}</span>
-          <span>{constructionReviewAgentProfile.promptAsset}</span>
-        </div>
-        <AgentProfileBlock title="引擎链路" items={constructionReviewAgentProfile.engines} />
-        <AgentProfileBlock title="校验域" items={constructionReviewAgentProfile.checkDomains} />
-        <AgentProfileBlock title="输出场景" items={constructionReviewAgentProfile.outputScenarios} />
-        <AgentProfileBlock title="审查依据" items={constructionReviewAgentProfile.basisCategories} />
-        <div className="knowledge-binding-list">
-          {constructionReviewAgentProfile.knowledgeBindings.map((binding) => (
-            <div key={binding.name} className="knowledge-binding-item">
-              <strong>{binding.name}</strong>
-              <span>{binding.status}</span>
-            </div>
-          ))}
-        </div>
-        <button type="button" className="primary" onClick={onOpenDocument}>
-          先去文档库
-        </button>
-      </section>
+      {agentAssetCatalog.map((agent) => (
+        <section key={agent.key} className="assets-card agent-profile-card">
+          <span className="eyebrow">智能体</span>
+          <h2>{agent.name}</h2>
+          <p>{agent.summary}</p>
+          <div className="agent-profile-meta">
+            <span>{agent.schemaVersion}</span>
+            <span>{agent.promptAsset}</span>
+          </div>
+          <div className="agent-profile-hint">{agent.stageHint}</div>
+          <AgentProfileBlock title="引擎链路" items={agent.engines} />
+          <AgentProfileBlock title="校验域" items={agent.checkDomains} />
+          <AgentProfileBlock title="输出场景" items={agent.outputScenarios} />
+          {agent.basisCategories && agent.basisCategories.length > 0 && (
+            <AgentProfileBlock title="审查依据" items={agent.basisCategories} />
+          )}
+          <div className="knowledge-binding-list">
+            {agent.knowledgeBindings.map((binding) => (
+              <div key={binding.name} className="knowledge-binding-item">
+                <strong>{binding.name}</strong>
+                <span>{binding.status}</span>
+              </div>
+            ))}
+          </div>
+          {agent.key === "construction-review" ? (
+            <button type="button" className="primary" onClick={onOpenDocument}>
+              先去文档库
+            </button>
+          ) : (
+            <button type="button" className="secondary" onClick={onOpenDocument}>
+              返回文档库
+            </button>
+          )}
+        </section>
+      ))}
       <section className="assets-card">
         <span className="eyebrow">提示词资产</span>
         <h2>{editable ? "可维护" : "只读"}</h2>
-        <p>后续支持提示词新增、修改、版本管理和绑定智能体。当前仅展示入口。</p>
+        <p>提示词资产将按智能体绑定、版本、负责人和状态进行管理。当前先展示草稿目录。</p>
+        <div className="prompt-asset-list">
+          {promptAssetRegistry.map((prompt) => (
+            <article key={prompt.name} className="prompt-asset-item">
+              <div className="prompt-asset-head">
+                <strong>{prompt.name}</strong>
+                <span>{prompt.status}</span>
+              </div>
+              <p>{prompt.description}</p>
+              <small>
+                {prompt.version} · {prompt.owner}
+              </small>
+            </article>
+          ))}
+        </div>
       </section>
       <section className="assets-card connectivity-card">
         <div className="section-title row">
@@ -1385,6 +1551,59 @@ function AgentProfileBlock({ title, items }: { title: string; items: string[] })
   );
 }
 
+function getOcrLoadingStageIndex(jobStatus?: OcrJobStatusResult | null) {
+  if (!jobStatus || jobStatus.state === "submitted" || jobStatus.state === "pending") {
+    return 0;
+  }
+
+  if (jobStatus.state === "failed") {
+    return Math.max(0, reviewStreamingStages.length - 2);
+  }
+
+  if (jobStatus.state === "done") {
+    return reviewStreamingStages.length - 1;
+  }
+
+  const progress = jobStatus.progress;
+  if (
+    progress &&
+    typeof progress.totalPages === "number" &&
+    progress.totalPages > 0 &&
+    typeof progress.extractedPages === "number"
+  ) {
+    const ratio = progress.extractedPages / progress.totalPages;
+    const boundedIndex = Math.round(ratio * (reviewStreamingStages.length - 1));
+    return Math.min(Math.max(boundedIndex, 1), reviewStreamingStages.length - 2);
+  }
+
+  return 1;
+}
+
+function getOcrPercent(job?: ReviewTaskOcrJob) {
+  const progress = job?.progress;
+  if (
+    progress &&
+    typeof progress.totalPages === "number" &&
+    progress.totalPages > 0 &&
+    typeof progress.extractedPages === "number"
+  ) {
+    return Math.min(100, Math.max(0, Math.round((progress.extractedPages / progress.totalPages) * 100)));
+  }
+
+  if (job?.state === "done") {
+    return 100;
+  }
+
+  return 0;
+}
+
+function getOcrStepIndex(percent: number) {
+  if (percent >= 100) return 3;
+  if (percent >= 75) return 2;
+  if (percent >= 35) return 1;
+  return 0;
+}
+
 function ReviewLoadingPage({
   document,
   roleLabel,
@@ -1400,13 +1619,117 @@ function ReviewLoadingPage({
   stages: StreamingStage[];
   stageIndex: number;
 }) {
+  const loadingMode = document?.status === "parsing" ? "ocr" : "review";
+  const ocrPercent = getOcrPercent(document?.ocrJob);
+
+  if (loadingMode === "ocr") {
+    return (
+      <div className="streaming-review-page">
+        <section className="streaming-hero ocr-hero">
+          <div>
+            <span className="eyebrow">OCR 识别中 · {statusLabel}</span>
+            <h2>{document?.name ?? "文档接入任务"}</h2>
+            <p>系统正在识别版面、章节和可锚定文本。完成后会自动进入审查准备阶段。</p>
+            <div className="streaming-meta">
+              <span>{pipelineStageLabels[stage.stageType ?? "ocr"]}</span>
+              {stage.agentLabel && <span>{stage.agentLabel}</span>}
+              {stage.currentParagraphLabel && <span>{stage.currentParagraphLabel}</span>}
+            </div>
+          </div>
+          <div className="streaming-progress">
+            <strong>{ocrPercent}%</strong>
+            <span>{document?.ocrJob?.message || "正在提取文档结构"}</span>
+          </div>
+        </section>
+
+        <div className="streaming-progress-bar" aria-label="OCR 识别进度">
+          <span style={{ width: `${ocrPercent}%` }} />
+        </div>
+
+        <section className="streaming-layout streaming-layout-ocr" aria-label="OCR 接入进度">
+          <aside className="streaming-panel streaming-outline">
+            <div className="streaming-panel-title">
+              <ListChecks size={18} />
+              <span>识别步骤</span>
+            </div>
+            <div className="streaming-timeline compact">
+              {["接收文件", "识别版面", "提取章节", "生成结构化结果"].map((item, index) => (
+                <div
+                  key={item}
+                  className={
+                    index <= getOcrStepIndex(ocrPercent)
+                      ? "streaming-step done"
+                      : "streaming-step"
+                  }
+                >
+                  <span />
+                  <p>{item}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <section className="streaming-panel streaming-document">
+            <div className="streaming-panel-title">
+              <FileSearch size={18} />
+              <span>文档结构化说明</span>
+            </div>
+            <div className="streaming-stage-card">
+              <Sparkles size={18} />
+              <div>
+                <strong>OCR 正在处理</strong>
+                <p>{document?.ocrJob?.message || "等待 OCR 服务返回分页与版面信息。"}</p>
+              </div>
+            </div>
+            <div className="streaming-snippets">
+              <article>
+                <span>当前状态</span>
+                <p>识别完成前无法进入审查工作台。</p>
+              </article>
+              <article>
+                <span>下一步</span>
+                <p>OCR 完成后自动开始审查准备与智能体流式分析。</p>
+              </article>
+            </div>
+          </section>
+
+          <aside className="streaming-panel streaming-issues">
+            <div className="streaming-panel-title">
+              <Clock3 size={18} />
+              <span>接入提示</span>
+            </div>
+            <div className="streaming-issue-list">
+              <div className="streaming-issue-item">
+                <AlertBadge index={1} />
+                <p>OCR 完成前，详情页保持锁定。</p>
+              </div>
+              <div className="streaming-issue-item">
+                <AlertBadge index={2} />
+                <p>识别完成后，审查智能体自动接管。</p>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="streaming-review-page">
       <section className="streaming-hero">
         <div>
-          <span className="eyebrow">AI 审核执行中 · {statusLabel}</span>
+          <span className="eyebrow">审查准备中 · {statusLabel}</span>
           <h2>{document?.name ?? "文档审查任务"}</h2>
-          <p>{roleLabel}可在详情页观察解析、依据匹配、问题生成的流式进度。当前为 mock 演示。</p>
+          <p>{roleLabel}可在详情页观察文档结构化、依据匹配、问题生成的流式进度。当前为 mock 演示。</p>
+          <div className="streaming-meta">
+            <span>{pipelineStageLabels[stage.stageType ?? "structure-restoration"]}</span>
+            <span>{stage.agentLabel ?? agentKeyLabels[stage.agentKey ?? "construction-review"]}</span>
+            {stage.currentParagraphLabel && (
+              <span>
+                段落 {stage.currentParagraphIndex}/{stage.currentParagraphTotal} · {stage.currentParagraphLabel}
+              </span>
+            )}
+          </div>
         </div>
         <div className="streaming-progress">
           <strong>{stage.progress}%</strong>
@@ -1465,6 +1788,22 @@ function ReviewLoadingPage({
               <strong>{stage.title}</strong>
               <p>{stage.detail}</p>
             </div>
+          </div>
+          <div className="streaming-stage-focus">
+            <article>
+              <span>当前智能体</span>
+              <strong>{stage.agentLabel ?? agentKeyLabels[stage.agentKey ?? "construction-review"]}</strong>
+              <p>{stage.stageType ? pipelineStageLabels[stage.stageType] : "审查准备"}</p>
+            </article>
+            <article>
+              <span>当前段落</span>
+              <strong>
+                {stage.currentParagraphLabel
+                  ? `${stage.currentParagraphIndex}/${stage.currentParagraphTotal}`
+                  : "待定位"}
+              </strong>
+              <p>{stage.currentParagraphLabel ?? "等待段落锚点恢复"}</p>
+            </article>
           </div>
           <div className="streaming-snippets">
             {stage.documentSnippets.map((snippet, index) => (
@@ -1600,12 +1939,33 @@ function formatFileSize(value: number) {
 }
 
 function formatOcrJobLabel(job: ReviewTaskOcrJob) {
+  const progress = job.progress;
+  const percent =
+    progress &&
+    typeof progress.totalPages === "number" &&
+    progress.totalPages > 0 &&
+    typeof progress.extractedPages === "number"
+      ? Math.round((progress.extractedPages / progress.totalPages) * 100)
+      : null;
+
+  if (job.state === "done") {
+    return percent != null ? `OCR已完成 · ${percent}%` : "OCR已完成";
+  }
+
+  if (job.state === "running") {
+    return percent != null ? `OCR处理中 · ${percent}%` : "OCR处理中";
+  }
+
+  if (job.state === "pending") {
+    return percent != null ? `OCR排队中 · ${percent}%` : "OCR排队中";
+  }
+
   if (job.state === "failed") {
     return `OCR失败：${job.message ?? "提交失败"}`;
   }
 
   if (job.jobId) {
-    return `OCR已提交 #${job.jobId.slice(-8)}`;
+    return percent != null ? `OCR已提交 #${job.jobId.slice(-8)} · ${percent}%` : `OCR已提交 #${job.jobId.slice(-8)}`;
   }
 
   return "OCR已提交";

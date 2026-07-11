@@ -838,6 +838,16 @@ button {
   margin-top: 4px;
 }
 
+.agent-profile-hint {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .agent-profile-meta span,
 .agent-profile-block span,
 .knowledge-binding-item span {
@@ -879,6 +889,51 @@ button {
   border-radius: 8px;
   padding: 10px;
   background: var(--surface-muted);
+}
+
+.prompt-asset-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.prompt-asset-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-muted);
+}
+
+.prompt-asset-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.prompt-asset-head span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.prompt-asset-item p {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.prompt-asset-item small {
+  color: var(--ink-subtle);
+  font-weight: 700;
 }
 
 .assets-card button {
@@ -1048,6 +1103,25 @@ button {
   line-height: 1.7;
 }
 
+.streaming-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.streaming-meta span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .streaming-progress {
   display: grid;
   min-width: 156px;
@@ -1177,6 +1251,38 @@ button {
 
 .streaming-stage-card p {
   margin-top: 5px;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.streaming-stage-focus {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.streaming-stage-focus article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-muted);
+}
+
+.streaming-stage-focus span {
+  color: var(--ink-subtle);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.streaming-stage-focus strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.streaming-stage-focus p {
   color: var(--ink-muted);
   line-height: 1.6;
 }
