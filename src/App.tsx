@@ -51,6 +51,7 @@ import {
 import {
   fetchBackendHealth,
   fetchMinioStatus,
+  hydrateOcrResultStructure,
   fetchOcrJobStatus,
   fetchOcrStatus,
   runLlmConnectivityCheck,
@@ -276,9 +277,36 @@ export function App() {
         }
 
         if (jobStatus.state === "done") {
+          const recoveryResult = jobStatus.resultUrl?.jsonUrl
+            ? await hydrateOcrResultStructure({ jsonUrl: jobStatus.resultUrl.jsonUrl })
+            : { ok: false, message: "OCR 结果未返回可用的结构化地址。" };
+
+          if (cancelled) {
+            return;
+          }
+
+          if (!recoveryResult.ok || !recoveryResult.recoveredStructure) {
+            const message = recoveryResult.message || "OCR 结果结构化失败。";
+            const nextStageIndex = getOcrLoadingStageIndex(jobStatus);
+            setStreamStageIndex(nextStageIndex);
+            const nextDocuments = updateReviewTaskStreamStage(
+              syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, {
+                ...jobStatus,
+                state: "failed",
+                errorMsg: message,
+                message,
+              }),
+              loadingDocId,
+              buildStageSnapshot(nextStageIndex),
+            );
+            finishFailed(message, nextDocuments);
+            return;
+          }
+
           const nextDocuments = syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, {
             ...jobStatus,
             state: "done",
+            recoveredStructure: recoveryResult.recoveredStructure,
           });
           documentsRef.current = nextDocuments;
           setDocuments(nextDocuments);
@@ -288,19 +316,19 @@ export function App() {
 
         if (jobStatus.state === "failed") {
           const message = jobStatus.errorMsg || jobStatus.message || "OCR 任务失败。";
-        const nextStageIndex = getOcrLoadingStageIndex(jobStatus);
-        setStreamStageIndex(nextStageIndex);
-        const nextDocuments = updateReviewTaskStreamStage(
-          syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, {
-            ...jobStatus,
-            state: "failed",
-            errorMsg: message,
-          }),
-          loadingDocId,
-          buildStageSnapshot(nextStageIndex),
-        );
-        finishFailed(message, nextDocuments);
-        return;
+          const nextStageIndex = getOcrLoadingStageIndex(jobStatus);
+          setStreamStageIndex(nextStageIndex);
+          const nextDocuments = updateReviewTaskStreamStage(
+            syncDocumentTaskOcrStatus(documentsRef.current, loadingDocId, {
+              ...jobStatus,
+              state: "failed",
+              errorMsg: message,
+            }),
+            loadingDocId,
+            buildStageSnapshot(nextStageIndex),
+          );
+          finishFailed(message, nextDocuments);
+          return;
         }
 
         const nextStageIndex = getOcrLoadingStageIndex(jobStatus);

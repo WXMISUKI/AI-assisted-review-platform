@@ -130,6 +130,7 @@ export function syncDocumentTaskOcrStatus(
     progress?: ReviewTaskOcrJob["progress"];
     message?: string;
     errorMsg?: string | null;
+    recoveredStructure?: RecoveredDocumentStructure;
     resultUrl?: {
       jsonUrl?: string;
     } | null;
@@ -153,11 +154,7 @@ export function syncDocumentTaskOcrStatus(
       status:
         nextState === "done" ? "reviewing" : terminal ? (nextState === "failed" ? "failed" : "ready") : "parsing",
       streamStageIndex: nextState === "done" ? 0 : task.streamStageIndex,
-      recoveredStructure:
-        nextState === "done"
-          ? task.recoveredStructure ??
-            recoverStructureFromParagraphs(task.paragraphs, "ocr-jsonl", "recovering")
-          : task.recoveredStructure,
+      recoveredStructure: input.recoveredStructure ?? task.recoveredStructure,
       ocrJob: {
         jobId: task.ocrJob?.jobId ?? null,
         state: nextState,

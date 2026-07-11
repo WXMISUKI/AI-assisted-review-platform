@@ -8,6 +8,7 @@ import {
   uploadDocumentObject,
 } from "./minioClient.mjs";
 import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs";
+import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 
 function sendJson(response, statusCode, payload) {
@@ -123,6 +124,7 @@ const server = createServer(async (request, response) => {
           "POST /api/ocr/jobs/url",
           "POST /api/ocr/jobs/object",
           "GET /api/ocr/jobs/:id",
+          "POST /api/ocr/results/hydrate",
           "GET /api/minio/status",
           "POST /api/minio/upload",
           "POST /api/minio/presign",
@@ -203,6 +205,12 @@ const server = createServer(async (request, response) => {
           expiresIn: presigned.expiresIn,
         },
       });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/ocr/results/hydrate") {
+      const body = await readJson(request);
+      sendJson(response, 200, await hydrateOcrResultStructure(body));
       return;
     }
 

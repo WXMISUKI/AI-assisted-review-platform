@@ -1,3 +1,9 @@
+import type {
+  DocumentParagraph,
+  RecoveredDocumentSection,
+  RecoveredDocumentStructure,
+} from "./reviewTypes";
+
 export interface BackendHealthResult {
   ok: boolean;
   service?: string;
@@ -99,6 +105,12 @@ export interface StoredObjectOcrSubmitResult {
   };
 }
 
+export interface OcrRecoveredStructureHydrationResult {
+  ok: boolean;
+  recoveredStructure?: RecoveredDocumentStructure;
+  message?: string;
+}
+
 export interface ReviewStreamEvent {
   type: string;
   stageId: string;
@@ -178,6 +190,20 @@ export async function submitStoredObjectOcrJob(key: string) {
     body: JSON.stringify({ key }),
   });
   return readJson<StoredObjectOcrSubmitResult>(response);
+}
+
+export async function hydrateOcrResultStructure(input: {
+  jsonUrl?: string;
+  jsonText?: string;
+}) {
+  const response = await fetch("/api/ocr/results/hydrate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  return readJson<OcrRecoveredStructureHydrationResult>(response);
 }
 
 export function runReviewStreamConnectivityCheck(timeoutMs = 5000) {
