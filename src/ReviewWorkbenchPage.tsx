@@ -570,10 +570,20 @@ export function ReviewWorkbenchPage({
             <strong>段落</strong>
             {recoveredStructure.paragraphs.length}
           </span>
+          <span>
+            <strong>来源</strong>
+            {recoveredStructure.sourceFormat}
+          </span>
           {recoveredStructure.progress.currentSection && (
             <span>
               <strong>当前章节</strong>
               {recoveredStructure.progress.currentSection}
+            </span>
+          )}
+          {recoveredStructure.recoveredAt && (
+            <span>
+              <strong>恢复时间</strong>
+              {recoveredStructure.recoveredAt.slice(0, 19).replace("T", " ")}
             </span>
           )}
         </section>

@@ -1650,6 +1650,11 @@ function ReviewLoadingPage({
 }) {
   const loadingMode = document?.status === "parsing" ? "ocr" : "review";
   const ocrPercent = getOcrPercent(document?.ocrJob);
+  const recoveredStructure = document?.recoveredStructure;
+  const recoveredSections = recoveredStructure?.sections ?? [];
+  const recoveredParagraphs = recoveredStructure?.paragraphs ?? [];
+  const recoveredCurrentSection =
+    recoveredStructure?.progress.currentSection ?? stage.currentSection ?? "待恢复";
 
   if (loadingMode === "ocr") {
     return (
@@ -1749,14 +1754,21 @@ function ReviewLoadingPage({
         <div>
           <span className="eyebrow">审查准备中 · {statusLabel}</span>
           <h2>{document?.name ?? "文档审查任务"}</h2>
-          <p>{roleLabel}可在详情页观察文档结构化、依据匹配、问题生成的流式进度。当前为 mock 演示。</p>
+          <p>
+            {roleLabel}可在详情页观察文档结构化、依据匹配、问题生成的流式进度。当前任务已经接入真实
+            OCR 结构恢复结果。
+          </p>
           <div className="streaming-meta">
             <span>{pipelineStageLabels[stage.stageType ?? "structure-restoration"]}</span>
             <span>{stage.agentLabel ?? agentKeyLabels[stage.agentKey ?? "construction-review"]}</span>
+            {recoveredStructure && <span>{recoveredStructure.sourceFormat}</span>}
             {stage.currentParagraphLabel && (
               <span>
                 段落 {stage.currentParagraphIndex}/{stage.currentParagraphTotal} · {stage.currentParagraphLabel}
               </span>
+            )}
+            {recoveredStructure?.progress.currentParagraphId && (
+              <span>恢复锚点 {recoveredStructure.progress.currentParagraphId}</span>
             )}
           </div>
         </div>
@@ -1765,6 +1777,27 @@ function ReviewLoadingPage({
           <span>{stage.title}</span>
         </div>
       </section>
+
+      {recoveredStructure && (
+        <section className="streaming-kernel-strip recovered-structure-strip" aria-label="恢复结构摘要">
+          <span>
+            <strong>结构来源</strong>
+            {recoveredStructure.sourceFormat}
+          </span>
+          <span>
+            <strong>章节</strong>
+            {recoveredSections.length}
+          </span>
+          <span>
+            <strong>段落</strong>
+            {recoveredParagraphs.length}
+          </span>
+          <span>
+            <strong>当前章节</strong>
+            {recoveredCurrentSection}
+          </span>
+        </section>
+      )}
 
       {(stage.hazardLabel || stage.basisTrace) && (
         <section className="streaming-kernel-strip" aria-label="审查内核状态">
@@ -1792,9 +1825,16 @@ function ReviewLoadingPage({
         <aside className="streaming-panel streaming-outline">
           <div className="streaming-panel-title">
             <ListChecks size={18} />
-            <span>目录识别</span>
+            <span>{recoveredSections.length > 0 ? "恢复章节" : "目录识别"}</span>
           </div>
-          {stage.outlineItems.length > 0 ? (
+          {recoveredSections.length > 0 ? (
+            recoveredSections.map((section) => (
+              <div key={section.id} className="streaming-outline-item">
+                <CheckCircle2 size={15} />
+                {section.title} · {section.paragraphIds.length} 段
+              </div>
+            ))
+          ) : stage.outlineItems.length > 0 ? (
             stage.outlineItems.map((item) => (
               <div key={item} className="streaming-outline-item">
                 <CheckCircle2 size={15} />
@@ -1827,15 +1867,26 @@ function ReviewLoadingPage({
             <article>
               <span>当前段落</span>
               <strong>
-                {stage.currentParagraphLabel
-                  ? `${stage.currentParagraphIndex}/${stage.currentParagraphTotal}`
-                  : "待定位"}
+                {recoveredStructure?.progress.currentParagraphId
+                  ? recoveredStructure.progress.currentParagraphId
+                  : stage.currentParagraphLabel
+                    ? `${stage.currentParagraphIndex}/${stage.currentParagraphTotal}`
+                    : "待定位"}
               </strong>
-              <p>{stage.currentParagraphLabel ?? "等待段落锚点恢复"}</p>
+              <p>{recoveredStructure?.progress.currentSection ?? stage.currentParagraphLabel ?? "等待段落锚点恢复"}</p>
             </article>
           </div>
           <div className="streaming-snippets">
-            {stage.documentSnippets.map((snippet, index) => (
+            {recoveredStructure?.paragraphs.slice(0, 3).map((paragraph, index) => (
+              <article key={paragraph.id}>
+                <span>
+                  恢复段落 {index + 1}
+                  {paragraph.section ? ` · ${paragraph.section}` : ""}
+                </span>
+                <p>{paragraph.text}</p>
+              </article>
+            ))}
+            {recoveredStructure?.paragraphs.length ? null : stage.documentSnippets.map((snippet, index) => (
               <article key={`${stage.id}-${index}`}>
                 <span>片段 {index + 1}</span>
                 <p>{snippet}</p>

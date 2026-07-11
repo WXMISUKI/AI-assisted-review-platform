@@ -259,3 +259,9 @@ The review workbench SHALL persist issue decisions through the review session se
 - **WHEN** a user leaves and reopens a task
 - **THEN** previously resolved issue decisions are restored in the workbench
 
+### Requirement: Recovered structure summary on workbench
+The review workbench SHALL show a compact summary of the hydrated recovered structure when available.
+
+#### Scenario: Workbench opens with recovered structure
+- **WHEN** a ready review task includes recovered sections and paragraphs
+- **THEN** the workbench displays the source format, section count, paragraph count, current section, and recovery time in the detail summary area
