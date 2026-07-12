@@ -1,4 +1,4 @@
-import { CheckCircle2, LucideIcon, Trash2 } from "lucide-react";
+import { LucideIcon } from "lucide-react";
 import type {
   BackendHealthResult,
   MinioStatusResult,

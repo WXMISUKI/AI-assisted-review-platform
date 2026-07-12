@@ -224,7 +224,11 @@ flowchart TD
 | 监理 | 是 | 是 | 否 | 是 | 否 |
 | 施工方 | 是 | 否 | 是 | 否 | 否 |
 
-## 10. 下一阶段推荐任务组
+## 10. 开发规范
+
+项目级开发标准请统一参考 [development-standards.md](./development-standards.md)。后续所有前后端实现、接口调整、状态机变化、主题系统改动和安全约束更新，都应先对齐该文档，再进入具体实现。
+
+## 11. 下一阶段推荐任务组
 
 ### Task Group A: App Shell
 
