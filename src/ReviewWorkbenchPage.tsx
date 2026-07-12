@@ -193,6 +193,8 @@ export function ReviewWorkbenchPage({
   );
   const paragraphRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const documentScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
   const reviewParagraphs = recoveredStructure?.paragraphs ?? paragraphs;
 
   const counts = useMemo(() => getIssueCounts(issues), [issues]);
@@ -306,6 +308,65 @@ export function ReviewWorkbenchPage({
   useEffect(() => {
     setActiveSectionTitle(defaultSectionTitle);
   }, [defaultSectionTitle]);
+
+  useEffect(() => {
+    const container = documentScrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const updateActiveSectionFromScroll = () => {
+      if (scrollRafRef.current != null) {
+        window.cancelAnimationFrame(scrollRafRef.current);
+      }
+
+      scrollRafRef.current = window.requestAnimationFrame(() => {
+        const containerRect = container.getBoundingClientRect();
+        const sectionPivot = containerRect.top + 160;
+        const visibleFloor = containerRect.top + 24;
+
+        let nextSectionTitle = defaultSectionTitle;
+        let foundVisibleParagraph = false;
+
+        for (const paragraph of reviewParagraphs) {
+          const node = paragraphRefs.current[paragraph.id];
+          if (!node) {
+            continue;
+          }
+
+          const rect = node.getBoundingClientRect();
+          const isVisible = rect.bottom >= visibleFloor && rect.top <= containerRect.bottom - 24;
+          if (isVisible) {
+            foundVisibleParagraph = true;
+          }
+
+          if (isVisible && rect.top <= sectionPivot) {
+            nextSectionTitle = paragraph.section;
+          }
+        }
+
+        if (!foundVisibleParagraph) {
+          return;
+        }
+
+        setActiveSectionTitle((currentSection) =>
+          currentSection === nextSectionTitle ? currentSection : nextSectionTitle,
+        );
+      });
+    };
+
+    updateActiveSectionFromScroll();
+    container.addEventListener("scroll", updateActiveSectionFromScroll, { passive: true });
+    window.addEventListener("resize", updateActiveSectionFromScroll);
+
+    return () => {
+      container.removeEventListener("scroll", updateActiveSectionFromScroll);
+      window.removeEventListener("resize", updateActiveSectionFromScroll);
+      if (scrollRafRef.current != null) {
+        window.cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, [defaultSectionTitle, reviewParagraphs]);
 
   useEffect(() => {
     if (!popoverDragging) {
@@ -727,7 +788,7 @@ export function ReviewWorkbenchPage({
               dragging={popoverDragging}
             />
           )}
-          <div className="document-scroll">
+          <div ref={documentScrollRef} className="document-scroll">
           {reviewParagraphs.map((paragraph) => (
             <DocumentParagraphBlock
                 key={paragraph.id}
