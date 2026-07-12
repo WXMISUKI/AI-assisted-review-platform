@@ -206,6 +206,19 @@ export function ReviewWorkbenchPage({
     });
     return map;
   }, [reviewParagraphs]);
+  const issuesByParagraphId = useMemo(() => {
+    const map = new Map<string, ReviewIssue[]>();
+    issues.forEach((issue) => {
+      const current = map.get(issue.anchor.paragraphId);
+      if (current) {
+        current.push(issue);
+        return;
+      }
+
+      map.set(issue.anchor.paragraphId, [issue]);
+    });
+    return map;
+  }, [issues]);
   const sectionOutline = useMemo(() => {
     if (recoveredStructure?.sections && recoveredStructure.sections.length > 0) {
       return recoveredStructure.sections.map((section) => ({
@@ -244,7 +257,10 @@ export function ReviewWorkbenchPage({
   }, [recoveredStructure?.sections, reviewParagraphs]);
   const defaultSectionTitle =
     recoveredStructure?.progress.currentSection ?? reviewParagraphs[0]?.section ?? "";
+  const defaultParagraphId =
+    recoveredStructure?.progress.currentParagraphId ?? reviewParagraphs[0]?.id ?? "";
   const [activeSectionTitle, setActiveSectionTitle] = useState(defaultSectionTitle);
+  const [activeParagraphId, setActiveParagraphId] = useState(defaultParagraphId);
   const processedParagraphs = useMemo(
     () => buildProcessedParagraphs(reviewParagraphs, issues, reviewMode),
     [issues, reviewParagraphs, reviewMode],
@@ -310,6 +326,10 @@ export function ReviewWorkbenchPage({
   }, [defaultSectionTitle]);
 
   useEffect(() => {
+    setActiveParagraphId(defaultParagraphId);
+  }, [defaultParagraphId]);
+
+  useEffect(() => {
     const container = documentScrollRef.current;
     if (!container) {
       return;
@@ -326,6 +346,8 @@ export function ReviewWorkbenchPage({
         const visibleFloor = containerRect.top + 24;
 
         let nextSectionTitle = defaultSectionTitle;
+        let nextParagraphId = defaultParagraphId;
+        let bestDistance = Number.POSITIVE_INFINITY;
         let foundVisibleParagraph = false;
 
         for (const paragraph of reviewParagraphs) {
@@ -338,10 +360,12 @@ export function ReviewWorkbenchPage({
           const isVisible = rect.bottom >= visibleFloor && rect.top <= containerRect.bottom - 24;
           if (isVisible) {
             foundVisibleParagraph = true;
-          }
-
-          if (isVisible && rect.top <= sectionPivot) {
-            nextSectionTitle = paragraph.section;
+            const distance = Math.abs(rect.top - sectionPivot);
+            if (distance <= bestDistance) {
+              bestDistance = distance;
+              nextParagraphId = paragraph.id;
+              nextSectionTitle = paragraph.section;
+            }
           }
         }
 
@@ -351,6 +375,9 @@ export function ReviewWorkbenchPage({
 
         setActiveSectionTitle((currentSection) =>
           currentSection === nextSectionTitle ? currentSection : nextSectionTitle,
+        );
+        setActiveParagraphId((currentParagraph) =>
+          currentParagraph === nextParagraphId ? currentParagraph : nextParagraphId,
         );
       });
     };
@@ -425,6 +452,7 @@ export function ReviewWorkbenchPage({
     }
 
     setActiveIssueId(issueId);
+    setActiveParagraphId(issue.anchor.paragraphId);
     setActiveSectionTitle(sectionByParagraphId.get(issue.anchor.paragraphId) ?? defaultSectionTitle);
     window.requestAnimationFrame(() => {
       const element =
@@ -530,6 +558,8 @@ export function ReviewWorkbenchPage({
       text: selectedText,
       popover,
     });
+    setActiveParagraphId(paragraph.id);
+    setActiveSectionTitle(paragraph.section);
     setManualForm({
       title: "人工补充审查意见",
       reason: "",
@@ -582,6 +612,7 @@ export function ReviewWorkbenchPage({
       ...currentDrafts,
       [issueId]: newIssue.finding.suggestion,
     }));
+    setActiveParagraphId(selectionDraft.paragraphId);
     setActiveSectionTitle(
       reviewParagraphs.find((paragraph) => paragraph.id === selectionDraft.paragraphId)?.section ??
         defaultSectionTitle,
@@ -747,6 +778,7 @@ export function ReviewWorkbenchPage({
               type="button"
               onClick={() => {
                 setActiveSectionTitle(section.title);
+                setActiveParagraphId(section.firstParagraphId ?? defaultParagraphId);
                 if (section.firstParagraphId) {
                   paragraphRefs.current[section.firstParagraphId]?.scrollIntoView({
                     behavior: "smooth",
@@ -793,8 +825,9 @@ export function ReviewWorkbenchPage({
             <DocumentParagraphBlock
                 key={paragraph.id}
                 paragraph={paragraph}
-                issues={issues.filter((issue) => issue.anchor.paragraphId === paragraph.id)}
+                issues={issuesByParagraphId.get(paragraph.id) ?? []}
                 activeIssueId={activeIssueId}
+                isCurrentParagraph={paragraph.id === activeParagraphId}
                 onIssueClick={(issueId) => focusIssue(issueId, "card")}
                 onTextSelection={captureSelection}
                 refSetter={(node) => {
@@ -838,6 +871,9 @@ export function ReviewWorkbenchPage({
                       setActiveSectionTitle(group.title);
                       const firstIssue = group.issues[0];
                       if (firstIssue) {
+                        setActiveParagraphId(firstIssue.anchor.paragraphId);
+                      }
+                      if (firstIssue) {
                         focusIssue(firstIssue.id);
                       }
                     }}
@@ -852,6 +888,7 @@ export function ReviewWorkbenchPage({
                       key={issue.id}
                       issue={issue}
                       sectionLabel={group.title}
+                      isCurrentParagraph={issue.anchor.paragraphId === activeParagraphId}
                       isActive={issue.id === activeIssueId}
                       draftSuggestion={draftSuggestions[issue.id] ?? issue.finding.suggestion}
                       onFocus={() => focusIssue(issue.id)}
@@ -1145,6 +1182,7 @@ function DocumentParagraphBlock({
   paragraph,
   issues,
   activeIssueId,
+  isCurrentParagraph,
   onIssueClick,
   onTextSelection,
   refSetter,
@@ -1152,6 +1190,7 @@ function DocumentParagraphBlock({
   paragraph: DocumentParagraph;
   issues: ReviewIssue[];
   activeIssueId: string;
+  isCurrentParagraph: boolean;
   onIssueClick: (issueId: string) => void;
   onTextSelection: (paragraph: DocumentParagraph, textElement: HTMLParagraphElement | null) => void;
   refSetter: (node: HTMLDivElement | null) => void;
@@ -1182,7 +1221,7 @@ function DocumentParagraphBlock({
     <article
       ref={refSetter}
       className={
-        issues.some((issue) => issue.id === activeIssueId)
+        isCurrentParagraph || issues.some((issue) => issue.id === activeIssueId)
           ? "document-paragraph active"
           : "document-paragraph"
       }
@@ -1219,6 +1258,7 @@ function DocumentParagraphBlock({
 function IssueCard({
   issue,
   sectionLabel,
+  isCurrentParagraph,
   isActive,
   draftSuggestion,
   onFocus,
@@ -1230,6 +1270,7 @@ function IssueCard({
 }: {
   issue: ReviewIssue;
   sectionLabel: string;
+  isCurrentParagraph: boolean;
   isActive: boolean;
   draftSuggestion: string;
   onFocus: () => void;
@@ -1244,7 +1285,9 @@ function IssueCard({
   return (
     <article
       ref={refSetter}
-      className={`issue-card ${isActive ? "active" : ""} ${statusTone[issue.status]}`}
+      className={`issue-card ${isActive ? "active" : ""} ${
+        isCurrentParagraph ? "current-paragraph" : ""
+      } ${statusTone[issue.status]}`}
     >
       <button className="issue-card-header" type="button" onClick={onFocus}>
         <span className={`severity severity-${issue.severity}`}>
@@ -1253,6 +1296,7 @@ function IssueCard({
         <span className="issue-id">{issue.id}</span>
         <span className="source">{issue.source === "ai" ? "AI 标注" : "人工标注"}</span>
         <span className="source">{sectionLabel}</span>
+        {isCurrentParagraph && <span className="source">当前段</span>}
       </button>
 
       <div className="issue-card-body">
