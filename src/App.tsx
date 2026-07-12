@@ -898,21 +898,28 @@ function DocumentLibraryPage({
           <h2>历史记录</h2>
         </div>
         <div className="history-list">
-          {recentDocs.map((doc) => (
-            <button
-              key={doc.id}
-              className="history-item"
-              type="button"
-              title={`${doc.name}\n${doc.project}`}
-              onClick={() => onOpenDocument(doc.id)}
-            >
-              <span>
-                <strong>{doc.name}</strong>
-                <small>{doc.project}</small>
-              </span>
-              <GitCompareArrows size={16} />
-            </button>
-          ))}
+          {recentDocs.map((doc) => {
+            const lifecycle = getTaskLifecycleSummary(doc);
+
+            return (
+              <button
+                key={doc.id}
+                className="history-item"
+                type="button"
+                title={`${doc.name}\n${doc.project}`}
+                onClick={() => onOpenDocument(doc.id)}
+              >
+                <span>
+                  <strong>{doc.name}</strong>
+                  <small>{doc.project}</small>
+                  <small className="history-lifecycle">
+                    {lifecycle.label} · {lifecycle.detail}
+                  </small>
+                </span>
+                <GitCompareArrows size={16} />
+              </button>
+            );
+          })}
         </div>
       </aside>
 
@@ -1027,57 +1034,64 @@ function DocumentLibraryPage({
           </div>
 
           <div className="table-body">
-            {documents.map((doc) => (
-              <div key={doc.id} className="table-row">
-                <div>
-                  <strong>{doc.name}</strong>
-                  <small>
-                    上传人：{doc.uploader}
-                    {doc.sourceObject ? ` · 已存储 ${formatFileSize(doc.sourceObject.size)}` : " · mock"}
-                    {doc.ocrJob ? ` · ${formatOcrJobLabel(doc.ocrJob)}` : ""}
-                    {doc.failure ? ` · ${doc.failure.message}` : ""}
-                  </small>
+            {documents.map((doc) => {
+              const lifecycle = getTaskLifecycleSummary(doc);
+
+              return (
+                <div key={doc.id} className="table-row">
+                  <div>
+                    <strong>{doc.name}</strong>
+                    <small>
+                      上传人：{doc.uploader}
+                      {doc.sourceObject ? ` · 已存储 ${formatFileSize(doc.sourceObject.size)}` : " · mock"}
+                      {doc.ocrJob ? ` · ${formatOcrJobLabel(doc.ocrJob)}` : ""}
+                      {doc.failure ? ` · ${doc.failure.message}` : ""}
+                    </small>
+                    <small className="table-row-lifecycle">
+                      {lifecycle.label} · {lifecycle.detail}
+                    </small>
+                  </div>
+                  <span>{doc.project}</span>
+                  <span className={`status-pill status-${doc.status}`}>{statusLabels[doc.status]}</span>
+                  <span className="mode-pill">{modeName(doc.mode)}</span>
+                  <span>{doc.updatedAt}</span>
+                  <div className="row-actions">
+                    <button type="button" onClick={() => onOpenDocument(doc.id)}>
+                      查看
+                    </button>
+                    {doc.resultAsset ? (
+                      <button type="button" className="primary" onClick={() => onOpenResult(doc.id)}>
+                        {doc.resultAsset.type === "supervisor-report" ? "查看报告" : "查看结果"}
+                      </button>
+                    ) : doc.status === "ready" || doc.status === "completed" ? (
+                      <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
+                        打开详情
+                      </button>
+                    ) : doc.status === "parsing" ? (
+                      <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
+                        查看识别进度
+                      </button>
+                    ) : doc.status === "reviewing" ? (
+                      <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
+                        继续审核
+                      </button>
+                    ) : (
+                      <button type="button" className="primary" onClick={() => onStartReview(doc.id)}>
+                        开始审核
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="danger subtle"
+                      onClick={() => onDeleteDocument(doc.id)}
+                    >
+                      <Trash2 size={15} />
+                      删除
+                    </button>
+                  </div>
                 </div>
-                <span>{doc.project}</span>
-                <span className={`status-pill status-${doc.status}`}>{statusLabels[doc.status]}</span>
-                <span className="mode-pill">{modeName(doc.mode)}</span>
-                <span>{doc.updatedAt}</span>
-                <div className="row-actions">
-                  <button type="button" onClick={() => onOpenDocument(doc.id)}>
-                    查看
-                  </button>
-                  {doc.resultAsset ? (
-                    <button type="button" className="primary" onClick={() => onOpenResult(doc.id)}>
-                      {doc.resultAsset.type === "supervisor-report" ? "查看报告" : "查看结果"}
-                    </button>
-                  ) : doc.status === "ready" || doc.status === "completed" ? (
-                    <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
-                      打开详情
-                    </button>
-                  ) : doc.status === "parsing" ? (
-                    <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
-                      查看识别进度
-                    </button>
-                  ) : doc.status === "reviewing" ? (
-                    <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
-                      继续审核
-                    </button>
-                  ) : (
-                    <button type="button" className="primary" onClick={() => onStartReview(doc.id)}>
-                      开始审核
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="danger subtle"
-                    onClick={() => onDeleteDocument(doc.id)}
-                  >
-                    <Trash2 size={15} />
-                    删除
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -2056,4 +2070,81 @@ function formatOcrJobLabel(job: ReviewTaskOcrJob) {
   }
 
   return "OCR已提交";
+}
+
+function getTaskLifecycleSummary(task: ReviewTask) {
+  if (task.status === "parsing") {
+    const progress = task.ocrJob?.progress;
+    const percent =
+      progress &&
+      typeof progress.totalPages === "number" &&
+      progress.totalPages > 0 &&
+      typeof progress.extractedPages === "number"
+        ? Math.round((progress.extractedPages / progress.totalPages) * 100)
+        : null;
+
+    return {
+      label: "OCR识别中",
+      detail:
+        percent != null
+          ? `${percent}% · ${task.ocrJob?.message ?? "正在识别版面与段落"}`
+          : task.ocrJob?.message ?? "正在识别版面与段落",
+    };
+  }
+
+  if (task.status === "reviewing") {
+    const stageLabel = pipelineStageLabels[task.streamStageType ?? "structure-restoration"];
+    const paragraphLabel =
+      task.streamParagraphLabel ??
+      task.recoveredStructure?.progress.currentSection ??
+      task.streamCurrentParagraphId ??
+      "当前段落待恢复";
+    const position =
+      task.streamParagraphIndex && task.streamParagraphTotal
+        ? ` ${task.streamParagraphIndex}/${task.streamParagraphTotal}`
+        : "";
+
+    return {
+      label: "审查准备中",
+      detail: `${stageLabel}${position} · ${paragraphLabel}`,
+    };
+  }
+
+  if (task.status === "ready") {
+    return {
+      label: "待审核",
+      detail:
+        task.recoveredStructure?.progress.currentSection ??
+        task.recoveredStructure?.sourceFormat ??
+        "结构已恢复，等待打开详情",
+    };
+  }
+
+  if (task.status === "completed") {
+    return {
+      label: task.resultAsset ? "结果已生成" : "已完成",
+      detail: task.resultAsset
+        ? `${task.resultAsset.type === "supervisor-report" ? "监理报告" : "整改快照"} · ${formatResultTime(task.resultAsset.createdAt)}`
+        : "审查结果已归档",
+    };
+  }
+
+  if (task.status === "failed") {
+    return {
+      label: "处理失败",
+      detail: task.failure?.message ?? task.ocrJob?.message ?? "请检查失败原因",
+    };
+  }
+
+  if (task.status === "uploaded") {
+    return {
+      label: "待开始",
+      detail: task.sourceObject ? "已上传到对象存储，等待提交 OCR" : "演示任务，等待开始审核",
+    };
+  }
+
+  return {
+    label: statusLabels[task.status],
+    detail: task.ocrJob?.message ?? "任务状态正常",
+  };
 }
