@@ -304,6 +304,7 @@ export interface ReviewSession {
   recoveredStructure?: RecoveredDocumentStructure;
   issues: ReviewIssue[];
   processedParagraphs: DocumentParagraph[];
+  lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }
 
 export interface ReviewStorageSnapshot {

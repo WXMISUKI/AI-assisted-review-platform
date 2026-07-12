@@ -43,6 +43,7 @@ import {
   updateReviewTaskStreamStage,
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
+import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
 import {
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
@@ -427,35 +428,38 @@ export function App() {
       return;
     }
 
+    const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
     setSelectedDocId(documentId);
 
-    if (doc.resultAsset) {
+    if (lifecycle.entryTarget === "result" || doc.resultAsset) {
       setActivePage("review-result");
       return;
     }
 
-    if (doc.status === "ready" || doc.status === "completed") {
+    if (lifecycle.entryTarget === "detail" || doc.status === "ready") {
       setActivePage("review-detail");
       return;
     }
 
-    if (doc.status === "parsing") {
+    if (lifecycle.entryTarget === "loading" && doc.status === "uploaded") {
+      startReview(documentId);
+      return;
+    }
+
+    if (doc.status === "parsing" || lifecycle.phase === "ocr-processing") {
       setLoadingDocId(documentId);
       setStreamStageIndex(0);
       setActivePage("review-loading");
       return;
     }
 
-    if (doc.status === "reviewing") {
+    if (doc.status === "reviewing" || lifecycle.phase === "review-preparation") {
       setLoadingDocId(documentId);
       setStreamStageIndex(doc.streamStageIndex);
       setActivePage("review-loading");
       return;
     }
 
-    if (doc.status === "uploaded") {
-      startReview(documentId);
-    }
   }
 
   function openResult(documentId: string) {

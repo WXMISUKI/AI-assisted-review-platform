@@ -51,7 +51,7 @@ import {
 } from "./appShellDisplay";
 import { roleLabels } from "./appShellTypes";
 import type { Role, Session, StreamingStage, ThemeMode, UploadDraft, LibraryDocument } from "./appShellTypes";
-import { getTaskLifecycleSummary } from "./domain/reviewTaskLifecycle";
+import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
 import {
   fetchBackendHealth,
   fetchMinioStatus,
@@ -175,7 +175,7 @@ export function DocumentLibraryPage({
         </div>
         <div className="history-list">
           {recentDocs.map((doc) => {
-            const lifecycle = getTaskLifecycleSummary(doc);
+            const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
 
             return (
               <button
@@ -189,7 +189,7 @@ export function DocumentLibraryPage({
                   <strong>{doc.name}</strong>
                   <small>{doc.project}</small>
                   <small className="history-lifecycle">
-                    {lifecycle.label} · {lifecycle.detail}
+                    {lifecycle.summary.label} · {lifecycle.summary.detail}
                   </small>
                 </span>
                 <GitCompareArrows size={16} />
@@ -311,7 +311,7 @@ export function DocumentLibraryPage({
 
           <div className="table-body">
             {documents.map((doc) => {
-              const lifecycle = getTaskLifecycleSummary(doc);
+              const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
 
               return (
                 <div key={doc.id} className="table-row">
@@ -324,7 +324,7 @@ export function DocumentLibraryPage({
                       {doc.failure ? ` · ${doc.failure.message}` : ""}
                     </small>
                     <small className="table-row-lifecycle">
-                      {lifecycle.label} · {lifecycle.detail}
+                      {lifecycle.summary.label} · {lifecycle.summary.detail}
                     </small>
                   </div>
                   <span>{doc.project}</span>
@@ -829,7 +829,8 @@ export function ReviewLoadingPage({
   stages: StreamingStage[];
   stageIndex: number;
 }) {
-  const loadingMode = document?.status === "parsing" ? "ocr" : "review";
+  const lifecycle = document ? getReviewTaskOrchestrationSnapshot(document) : null;
+  const loadingMode = lifecycle?.phase === "ocr-processing" ? "ocr" : "review";
   const ocrPercent = getOcrPercent(document?.ocrJob);
   const recoveredStructure = document?.recoveredStructure;
   const recoveredSections = recoveredStructure?.sections ?? [];
@@ -846,14 +847,14 @@ export function ReviewLoadingPage({
             <h2>{document?.name ?? "文档接入任务"}</h2>
             <p>系统正在识别版面、章节和可锚定文本。完成后会自动进入审查准备阶段。</p>
             <div className="streaming-meta">
-              <span>{pipelineStageLabels[stage.stageType ?? "ocr"]}</span>
+              <span>{lifecycle?.currentStageLabel ?? pipelineStageLabels[stage.stageType ?? "ocr"]}</span>
               {stage.agentLabel && <span>{stage.agentLabel}</span>}
               {stage.currentParagraphLabel && <span>{stage.currentParagraphLabel}</span>}
             </div>
           </div>
           <div className="streaming-progress">
-            <strong>{ocrPercent}%</strong>
-            <span>{document?.ocrJob?.message || "正在提取文档结构"}</span>
+            <strong>{lifecycle?.progressLabel ?? `${ocrPercent}%`}</strong>
+            <span>{lifecycle?.currentStageLabel ?? document?.ocrJob?.message ?? "正在提取文档结构"}</span>
           </div>
         </section>
 
@@ -892,8 +893,8 @@ export function ReviewLoadingPage({
             <div className="streaming-stage-card">
               <Sparkles size={18} />
               <div>
-                <strong>OCR 正在处理</strong>
-                <p>{document?.ocrJob?.message || "等待 OCR 服务返回分页与版面信息。"}</p>
+                <strong>{lifecycle?.summary.label ?? "OCR 正在处理"}</strong>
+                <p>{lifecycle?.summary.detail ?? document?.ocrJob?.message ?? "等待 OCR 服务返回分页与版面信息。"}</p>
               </div>
             </div>
             <div className="streaming-snippets">

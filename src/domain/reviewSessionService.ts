@@ -1,6 +1,7 @@
 import { documentParagraphs, initialReviewIssues } from "./mockReview";
 import { recoverStructureFromParagraphs } from "./ocrStructureRecovery";
 import { loadReviewTasks, saveReviewTasks } from "./reviewTaskRepository";
+import { getReviewTaskOrchestrationSnapshot } from "./reviewTaskOrchestration";
 import {
   buildProcessedParagraphs,
   createReviewResultAsset,
@@ -274,12 +275,14 @@ export function markReviewTaskReady(
 }
 
 export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewSession {
+  const lifecycle = getReviewTaskOrchestrationSnapshot(task);
   return {
     task,
     paragraphs: task.recoveredStructure?.paragraphs ?? task.paragraphs,
     recoveredStructure: task.recoveredStructure,
     issues: task.issues,
     processedParagraphs: buildProcessedParagraphs(task.recoveredStructure?.paragraphs ?? task.paragraphs, task.issues, mode),
+    lifecycle,
   };
 }
 
