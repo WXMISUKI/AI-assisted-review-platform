@@ -259,6 +259,50 @@ The review workbench SHALL persist issue decisions through the review session se
 - **WHEN** a user leaves and reopens a task
 - **THEN** previously resolved issue decisions are restored in the workbench
 
+### Requirement: Section-aware outline navigation
+The review workbench SHALL render the document outline from recovered sections when available.
+
+#### Scenario: Recovered sections exist
+- **WHEN** the task includes a recovered document structure with sections
+- **THEN** the outline panel shows section titles and paragraph counts instead of repeating each paragraph's section label
+
+#### Scenario: No recovered sections exist
+- **WHEN** the task does not yet have recovered sections
+- **THEN** the outline can fall back to the existing paragraph-based structure without blocking the workbench
+
+### Requirement: Current section visibility
+The review workbench SHALL surface the current section and current paragraph location in the detail context.
+
+#### Scenario: Current section is known
+- **WHEN** the recovered structure or stream snapshot includes a current section
+- **THEN** the workbench displays that section as the active reading location
+
+#### Scenario: Current paragraph is known
+- **WHEN** the recovered structure or stream snapshot includes a current paragraph id
+- **THEN** the workbench can expose that paragraph as the current processing anchor
+
+### Requirement: Section-linked issue grouping
+The review workbench SHALL group issues in the side panel by their document section when section information is available.
+
+#### Scenario: Issues belong to sections
+- **WHEN** the workbench has recovered sections or paragraph section labels
+- **THEN** the issue panel shows section headers with the issue cards belonging to each section
+
+#### Scenario: Section data is unavailable
+- **WHEN** the workbench cannot determine section boundaries
+- **THEN** the issue panel can fall back to the existing flat list without blocking review actions
+
+### Requirement: Current section synchronization
+The review workbench SHALL keep the active section synchronized between outline navigation, document focus, and issue panel context.
+
+#### Scenario: User clicks a section
+- **WHEN** the user selects a section in the outline
+- **THEN** the workbench updates the active section context and keeps the matching issue group visually emphasized
+
+#### Scenario: User focuses an issue
+- **WHEN** the user clicks an issue card or highlighted text
+- **THEN** the workbench can promote that issue's section to the active section context
+
 ### Requirement: Recovered structure summary on workbench
 The review workbench SHALL show a compact summary of the hydrated recovered structure when available.
 

@@ -197,6 +197,52 @@ export function ReviewWorkbenchPage({
 
   const counts = useMemo(() => getIssueCounts(issues), [issues]);
   const reviewComplete = useMemo(() => isReviewComplete(issues), [issues]);
+  const sectionByParagraphId = useMemo(() => {
+    const map = new Map<string, string>();
+    reviewParagraphs.forEach((paragraph) => {
+      map.set(paragraph.id, paragraph.section);
+    });
+    return map;
+  }, [reviewParagraphs]);
+  const sectionOutline = useMemo(() => {
+    if (recoveredStructure?.sections && recoveredStructure.sections.length > 0) {
+      return recoveredStructure.sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        paragraphCount: section.paragraphIds.length,
+        firstParagraphId: section.paragraphIds[0] ?? null,
+      }));
+    }
+
+    const fallback = new Map<
+      string,
+      { title: string; paragraphCount: number; firstParagraphId: string | null }
+    >();
+
+    reviewParagraphs.forEach((paragraph) => {
+      const existing = fallback.get(paragraph.section);
+      if (existing) {
+        existing.paragraphCount += 1;
+        return;
+      }
+
+      fallback.set(paragraph.section, {
+        title: paragraph.section,
+        paragraphCount: 1,
+        firstParagraphId: paragraph.id,
+      });
+    });
+
+    return Array.from(fallback.entries()).map(([title, entry], index) => ({
+      id: `section-fallback-${index + 1}`,
+      title,
+      paragraphCount: entry.paragraphCount,
+      firstParagraphId: entry.firstParagraphId,
+    }));
+  }, [recoveredStructure?.sections, reviewParagraphs]);
+  const defaultSectionTitle =
+    recoveredStructure?.progress.currentSection ?? reviewParagraphs[0]?.section ?? "";
+  const [activeSectionTitle, setActiveSectionTitle] = useState(defaultSectionTitle);
   const processedParagraphs = useMemo(
     () => buildProcessedParagraphs(reviewParagraphs, issues, reviewMode),
     [issues, reviewParagraphs, reviewMode],
@@ -205,6 +251,35 @@ export function ReviewWorkbenchPage({
     () => issues.filter((issue) => matchesFilter(issue, filter)),
     [filter, issues],
   );
+  const issueGroups = useMemo(() => {
+    const grouped = new Map<string, ReviewIssue[]>();
+
+    filteredIssues.forEach((issue) => {
+      const sectionTitle = sectionByParagraphId.get(issue.anchor.paragraphId) ?? "未分组";
+      const current = grouped.get(sectionTitle);
+      if (current) {
+        current.push(issue);
+        return;
+      }
+
+      grouped.set(sectionTitle, [issue]);
+    });
+
+    const orderedGroups: Array<{ title: string; issues: ReviewIssue[] }> = [];
+    sectionOutline.forEach((section) => {
+      const items = grouped.get(section.title);
+      if (items && items.length > 0) {
+        orderedGroups.push({ title: section.title, issues: items });
+        grouped.delete(section.title);
+      }
+    });
+
+    grouped.forEach((items, title) => {
+      orderedGroups.push({ title, issues: items });
+    });
+
+    return orderedGroups;
+  }, [filteredIssues, sectionByParagraphId, sectionOutline]);
 
   const activeIssue = issues.find((issue) => issue.id === activeIssueId) ?? issues[0];
   const visibleModes: ReviewMode[] =
@@ -227,6 +302,10 @@ export function ReviewWorkbenchPage({
       Object.fromEntries(initialIssuesProp.map((issue) => [issue.id, issue.finding.suggestion])),
     );
   }, [initialIssuesProp]);
+
+  useEffect(() => {
+    setActiveSectionTitle(defaultSectionTitle);
+  }, [defaultSectionTitle]);
 
   useEffect(() => {
     if (!popoverDragging) {
@@ -285,6 +364,7 @@ export function ReviewWorkbenchPage({
     }
 
     setActiveIssueId(issueId);
+    setActiveSectionTitle(sectionByParagraphId.get(issue.anchor.paragraphId) ?? defaultSectionTitle);
     window.requestAnimationFrame(() => {
       const element =
         target === "paragraph"
@@ -441,6 +521,10 @@ export function ReviewWorkbenchPage({
       ...currentDrafts,
       [issueId]: newIssue.finding.suggestion,
     }));
+    setActiveSectionTitle(
+      reviewParagraphs.find((paragraph) => paragraph.id === selectionDraft.paragraphId)?.section ??
+        defaultSectionTitle,
+    );
     onManualIssueAdd?.(newIssue);
     setFilter("all");
     setActiveIssueId(issueId);
@@ -595,20 +679,24 @@ export function ReviewWorkbenchPage({
             <FileText size={18} />
             <span>方案章节</span>
           </div>
-          {reviewParagraphs.map((paragraph) => (
+          {sectionOutline.map((section) => (
             <button
-              key={paragraph.id}
-              className="outline-item"
+              key={section.id}
+              className={activeSectionTitle === section.title ? "outline-item active" : "outline-item"}
               type="button"
               onClick={() => {
-                paragraphRefs.current[paragraph.id]?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "center",
-                });
+                setActiveSectionTitle(section.title);
+                if (section.firstParagraphId) {
+                  paragraphRefs.current[section.firstParagraphId]?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
+                }
               }}
             >
               <ChevronRight size={15} />
-              <span>{paragraph.section}</span>
+              <span>{section.title}</span>
+              <small>{section.paragraphCount} 段</small>
             </button>
           ))}
         </aside>
@@ -679,23 +767,46 @@ export function ReviewWorkbenchPage({
           </div>
 
           <div className="issue-list">
-            {filteredIssues.map((issue) => (
-              <IssueCard
-                key={issue.id}
-                issue={issue}
-                isActive={issue.id === activeIssueId}
-                draftSuggestion={draftSuggestions[issue.id] ?? issue.finding.suggestion}
-                onFocus={() => focusIssue(issue.id)}
-                onDraftChange={(value) => updateDraft(issue.id, value)}
-                onAccept={() => updateIssue(issue.id, "accepted")}
-                onReject={() => updateIssue(issue.id, "rejected")}
-                onRequestDelete={() => setDeleteCandidateId(issue.id)}
-                refSetter={(node) => {
-                  cardRefs.current[issue.id] = node;
-                }}
-              />
+            {issueGroups.map((group) => (
+              <section key={group.title} className={activeSectionTitle === group.title ? "issue-group active" : "issue-group"}>
+                <div className="issue-group-header">
+                  <button
+                    type="button"
+                    className="issue-group-title"
+                    onClick={() => {
+                      setActiveSectionTitle(group.title);
+                      const firstIssue = group.issues[0];
+                      if (firstIssue) {
+                        focusIssue(firstIssue.id);
+                      }
+                    }}
+                  >
+                    <strong>{group.title}</strong>
+                    <span>{group.issues.length} 项</span>
+                  </button>
+                </div>
+                <div className="issue-group-list">
+                  {group.issues.map((issue) => (
+                    <IssueCard
+                      key={issue.id}
+                      issue={issue}
+                      sectionLabel={group.title}
+                      isActive={issue.id === activeIssueId}
+                      draftSuggestion={draftSuggestions[issue.id] ?? issue.finding.suggestion}
+                      onFocus={() => focusIssue(issue.id)}
+                      onDraftChange={(value) => updateDraft(issue.id, value)}
+                      onAccept={() => updateIssue(issue.id, "accepted")}
+                      onReject={() => updateIssue(issue.id, "rejected")}
+                      onRequestDelete={() => setDeleteCandidateId(issue.id)}
+                      refSetter={(node) => {
+                        cardRefs.current[issue.id] = node;
+                      }}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
-            {filteredIssues.length === 0 && (
+            {issueGroups.length === 0 && (
               <div className="empty-state">当前筛选条件下没有审查问题。</div>
             )}
           </div>
@@ -1046,6 +1157,7 @@ function DocumentParagraphBlock({
 
 function IssueCard({
   issue,
+  sectionLabel,
   isActive,
   draftSuggestion,
   onFocus,
@@ -1056,6 +1168,7 @@ function IssueCard({
   refSetter,
 }: {
   issue: ReviewIssue;
+  sectionLabel: string;
   isActive: boolean;
   draftSuggestion: string;
   onFocus: () => void;
@@ -1078,6 +1191,7 @@ function IssueCard({
         </span>
         <span className="issue-id">{issue.id}</span>
         <span className="source">{issue.source === "ai" ? "AI 标注" : "人工标注"}</span>
+        <span className="source">{sectionLabel}</span>
       </button>
 
       <div className="issue-card-body">

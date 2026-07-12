@@ -1829,7 +1829,14 @@ function ReviewLoadingPage({
           </div>
           {recoveredSections.length > 0 ? (
             recoveredSections.map((section) => (
-              <div key={section.id} className="streaming-outline-item">
+              <div
+                key={section.id}
+                className={
+                  recoveredCurrentSection === section.title
+                    ? "streaming-outline-item active"
+                    : "streaming-outline-item"
+                }
+              >
                 <CheckCircle2 size={15} />
                 {section.title} · {section.paragraphIds.length} 段
               </div>
