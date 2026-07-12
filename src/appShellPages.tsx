@@ -39,7 +39,6 @@ import {
   getOcrLoadingStageIndex,
   getOcrPercent,
   getOcrStepIndex,
-  getTaskLifecycleSummary,
   MetricBlock,
   modeName,
   pageLabels,
@@ -52,6 +51,7 @@ import {
 } from "./appShellDisplay";
 import { roleLabels } from "./appShellTypes";
 import type { Role, Session, StreamingStage, ThemeMode, UploadDraft, LibraryDocument } from "./appShellTypes";
+import { getTaskLifecycleSummary } from "./domain/reviewTaskLifecycle";
 import {
   fetchBackendHealth,
   fetchMinioStatus,
