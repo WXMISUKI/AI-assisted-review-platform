@@ -261,6 +261,13 @@ export function ReviewWorkbenchPage({
     recoveredStructure?.progress.currentParagraphId ?? reviewParagraphs[0]?.id ?? "";
   const [activeSectionTitle, setActiveSectionTitle] = useState(defaultSectionTitle);
   const [activeParagraphId, setActiveParagraphId] = useState(defaultParagraphId);
+  const activeParagraph = useMemo(
+    () => reviewParagraphs.find((paragraph) => paragraph.id === activeParagraphId) ?? null,
+    [activeParagraphId, reviewParagraphs],
+  );
+  const activeParagraphLabel = activeParagraph
+    ? `${activeParagraph.section} / ${activeParagraph.id}`
+    : "未定位到段落";
   const processedParagraphs = useMemo(
     () => buildProcessedParagraphs(reviewParagraphs, issues, reviewMode),
     [issues, reviewParagraphs, reviewMode],
@@ -694,6 +701,10 @@ export function ReviewWorkbenchPage({
           <LocateFixed size={18} />
           <span>{activeIssue ? `当前定位：${activeIssue.id}` : "当前定位：无"}</span>
         </div>
+        <div className="active-paragraph">
+          <ScrollText size={18} />
+          <span>当前段落：{activeParagraphLabel}</span>
+        </div>
       </section>
 
       <section className="mode-switch-panel" aria-label="审查模式切换">
@@ -884,10 +895,15 @@ export function ReviewWorkbenchPage({
                 </div>
                 <div className="issue-group-list">
                   {group.issues.map((issue) => (
-                    <IssueCard
+                  <IssueCard
                       key={issue.id}
                       issue={issue}
                       sectionLabel={group.title}
+                      currentParagraphLabel={
+                        issue.anchor.paragraphId === activeParagraphId
+                          ? activeParagraphLabel
+                          : null
+                      }
                       isCurrentParagraph={issue.anchor.paragraphId === activeParagraphId}
                       isActive={issue.id === activeIssueId}
                       draftSuggestion={draftSuggestions[issue.id] ?? issue.finding.suggestion}
@@ -1258,6 +1274,7 @@ function DocumentParagraphBlock({
 function IssueCard({
   issue,
   sectionLabel,
+  currentParagraphLabel,
   isCurrentParagraph,
   isActive,
   draftSuggestion,
@@ -1270,6 +1287,7 @@ function IssueCard({
 }: {
   issue: ReviewIssue;
   sectionLabel: string;
+  currentParagraphLabel: string | null;
   isCurrentParagraph: boolean;
   isActive: boolean;
   draftSuggestion: string;
@@ -1296,10 +1314,16 @@ function IssueCard({
         <span className="issue-id">{issue.id}</span>
         <span className="source">{issue.source === "ai" ? "AI 标注" : "人工标注"}</span>
         <span className="source">{sectionLabel}</span>
-        {isCurrentParagraph && <span className="source">当前段</span>}
+        {isCurrentParagraph && <span className="source current-flag">当前段</span>}
       </button>
 
       <div className="issue-card-body">
+        {currentParagraphLabel && (
+          <div className="issue-current-anchor" aria-label="当前段落">
+            <ScrollText size={14} />
+            <span>{currentParagraphLabel}</span>
+          </div>
+        )}
         {issue.kernel && (
           <div className="kernel-summary" aria-label="审查内核摘要">
             <span>{scenarioLabels[issue.kernel.outputScenario]}</span>
