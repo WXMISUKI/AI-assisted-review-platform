@@ -29,6 +29,11 @@ export interface BackendHealthResult {
       bucket: string | null;
       region: string;
     };
+    summary?: {
+      total: number;
+      ready: number;
+      overall: "ready" | "degraded" | "unconfigured";
+    };
   };
   message?: string;
 }
@@ -36,13 +41,16 @@ export interface BackendHealthResult {
 export interface ProviderCheckResult {
   ok: boolean;
   status?: string;
+  configured?: boolean;
   model?: string;
+  hasBaseURL?: boolean;
   preview?: string;
   message?: string;
 }
 
 export interface OcrStatusResult {
   ok: boolean;
+  configured?: boolean;
   jobUrl: string;
   model: string;
   hasToken: boolean;
@@ -78,6 +86,7 @@ export interface MinioStatusResult {
   region: string;
   status?: string;
   message?: string;
+  summary?: string;
 }
 
 export interface MinioUploadResult {
@@ -88,12 +97,14 @@ export interface MinioUploadResult {
     originalFilename: string;
     contentType: string;
     size: number;
+    summary?: string;
   };
   message?: string;
 }
 
 export interface StoredObjectOcrSubmitResult {
   ok: boolean;
+  configured?: boolean;
   jobId?: string;
   status?: string;
   message?: string;
@@ -125,6 +136,8 @@ export interface ReviewStreamEvent {
   currentParagraphTotal?: number;
   currentParagraphLabel?: string;
   issueSummaries: string[];
+  providers?: BackendHealthResult["providers"];
+  completedAt?: string;
 }
 
 async function readJson<T>(response: Response): Promise<T> {

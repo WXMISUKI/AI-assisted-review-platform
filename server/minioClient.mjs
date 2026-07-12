@@ -90,6 +90,7 @@ export async function checkMinioBucket() {
       ...readiness,
       ok: true,
       status: "ok",
+      summary: "MinIO bucket reachable and ready for object uploads.",
     };
   } catch (error) {
     return {
@@ -123,6 +124,7 @@ export async function uploadDocumentObject({ buffer, filename, contentType }) {
     originalFilename: filename || "document",
     contentType: contentType || "application/octet-stream",
     size: buffer.length,
+    summary: "Object uploaded to MinIO successfully.",
   };
 }
 
@@ -144,5 +146,6 @@ export async function createPresignedDocumentUrl(key, expiresIn = defaultPresign
     key,
     url: withPublicEndpoint(signedUrl),
     expiresIn: normalizedExpiresIn,
+    summary: "Presigned document URL created successfully.",
   };
 }

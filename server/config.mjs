@@ -39,12 +39,12 @@ export const config = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY || "",
     baseURL: normalizeOpenAIBaseURL(process.env.OPENAI_BASE_URL || ""),
-    model: process.env.OPENAI_MODEL || "",
+    model: (process.env.OPENAI_MODEL || "").trim(),
   },
   paddleocr: {
     token: process.env.PADDLEOCR_TOKEN || "",
     jobUrl: process.env.PADDLEOCR_JOB_URL || "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs",
-    model: process.env.PADDLEOCR_MODEL || "PaddleOCR-VL-1.6",
+    model: (process.env.PADDLEOCR_MODEL || "PaddleOCR-VL-1.6").trim(),
   },
   minio: {
     endpoint: (process.env.MINIO_ENDPOINT || "").replace(/\/$/, ""),
@@ -57,28 +57,38 @@ export const config = {
 };
 
 export function getSafeProviderStatus() {
+  const openaiConfigured = Boolean(config.openai.apiKey && config.openai.model);
+  const paddleConfigured = Boolean(config.paddleocr.token && config.paddleocr.jobUrl && config.paddleocr.model);
+  const minioConfigured = Boolean(
+    config.minio.endpoint && config.minio.accessKey && config.minio.secretKey && config.minio.bucket,
+  );
+  const readyCount = [openaiConfigured, paddleConfigured, minioConfigured].filter(Boolean).length;
+
   return {
     openai: {
-      configured: Boolean(config.openai.apiKey && config.openai.model),
+      configured: openaiConfigured,
       hasBaseURL: Boolean(config.openai.baseURL),
       model: config.openai.model || null,
     },
     paddleocr: {
-      configured: Boolean(config.paddleocr.token && config.paddleocr.jobUrl && config.paddleocr.model),
+      configured: paddleConfigured,
       hasToken: Boolean(config.paddleocr.token),
       jobUrl: config.paddleocr.jobUrl,
       model: config.paddleocr.model,
     },
     minio: {
-      configured: Boolean(
-        config.minio.endpoint && config.minio.accessKey && config.minio.secretKey && config.minio.bucket,
-      ),
+      configured: minioConfigured,
       hasEndpoint: Boolean(config.minio.endpoint),
       hasPublicEndpoint: Boolean(config.minio.publicEndpoint),
       hasAccessKey: Boolean(config.minio.accessKey),
       hasSecretKey: Boolean(config.minio.secretKey),
       bucket: config.minio.bucket || null,
       region: config.minio.region,
+    },
+    summary: {
+      total: 3,
+      ready: readyCount,
+      overall: readyCount === 3 ? "ready" : readyCount > 0 ? "degraded" : "unconfigured",
     },
   };
 }

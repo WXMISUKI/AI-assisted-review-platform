@@ -26,6 +26,7 @@ export async function checkLlmConnectivity() {
     return {
       ok: false,
       status: "not_configured",
+      configured: false,
       message: `Missing backend config: ${missing.join(", ") || "unknown"}.`,
     };
   }
@@ -50,14 +51,18 @@ export async function checkLlmConnectivity() {
     return {
       ok: true,
       status: "ok",
+      configured: true,
       model: config.openai.model,
+      hasBaseURL: Boolean(config.openai.baseURL),
       preview: completion.choices?.[0]?.message?.content || "",
     };
   } catch (error) {
     return {
       ok: false,
       status: "failed",
+      configured: true,
       model: config.openai.model,
+      hasBaseURL: Boolean(config.openai.baseURL),
       message: error instanceof Error ? error.message : "Unknown LLM connectivity error.",
     };
   }

@@ -9,6 +9,7 @@ const defaultOptionalPayload = {
 export function getOcrStatus() {
   return {
     ok: Boolean(config.paddleocr.token && config.paddleocr.jobUrl && config.paddleocr.model),
+    configured: Boolean(config.paddleocr.token && config.paddleocr.jobUrl && config.paddleocr.model),
     jobUrl: config.paddleocr.jobUrl,
     model: config.paddleocr.model,
     hasToken: Boolean(config.paddleocr.token),
@@ -20,6 +21,7 @@ export async function submitOcrUrlJob({ fileUrl, optionalPayload = defaultOption
     return {
       ok: false,
       status: "not_configured",
+      configured: false,
       message: "PADDLEOCR_TOKEN is required on the backend.",
     };
   }
@@ -42,6 +44,7 @@ export async function submitOcrUrlJob({ fileUrl, optionalPayload = defaultOption
     return {
       ok: false,
       status: "failed",
+      configured: true,
       statusCode: response.status,
       message: payload?.message || payload?.error || "PaddleOCR job submit failed.",
     };
@@ -49,6 +52,7 @@ export async function submitOcrUrlJob({ fileUrl, optionalPayload = defaultOption
 
   return {
     ok: true,
+    configured: true,
     jobId: payload?.data?.jobId,
   };
 }
@@ -58,6 +62,7 @@ export async function getOcrJobStatus(jobId) {
     return {
       ok: false,
       status: "not_configured",
+      configured: false,
       message: "PADDLEOCR_TOKEN is required on the backend.",
     };
   }
@@ -73,6 +78,7 @@ export async function getOcrJobStatus(jobId) {
     return {
       ok: false,
       status: "failed",
+      configured: true,
       statusCode: response.status,
       message: payload?.message || payload?.error || "PaddleOCR job status check failed.",
     };
@@ -81,6 +87,7 @@ export async function getOcrJobStatus(jobId) {
   const data = payload?.data || {};
   return {
     ok: true,
+    configured: true,
     state: data.state,
     progress: data.extractProgress || null,
     resultUrl: data.resultUrl || null,

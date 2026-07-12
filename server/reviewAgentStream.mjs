@@ -1,4 +1,5 @@
 import { streamLlmConnectivity } from "./llmClient.mjs";
+import { getSafeProviderStatus } from "./config.mjs";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -9,6 +10,16 @@ export async function writeReviewAgentStream(response) {
     response.write(`event: ${event}\n`);
     response.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+
+  send("review-event", {
+    type: "review.connection",
+    stageId: "connect",
+    title: "连接后端智能体",
+    detail: "已建立本地 BFF SSE 通道。",
+    progress: 5,
+    issueSummaries: [],
+    providers: getSafeProviderStatus(),
+  });
 
   const stages = [
     {
@@ -60,5 +71,6 @@ export async function writeReviewAgentStream(response) {
     detail: "后端 SSE 通道已完成一次测试输出。",
     progress: 100,
     issueSummaries: ["后续可将该事件合同映射到 ReviewStreamingStage。"],
+    completedAt: new Date().toISOString(),
   });
 }

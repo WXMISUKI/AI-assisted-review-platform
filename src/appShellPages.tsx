@@ -729,7 +729,11 @@ export function DataAssetsPage({
             status={healthResult?.ok ? "ready" : "pending"}
             detail={
               healthResult
-                ? `${healthResult.service ?? "backend"} · ${healthResult.timestamp ?? "无时间戳"}`
+                ? `${healthResult.service ?? "backend"} · ${
+                    healthResult.providers?.summary
+                      ? `${healthResult.providers.summary.overall} ${healthResult.providers.summary.ready}/${healthResult.providers.summary.total}`
+                      : "无摘要"
+                  } · ${healthResult.timestamp ?? "无时间戳"}`
                 : "等待检查"
             }
           />
@@ -738,7 +742,11 @@ export function DataAssetsPage({
             status={llmResult?.ok ? "ready" : llmResult ? "failed" : "pending"}
             detail={
               llmResult
-                ? llmResult.preview || llmResult.message || llmResult.status || "已返回"
+                ? `${llmResult.model ?? "未配置模型"} · ${
+                    llmResult.configured ? "配置完整" : "配置不完整"
+                  }${llmResult.hasBaseURL ? " · 自定义 BaseURL" : ""} · ${
+                    llmResult.preview || llmResult.message || llmResult.status || "已返回"
+                  }`
                 : healthResult?.providers?.openai?.configured
                   ? `已配置 ${healthResult.providers.openai.model}`
                   : "等待配置或检查"
@@ -749,7 +757,9 @@ export function DataAssetsPage({
             status={ocrResult?.ok ? "ready" : ocrResult ? "failed" : "pending"}
             detail={
               ocrResult
-                ? `${ocrResult.model} · ${ocrResult.hasToken ? "Token 已配置" : "Token 未配置"}`
+                ? `${ocrResult.model} · ${ocrResult.configured ? "配置完整" : "配置不完整"} · ${
+                    ocrResult.hasToken ? "Token 已配置" : "Token 未配置"
+                  }`
                 : "等待检查"
             }
           />
