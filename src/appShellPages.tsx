@@ -819,6 +819,12 @@ export function ReviewLoadingPage({
   const recoveredParagraphs = recoveredStructure?.paragraphs ?? [];
   const recoveredCurrentSection =
     recoveredStructure?.progress.currentSection ?? stage.currentSection ?? "待恢复";
+  const hydrationSourceLabel = recoveredStructure
+    ? `结构来源：${recoveredStructure.sourceFormat}`
+    : "结构来源：等待 OCR 水合";
+  const hydrationStatusLabel = recoveredStructure
+    ? `恢复状态：${recoveredStructure.status}`
+    : "恢复状态：未生成";
 
   if (loadingMode === "ocr") {
     return (
@@ -911,18 +917,20 @@ export function ReviewLoadingPage({
   return (
     <div className="streaming-review-page">
       <section className="streaming-hero">
-        <div>
-          <span className="eyebrow">审查准备 · {statusLabel}</span>
-          <h2>{document?.name ?? "文档审查任务"}</h2>
-          <p>{roleLabel}可在详情页观察文档结构化、依据匹配、问题生成的流式进度。</p>
-          <div className="streaming-meta">
-            <span>{stage.stageType ? pageLabels.documents : "审查中"}</span>
-            <span>{stage.agentLabel ?? agentKeyLabels[stage.agentKey ?? "construction-review"]}</span>
-            {recoveredStructure && <span>{recoveredStructure.sourceFormat}</span>}
-            {stage.currentParagraphLabel && (
-              <span>
-                段落 {stage.currentParagraphIndex}/{stage.currentParagraphTotal} · {stage.currentParagraphLabel}
-              </span>
+          <div>
+            <span className="eyebrow">审查准备 · {statusLabel}</span>
+            <h2>{document?.name ?? "文档审查任务"}</h2>
+            <p>{roleLabel}可在详情页观察文档结构化、依据匹配、问题生成的流式进度。</p>
+            <div className="streaming-meta">
+              <span>{stage.stageType ? pageLabels.documents : "审查中"}</span>
+              <span>{stage.agentLabel ?? agentKeyLabels[stage.agentKey ?? "construction-review"]}</span>
+              <span>{hydrationSourceLabel}</span>
+              <span>{hydrationStatusLabel}</span>
+              {recoveredStructure && <span>{recoveredStructure.sourceFormat}</span>}
+              {stage.currentParagraphLabel && (
+                <span>
+                  段落 {stage.currentParagraphIndex}/{stage.currentParagraphTotal} · {stage.currentParagraphLabel}
+                </span>
             )}
             {recoveredStructure?.progress.currentParagraphId && (
               <span>恢复锚点 {recoveredStructure.progress.currentParagraphId}</span>
@@ -977,6 +985,10 @@ export function ReviewLoadingPage({
               <p>
                 {recoveredSections.length} 个章节 · {recoveredParagraphs.length} 个段落
               </p>
+            </article>
+            <article>
+              <span>水合来源</span>
+              <p>{recoveredStructure ? `OCR 结果已转为 ${recoveredStructure.sourceFormat}` : "等待完成 OCR 水合"}</p>
             </article>
           </div>
         </section>
