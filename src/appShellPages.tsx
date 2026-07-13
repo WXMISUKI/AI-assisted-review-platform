@@ -783,7 +783,7 @@ export function DataAssetsPage({
               streamEvents.length > 0
                 ? `已收到 ${streamEvents.length} 个事件，最后：${
                     streamEvents[streamEvents.length - 1]?.title
-                  }`
+                  }${streamEvents[streamEvents.length - 1]?.currentSection ? ` · ${streamEvents[streamEvents.length - 1].currentSection}` : ""}`
                 : "等待检查"
             }
           />

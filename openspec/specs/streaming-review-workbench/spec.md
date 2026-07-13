@@ -75,3 +75,14 @@ The streaming review workbench SHALL present structure-derived draft issue summa
 #### Scenario: No draft issues exist
 - **WHEN** recovered structure does not produce draft issues
 - **THEN** the loading view falls back to the existing stage template summaries and progress hints
+
+### Requirement: Backend-driven loading progression
+The streaming review workbench SHALL be able to advance review-preparation loading from backend SSE events when structure context is available.
+
+#### Scenario: Backend SSE is available
+- **WHEN** the loading flow receives backend review-agent events with stage and paragraph metadata
+- **THEN** the loading view can update progress, current stage, and unlock timing from those events
+
+#### Scenario: Backend SSE is unavailable
+- **WHEN** the stream cannot be established or returns no usable structure context
+- **THEN** the loading flow can continue using the local mock stage progression without changing the page contract

@@ -131,6 +131,7 @@ export interface ReviewStreamEvent {
   progress: number;
   agentKey?: string;
   agentLabel?: string;
+  currentSection?: string;
   currentParagraphId?: string;
   currentParagraphIndex?: number;
   currentParagraphTotal?: number;
@@ -138,6 +139,22 @@ export interface ReviewStreamEvent {
   issueSummaries: string[];
   providers?: BackendHealthResult["providers"];
   completedAt?: string;
+}
+
+export interface ReviewStreamStructureSummary {
+  sectionCount?: number;
+  paragraphCount?: number;
+  currentSection?: string;
+  currentParagraphLabel?: string;
+  currentParagraphIndex?: number;
+  currentParagraphTotal?: number;
+}
+
+export interface ReviewStreamSubscriptionHandlers {
+  onEvent?: (event: ReviewStreamEvent) => void;
+  onComplete?: (events: ReviewStreamEvent[]) => void;
+  onError?: (error: Error) => void;
+  onTimeout?: (events: ReviewStreamEvent[]) => void;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -219,53 +236,102 @@ export async function hydrateOcrResultStructure(input: {
   return readJson<OcrRecoveredStructureHydrationResult>(response);
 }
 
+export function subscribeReviewStreamEvents(
+  handlers: ReviewStreamSubscriptionHandlers = {},
+  structureSummary?: ReviewStreamStructureSummary,
+  timeoutMs = 5000,
+) {
+  const events: ReviewStreamEvent[] = [];
+  const searchParams = new URLSearchParams();
+  if (structureSummary?.sectionCount) {
+    searchParams.set("sectionCount", String(structureSummary.sectionCount));
+  }
+  if (structureSummary?.paragraphCount) {
+    searchParams.set("paragraphCount", String(structureSummary.paragraphCount));
+  }
+  if (structureSummary?.currentSection) {
+    searchParams.set("currentSection", structureSummary.currentSection);
+  }
+  if (structureSummary?.currentParagraphLabel) {
+    searchParams.set("currentParagraphLabel", structureSummary.currentParagraphLabel);
+  }
+  if (structureSummary?.currentParagraphIndex) {
+    searchParams.set("currentParagraphIndex", String(structureSummary.currentParagraphIndex));
+  }
+  if (structureSummary?.currentParagraphTotal) {
+    searchParams.set("currentParagraphTotal", String(structureSummary.currentParagraphTotal));
+  }
+
+  const queryString = searchParams.toString();
+  const streamUrl = queryString ? `/api/review-agent/stream?${queryString}` : "/api/review-agent/stream";
+  const eventSource = new EventSource(streamUrl);
+  const timer = timeoutMs > 0 ? window.setTimeout(() => {
+    eventSource.close();
+    handlers.onTimeout?.(events);
+  }, timeoutMs) : null;
+
+  const close = () => {
+    if (timer != null) {
+      window.clearTimeout(timer);
+    }
+    eventSource.close();
+  };
+
+  eventSource.addEventListener("review-event", (event) => {
+    const payload = JSON.parse(event.data) as ReviewStreamEvent;
+    events.push(payload);
+    handlers.onEvent?.(payload);
+    if (payload.type === "review.complete") {
+      close();
+      handlers.onComplete?.(events);
+    }
+  });
+
+  eventSource.onerror = () => {
+    close();
+    handlers.onError?.(new Error("Review stream connectivity check failed."));
+  };
+
+  return {
+    close,
+  };
+}
+
 export function runReviewStreamConnectivityCheck(
   timeoutMs = 5000,
-  structureSummary?: {
-    sectionCount?: number;
-    paragraphCount?: number;
-    currentSection?: string;
-  },
+  structureSummary?: ReviewStreamStructureSummary,
 ) {
   return new Promise<ReviewStreamEvent[]>((resolve, reject) => {
+    let settled = false;
     const events: ReviewStreamEvent[] = [];
-    const searchParams = new URLSearchParams();
-    if (structureSummary?.sectionCount) {
-      searchParams.set("sectionCount", String(structureSummary.sectionCount));
-    }
-    if (structureSummary?.paragraphCount) {
-      searchParams.set("paragraphCount", String(structureSummary.paragraphCount));
-    }
-    if (structureSummary?.currentSection) {
-      searchParams.set("currentSection", structureSummary.currentSection);
-    }
+    let subscription: { close: () => void } | null = null;
 
-    const queryString = searchParams.toString();
-    const streamUrl = queryString ? `/api/review-agent/stream?${queryString}` : "/api/review-agent/stream";
-    const eventSource = new EventSource(streamUrl);
-    const timer = window.setTimeout(() => {
-      eventSource.close();
-      resolve(events);
-    }, timeoutMs);
-
-    eventSource.addEventListener("review-event", (event) => {
-      const payload = JSON.parse(event.data) as ReviewStreamEvent;
-      events.push(payload);
-      if (payload.type === "review.complete") {
-        window.clearTimeout(timer);
-        eventSource.close();
-        resolve(events);
-      }
-    });
-
-    eventSource.onerror = () => {
-      window.clearTimeout(timer);
-      eventSource.close();
-      if (events.length > 0) {
-        resolve(events);
+    const settle = (callback: (events: ReviewStreamEvent[]) => void) => {
+      if (settled) {
         return;
       }
-      reject(new Error("Review stream connectivity check failed."));
+      settled = true;
+      subscription?.close();
+      callback(events);
     };
+
+    subscription = subscribeReviewStreamEvents(
+      {
+        onEvent: (event) => {
+          events.push(event);
+        },
+        onComplete: () => settle(resolve),
+        onTimeout: () => settle(resolve),
+        onError: () => {
+          if (events.length > 0) {
+            settle(resolve);
+            return;
+          }
+          reject(new Error("Review stream connectivity check failed."));
+        },
+      },
+      structureSummary,
+      timeoutMs,
+    );
   });
 }

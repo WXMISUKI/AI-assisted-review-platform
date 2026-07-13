@@ -27,7 +27,12 @@ import {
 import { roleLabels, roleModes } from "./appShellTypes";
 import type { LibraryDocument, Session, ShellPage, StreamingStage, ThemeMode, UploadDraft } from "./appShellTypes";
 import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
-import type { ReviewCompletionPayload, ReviewMode } from "./domain/reviewTypes";
+import type {
+  ReviewCompletionPayload,
+  ReviewMode,
+  ReviewPipelineStageType,
+  ReviewAgentKey,
+} from "./domain/reviewTypes";
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import {
   addManualTaskIssue,
@@ -48,6 +53,7 @@ import { buildReviewPreparationStages } from "./domain/reviewPreparationStages";
 import {
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
+  subscribeReviewStreamEvents,
   submitStoredObjectOcrJob,
   uploadMinioDocument,
 } from "./domain/backendConnectivity";
@@ -94,12 +100,27 @@ export function App() {
 
     let cancelled = false;
     let timerId: number | null = null;
+    let streamSubscription: { close: () => void } | null = null;
+
+    const stopActiveStreams = () => {
+      if (timerId) {
+        window.clearInterval(timerId);
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+
+      if (streamSubscription) {
+        streamSubscription.close();
+        streamSubscription = null;
+      }
+    };
 
     const finishReady = (nextDocuments: LibraryDocument[]) => {
       if (cancelled) {
         return;
       }
 
+      stopActiveStreams();
       documentsRef.current = nextDocuments;
       setDocuments(nextDocuments);
       setSelectedDocId(loadingDocId);
@@ -112,6 +133,7 @@ export function App() {
         return;
       }
 
+      stopActiveStreams();
       documentsRef.current = nextDocuments;
       setDocuments(nextDocuments);
       setDocumentUploadError(message);
@@ -135,7 +157,34 @@ export function App() {
       };
     };
 
+    const buildStructureSummary = (document: LibraryDocument | undefined) => {
+      const recoveredStructure = document?.recoveredStructure;
+      if (!recoveredStructure || recoveredStructure.paragraphs.length === 0) {
+        return null;
+      }
+
+      const currentParagraphId =
+        recoveredStructure.progress.currentParagraphId ?? recoveredStructure.paragraphs[0]?.id ?? "";
+      const currentParagraphIndex = recoveredStructure.paragraphs.findIndex(
+        (paragraph) => paragraph.id === currentParagraphId,
+      );
+
+      return {
+        sectionCount: recoveredStructure.sections.length,
+        paragraphCount: recoveredStructure.paragraphs.length,
+        currentSection:
+          recoveredStructure.progress.currentSection ?? recoveredStructure.paragraphs[0]?.section ?? "",
+        currentParagraphLabel:
+          recoveredStructure.paragraphs[currentParagraphIndex >= 0 ? currentParagraphIndex : 0]?.section ??
+          recoveredStructure.progress.currentSection ??
+          "",
+        currentParagraphIndex: currentParagraphIndex >= 0 ? currentParagraphIndex + 1 : 1,
+        currentParagraphTotal: recoveredStructure.paragraphs.length,
+      };
+    };
+
     const startReviewPreparation = (startIndex: number, sourceDocument = currentDocument) => {
+      stopActiveStreams();
       const preparationStages = buildPreparationStages(sourceDocument);
       const initialSnapshot = buildStageSnapshot(startIndex, preparationStages);
       setDocuments((currentDocs) => {
@@ -183,10 +232,118 @@ export function App() {
       }, 850);
     };
 
+    const startBackendReviewPreparation = (sourceDocument = currentDocument) => {
+      const structureSummary = buildStructureSummary(sourceDocument);
+      if (!structureSummary || sourceDocument.streamStageIndex > 0) {
+        startReviewPreparation(sourceDocument.streamStageIndex || 0, sourceDocument);
+        return;
+      }
+
+      stopActiveStreams();
+
+      const stageOrder = [
+        "connect",
+        "structure-restoration",
+        "basis-binding",
+        "review-analysis",
+        "result-packaging",
+      ] as const;
+      let latestStageIndex = 0;
+      let completed = false;
+
+      const buildSnapshotFromEvent = (
+        event: {
+          stageId: string;
+          stageType?: string;
+          agentKey?: string;
+          currentParagraphId?: string;
+          currentParagraphIndex?: number;
+          currentParagraphTotal?: number;
+          currentParagraphLabel?: string;
+          currentSection?: string;
+        },
+        stageIndex: number,
+      ) => ({
+        streamStageIndex: stageIndex,
+        streamStageType:
+          (event.stageType as ReviewPipelineStageType | undefined) ??
+          sourceDocument.streamStageType ??
+          "result-packaging",
+        streamAgentKey:
+          (event.agentKey as ReviewAgentKey | undefined) ??
+          sourceDocument.streamAgentKey ??
+          "report-generation",
+        streamParagraphIndex: event.currentParagraphIndex ?? sourceDocument.streamParagraphIndex,
+        streamParagraphTotal: event.currentParagraphTotal ?? sourceDocument.streamParagraphTotal,
+        streamCurrentParagraphId: event.currentParagraphId ?? sourceDocument.streamCurrentParagraphId,
+        streamParagraphLabel: event.currentParagraphLabel ?? event.currentSection ?? sourceDocument.streamParagraphLabel,
+      });
+
+      streamSubscription = subscribeReviewStreamEvents(
+        {
+          onEvent: (event) => {
+            if (cancelled || completed) {
+              return;
+            }
+
+            const stageIndex =
+              event.type === "review.complete"
+                ? stageOrder.length - 1
+                : Math.max(0, stageOrder.indexOf(event.stageId as (typeof stageOrder)[number]));
+            latestStageIndex = stageIndex >= 0 ? stageIndex : latestStageIndex;
+            setStreamStageIndex(latestStageIndex);
+
+            const snapshot = buildSnapshotFromEvent(event, latestStageIndex);
+            setDocuments((currentDocs) => {
+              const nextDocuments = updateReviewTaskStreamStage(
+                currentDocs,
+                loadingDocId,
+                snapshot,
+              );
+              documentsRef.current = nextDocuments;
+              return nextDocuments;
+            });
+
+            if (event.type === "review.complete") {
+              completed = true;
+              window.setTimeout(() => {
+                if (cancelled) {
+                  return;
+                }
+
+                const nextDocuments = markReviewTaskReady(
+                  documentsRef.current,
+                  loadingDocId,
+                  snapshot,
+                );
+                finishReady(nextDocuments);
+              }, 650);
+            }
+          },
+          onError: () => {
+            if (cancelled || completed) {
+              return;
+            }
+
+            startReviewPreparation(latestStageIndex, sourceDocument);
+          },
+          onTimeout: () => {
+            if (cancelled || completed) {
+              return;
+            }
+
+            startReviewPreparation(latestStageIndex, sourceDocument);
+          },
+        },
+        structureSummary,
+        10000,
+      );
+    };
+
     const pollOcrJob = async () => {
       const jobId = currentDocument.ocrJob?.jobId;
       if (!jobId) {
-        startReviewPreparation(currentDocument.streamStageIndex || 0);
+        startBackendReviewPreparation(currentDocument);
         return;
       }
 
@@ -231,7 +388,7 @@ export function App() {
           const hydratedDocument = nextDocuments.find((doc) => doc.id === loadingDocId);
           documentsRef.current = nextDocuments;
           setDocuments(nextDocuments);
-          startReviewPreparation(hydratedDocument?.streamStageIndex ?? 0, hydratedDocument);
+          startBackendReviewPreparation(hydratedDocument ?? currentDocument);
           return;
         }
 
@@ -280,15 +437,12 @@ export function App() {
     if (currentDocument.status === "parsing") {
       pollOcrJob();
     } else {
-      startReviewPreparation(currentDocument.streamStageIndex || 0);
+      startBackendReviewPreparation(currentDocument);
     }
 
     return () => {
       cancelled = true;
-      if (timerId) {
-        window.clearTimeout(timerId);
-        window.clearInterval(timerId);
-      }
+      stopActiveStreams();
     };
   }, [activePage, loadingDocId]);
 

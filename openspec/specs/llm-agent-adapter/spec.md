@@ -21,3 +21,7 @@ The backend SHALL expose a review-agent test endpoint that maps agent progress t
 - **WHEN** a client connects to the review-agent stream endpoint
 - **THEN** the backend emits ordered events for connection, model preparation, reasoning, issue drafting, and completion
 
+#### Scenario: Streaming test includes recovered structure
+- **WHEN** a client connects with recovered structure summary metadata
+- **THEN** the backend can reflect the supplied section and paragraph context in the emitted review-style stage events without requiring a real LLM response
+

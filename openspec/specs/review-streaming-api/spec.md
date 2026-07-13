@@ -33,9 +33,31 @@ The backend SHALL expose review progress events that can identify the current st
 - **WHEN** the pipeline completes
 - **THEN** the backend emits a completion event and closes the connection
 
+### Requirement: Structure-aware review-agent SSE
+The backend SHALL allow the review-agent SSE endpoint to emit structure-aware stage summaries when section and paragraph context metadata is provided.
+
+#### Scenario: Structure metadata is supplied
+- **WHEN** a client connects to the review-agent stream endpoint with section and paragraph summary metadata
+- **THEN** the backend emits stage events whose issue summaries and current location fields reflect the supplied recovered-structure context
+
+#### Scenario: Structure metadata is absent
+- **WHEN** a legacy client connects without structure metadata
+- **THEN** the backend continues to emit the deterministic connectivity sequence with the existing stage and issue summary fallback
+
 ### Requirement: Stream contract remains backward compatible
 The review stream SHALL continue to support simple progress consumers while adding richer stage metadata.
 
 #### Scenario: A legacy consumer reads the stream
 - **WHEN** a consumer only understands basic progress and issue summaries
 - **THEN** the enriched stream still conveys usable progress without requiring bidirectional transport
+
+### Requirement: Review-loading SSE consumption
+The backend review-agent SSE contract SHALL remain consumable as a review-loading progress source before the workbench unlocks.
+
+#### Scenario: Loading view subscribes with structure context
+- **WHEN** the loading flow subscribes with recovered section and paragraph metadata
+- **THEN** the emitted stage events can be used to advance loading progress and unlock the review-ready state
+
+#### Scenario: Loading view cannot use SSE
+- **WHEN** the loading flow does not have structure metadata or the stream cannot be established
+- **THEN** the client can fall back to the local mock loading stages without breaking the contract

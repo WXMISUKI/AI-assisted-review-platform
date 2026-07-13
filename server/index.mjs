@@ -242,6 +242,9 @@ const server = createServer(async (request, response) => {
           sectionCount: readPositiveIntegerParam(url, "sectionCount"),
           paragraphCount: readPositiveIntegerParam(url, "paragraphCount"),
           currentSection: url.searchParams.get("currentSection") || "",
+          currentParagraphLabel: url.searchParams.get("currentParagraphLabel") || "",
+          currentParagraphIndex: readPositiveIntegerParam(url, "currentParagraphIndex"),
+          currentParagraphTotal: readPositiveIntegerParam(url, "currentParagraphTotal"),
         },
       });
       response.end();
