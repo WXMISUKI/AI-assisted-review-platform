@@ -86,3 +86,14 @@ The streaming review workbench SHALL be able to advance review-preparation loadi
 #### Scenario: Backend SSE is unavailable
 - **WHEN** the stream cannot be established or returns no usable structure context
 - **THEN** the loading flow can continue using the local mock stage progression without changing the page contract
+
+### Requirement: Structure-aware loading stage display
+The streaming review workbench SHALL render structure-aware review-preparation stages when recovered structure is available.
+
+#### Scenario: Task has recovered structure
+- **WHEN** a locked loading task has a recovered structure snapshot
+- **THEN** the loading page can render the stage title, detail, outline, and issue summaries from the structure-derived review-preparation stages
+
+#### Scenario: Task has no recovered structure
+- **WHEN** a locked loading task does not have recovered structure
+- **THEN** the loading page continues to use the existing fallback loading stages without changing the page contract

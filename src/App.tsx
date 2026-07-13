@@ -78,6 +78,10 @@ export function App() {
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
   const deleteTargetDocument = documents.find((doc) => doc.id === deleteTargetId) ?? null;
   const allowedModes: ReviewMode[] = session ? roleModes[session.role] : ["review", "revise"];
+  const loadingStages = useMemo(
+    () => buildReviewPreparationStages(selectedDocument?.recoveredStructure, reviewStreamingStages),
+    [selectedDocument?.recoveredStructure],
+  );
 
   useEffect(() => {
     document.documentElement.dataset.theme = themeMode;
@@ -833,8 +837,8 @@ export function App() {
               document={selectedDocument}
               roleLabel={roleLabels[session.role]}
               statusLabel={statusLabels[selectedDocument?.status ?? "uploaded"]}
-              stage={reviewStreamingStages[streamStageIndex] ?? reviewStreamingStages[0]}
-              stages={reviewStreamingStages}
+              stage={loadingStages[streamStageIndex] ?? loadingStages[0]}
+              stages={loadingStages}
               stageIndex={streamStageIndex}
             />
           )}
