@@ -94,6 +94,17 @@ The session state SHALL keep the recovered-structure contract compatible with a 
 - **WHEN** a backend event delivers recovered paragraphs or section boundaries
 - **THEN** the session state can hydrate the same structure snapshot used by the mock flow
 
+### Requirement: Recovered issue anchor rebinding
+The review session state SHALL reuse recovered structure to rebind compatible issue anchors before the workbench opens.
+
+#### Scenario: OCR hydration completes
+- **WHEN** the task receives a hydrated recovered structure
+- **THEN** the session state can align existing issue anchors to recovered paragraphs before the workbench renders
+
+#### Scenario: No recovered match exists
+- **WHEN** an issue cannot be matched to a recovered paragraph
+- **THEN** the session state preserves the original issue semantics and falls back to a safe paragraph anchor
+
 ### Requirement: OCR result hydration in session state
 The review session service SHALL support hydrating recovered structure from a completed OCR result before review analysis begins.
 

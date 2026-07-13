@@ -1,4 +1,5 @@
 import { documentParagraphs, initialReviewIssues } from "./mockReview";
+import { rebindReviewIssueAnchors } from "./reviewIssueAnchorBinding";
 import { recoverStructureFromParagraphs } from "./ocrStructureRecovery";
 import { loadReviewTasks, saveReviewTasks } from "./reviewTaskRepository";
 import { getReviewTaskOrchestrationSnapshot } from "./reviewTaskOrchestration";
@@ -41,6 +42,10 @@ function cloneIssues() {
   return initialReviewIssues.map((issue) => structuredClone(issue));
 }
 
+function cloneParagraphsFromStructure(recoveredStructure: RecoveredDocumentStructure) {
+  return recoveredStructure.paragraphs.map((paragraph) => ({ ...paragraph }));
+}
+
 function createIdleRecoveredStructure(): RecoveredDocumentStructure {
   return {
     status: "idle",
@@ -80,10 +85,14 @@ export function createDocumentTask(
     status: input.status ?? "uploaded",
     issueCount: 0,
     mode: input.mode,
-    paragraphs: cloneParagraphs(documentParagraphs),
-    issues: cloneIssues(),
+    paragraphs: input.recoveredStructure
+      ? cloneParagraphsFromStructure(input.recoveredStructure)
+      : cloneParagraphs(documentParagraphs),
+    issues: input.recoveredStructure
+      ? rebindReviewIssueAnchors(cloneIssues(), input.recoveredStructure)
+      : cloneIssues(),
     recoveredStructure:
-      input.recoveredStructure ??
+      input.recoveredStructure ??  
       (input.status === "uploaded" || input.status === "parsing"
         ? createIdleRecoveredStructure()
         : recoverStructureFromParagraphs(cloneParagraphs(documentParagraphs))),
@@ -111,6 +120,12 @@ export function updateDocumentTaskUploadResult(
     ...task,
     status: input.status,
     sourceObject: input.sourceObject ?? task.sourceObject,
+    paragraphs: input.recoveredStructure
+      ? cloneParagraphsFromStructure(input.recoveredStructure)
+      : task.paragraphs,
+    issues: input.recoveredStructure
+      ? rebindReviewIssueAnchors(task.issues, input.recoveredStructure)
+      : task.issues,
     ocrJob: input.ocrJob ?? task.ocrJob,
     recoveredStructure: input.recoveredStructure ?? task.recoveredStructure,
     failure: input.status === "failed"
@@ -185,9 +200,12 @@ export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask
     streamStageType: task.streamStageType ?? "structure-restoration",
     streamAgentKey: task.streamAgentKey ?? "structure-restoration",
     streamParagraphIndex: task.streamParagraphIndex ?? 1,
-    streamParagraphTotal: task.streamParagraphTotal ?? task.paragraphs.length,
-    streamCurrentParagraphId: task.streamCurrentParagraphId ?? task.paragraphs[0]?.id,
-    streamParagraphLabel: task.streamParagraphLabel ?? task.paragraphs[0]?.section,
+    streamParagraphTotal:
+      task.streamParagraphTotal ?? task.recoveredStructure?.paragraphs.length ?? task.paragraphs.length,
+    streamCurrentParagraphId:
+      task.streamCurrentParagraphId ?? task.recoveredStructure?.paragraphs[0]?.id ?? task.paragraphs[0]?.id,
+    streamParagraphLabel:
+      task.streamParagraphLabel ?? task.recoveredStructure?.paragraphs[0]?.section ?? task.paragraphs[0]?.section,
     recoveredStructure:
       task.recoveredStructure && task.recoveredStructure.status !== "done"
         ? {
@@ -276,12 +294,15 @@ export function markReviewTaskReady(
 
 export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewSession {
   const lifecycle = getReviewTaskOrchestrationSnapshot(task);
+  const resolvedStructure = task.recoveredStructure;
+  const resolvedParagraphs = resolvedStructure?.paragraphs ?? task.paragraphs;
+  const resolvedIssues = rebindReviewIssueAnchors(task.issues, resolvedStructure);
   return {
     task,
-    paragraphs: task.recoveredStructure?.paragraphs ?? task.paragraphs,
-    recoveredStructure: task.recoveredStructure,
-    issues: task.issues,
-    processedParagraphs: buildProcessedParagraphs(task.recoveredStructure?.paragraphs ?? task.paragraphs, task.issues, mode),
+    paragraphs: resolvedParagraphs,
+    recoveredStructure: resolvedStructure,
+    issues: resolvedIssues,
+    processedParagraphs: buildProcessedParagraphs(resolvedParagraphs, resolvedIssues, mode),
     lifecycle,
   };
 }

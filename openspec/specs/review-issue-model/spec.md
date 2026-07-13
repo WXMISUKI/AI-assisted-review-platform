@@ -17,6 +17,10 @@ The system SHALL anchor each review issue to a stable document location using pa
 - **WHEN** a review issue contains a paragraph anchor and character offsets
 - **THEN** the UI can render the exact anchored text range inside the matching paragraph
 
+#### Scenario: Anchor is rebound after OCR hydration
+- **WHEN** the task uses a hydrated recovered structure
+- **THEN** the system can rebind the issue to a recovered paragraph while preserving the original anchor text as the match source
+
 ### Requirement: Finding explanation fields
 The system SHALL store the issue title, reason, basis, risk level, and suggested replacement separately.
 

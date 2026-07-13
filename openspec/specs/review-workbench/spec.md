@@ -22,7 +22,7 @@ The system SHALL render AI and manual review issues at their corresponding docum
 - **THEN** the document marker reflects the resolved status without losing the location relationship
 
 ### Requirement: Bidirectional issue navigation
-The system SHALL link document markers and side-panel issue cards so users can move between the problem location and its explanation.
+The system SHALL link document markers and side-panel issue cards so users can move between the problem location and its explanation, including recovered OCR paragraphs.
 
 #### Scenario: User selects an issue card
 - **WHEN** the user clicks an issue card in the side panel
