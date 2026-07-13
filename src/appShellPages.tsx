@@ -392,7 +392,60 @@ export function ResultPreviewPage({
   const asset = sessionSnapshot?.resultAsset ?? document.resultAsset;
 
   if (!asset) {
-    return null;
+    return (
+      <main className="result-page">
+        <header className="topbar result-topbar">
+          <button type="button" className="detail-back-button" onClick={onBack}>
+            <ArrowLeft size={16} />
+            返回文档库
+          </button>
+          <div>
+            <span className="eyebrow">结果预览 · Fallback Shell</span>
+            <h1>{document.name}</h1>
+          </div>
+          <div className="project-meta" aria-label="结果页操作">
+            <button type="button" className="theme-toggle subtle" onClick={onToggleTheme}>
+              <SunMoon size={16} />
+              {themeMode === "light" ? "深色主题" : "浅色主题"}
+            </button>
+            <span>{document.project}</span>
+            <span>{statusLabels[document.status]}</span>
+          </div>
+        </header>
+
+        <section className="result-hero">
+          <div>
+            <span className="eyebrow">结果尚未可用</span>
+            <h2>当前任务没有可展示的结果资产</h2>
+            <p>
+              该任务已经进入结果页，但系统暂时无法从会话快照或持久化任务中恢复结果资产。
+              你仍然可以返回文档库，重新打开任务或稍后再试，平台会保留现有任务状态。
+            </p>
+          </div>
+          <button type="button" className="export-disabled" disabled>
+            导出 PDF/Word 待接入
+          </button>
+        </section>
+
+        <section className="result-metrics" aria-label="结果概览">
+          <MetricBlock label="任务状态" value={statusLabels[document.status]} />
+          <MetricBlock label="任务模式" value={modeName(document.mode)} />
+          <MetricBlock label="更新时刻" value={document.updatedAt} />
+          <MetricBlock label="当前阶段" value={fallbackSummaryLabel(document)} />
+        </section>
+
+        <section className="result-layout">
+          <article className="result-card result-card-wide">
+            <span className="eyebrow">恢复说明</span>
+            <h2>结果资产缺失时的安全兜底</h2>
+            <p>
+              当任务状态正常但结果资产未落盘或会话快照丢失时，这个页面会保留可返回的安全外壳，
+              避免用户面对空白路由。后续补齐结果资产后，可重新打开看到完整结果。
+            </p>
+          </article>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -443,6 +496,11 @@ export function ResultPreviewPage({
       )}
     </main>
   );
+}
+
+function fallbackSummaryLabel(document: LibraryDocument) {
+  const lifecycle = getReviewTaskOrchestrationSnapshot(document);
+  return lifecycle.currentStageLabel ?? lifecycle.summary.label;
 }
 
 function SupervisorReportPreview({

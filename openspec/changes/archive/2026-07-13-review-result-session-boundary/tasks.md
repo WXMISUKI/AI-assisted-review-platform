@@ -13,4 +13,5 @@
 
 - [x] 3.1 Run `npm run typecheck`.
 - [x] 3.2 Inspect the result-page entry path for completed and fallback tasks.
-- [ ] 3.3 Archive the completed OpenSpec change.
+- [x] 3.3 Archive the completed OpenSpec change.
+

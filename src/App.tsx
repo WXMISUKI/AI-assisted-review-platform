@@ -724,7 +724,7 @@ export function App() {
     );
   }
 
-  if (activePage === "review-result" && selectedDocumentSession?.resultAsset) {
+  if (activePage === "review-result" && selectedDocument) {
     return (
       <ResultPreviewPage
         document={selectedDocument}
