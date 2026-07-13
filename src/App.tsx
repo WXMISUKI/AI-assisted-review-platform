@@ -38,6 +38,7 @@ import {
   addManualTaskIssue,
   completeReviewTask,
   createDocumentTask,
+  createReviewSession,
   deleteDocumentTask,
   deleteManualTaskIssue,
   listReviewTasks,
@@ -78,6 +79,10 @@ export function App() {
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
   const deleteTargetDocument = documents.find((doc) => doc.id === deleteTargetId) ?? null;
   const allowedModes: ReviewMode[] = session ? roleModes[session.role] : ["review", "revise"];
+  const selectedDocumentSession = useMemo(
+    () => (selectedDocument ? createReviewSession(selectedDocument, selectedDocument.mode) : null),
+    [selectedDocument],
+  );
   const loadingStages = useMemo(
     () => buildReviewPreparationStages(selectedDocument?.recoveredStructure, reviewStreamingStages),
     [selectedDocument?.recoveredStructure],
@@ -707,8 +712,9 @@ export function App() {
         themeMode={themeMode}
         onToggleTheme={toggleTheme}
         onComplete={completeReview}
-        paragraphs={selectedDocument.paragraphs}
-        initialIssues={selectedDocument.issues}
+        sessionSnapshot={selectedDocumentSession ?? undefined}
+        paragraphs={selectedDocumentSession?.paragraphs ?? selectedDocument.paragraphs}
+        initialIssues={selectedDocumentSession?.issues ?? selectedDocument.issues}
         recoveredStructure={selectedDocument.recoveredStructure}
         onIssueResolve={updateSelectedIssueResolution}
         onIssueDraftChange={updateSelectedIssueDraft}
@@ -718,10 +724,11 @@ export function App() {
     );
   }
 
-  if (activePage === "review-result" && selectedDocument?.resultAsset) {
+  if (activePage === "review-result" && selectedDocumentSession?.resultAsset) {
     return (
       <ResultPreviewPage
         document={selectedDocument}
+        sessionSnapshot={selectedDocumentSession ?? undefined}
         onBack={() => setActivePage("documents")}
         themeMode={themeMode}
         onToggleTheme={toggleTheme}

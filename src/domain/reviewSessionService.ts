@@ -444,6 +444,7 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
     issues: resolvedIssues,
     processedParagraphs: buildProcessedParagraphs(resolvedParagraphs, resolvedIssues, mode),
     pipelineSnapshot,
+    resultAsset: task.resultAsset,
     lifecycle,
   };
 }

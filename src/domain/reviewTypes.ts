@@ -318,6 +318,7 @@ export interface ReviewSession {
   issues: ReviewIssue[];
   processedParagraphs: DocumentParagraph[];
   pipelineSnapshot?: ReviewPipelineSnapshot;
+  resultAsset?: ReviewResultAsset;
   lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }
 

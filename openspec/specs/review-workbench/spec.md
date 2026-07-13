@@ -219,6 +219,17 @@ The review workbench SHALL display整改闭环 fields when available.
 ### Requirement: Completion gating
 The review workbench SHALL enable completion only when every issue has an accepted or rejected decision.
 
+### Requirement: Session-backed workbench initialization
+The review workbench SHALL initialize its active section and paragraph context from the review session snapshot when one is available.
+
+#### Scenario: Session snapshot exists
+- **WHEN** the workbench opens with a session snapshot
+- **THEN** the initial active section and paragraph focus can come from that snapshot rather than the page inferring everything from raw props
+
+#### Scenario: Session snapshot does not exist
+- **WHEN** the workbench opens without a session snapshot
+- **THEN** the workbench continues to initialize from recovered structure and paragraph props as it does today
+
 #### Scenario: Issues remain pending
 - **WHEN** one or more review issues are pending
 - **THEN** the completion action is disabled and shows the remaining pending count

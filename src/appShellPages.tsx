@@ -26,6 +26,7 @@ import type {
 } from "./domain/backendConnectivity";
 import type {
   ReviewResultAsset,
+  ReviewSession,
   ReviewTask,
   ReviewTaskOcrJob,
 } from "./domain/reviewTypes";
@@ -377,16 +378,18 @@ export function DocumentLibraryPage({
 
 export function ResultPreviewPage({
   document,
+  sessionSnapshot,
   onBack,
   themeMode,
   onToggleTheme,
 }: {
   document: LibraryDocument;
+  sessionSnapshot?: ReviewSession;
   onBack: () => void;
   themeMode: ThemeMode;
   onToggleTheme: () => void;
 }) {
-  const asset = document.resultAsset;
+  const asset = sessionSnapshot?.resultAsset ?? document.resultAsset;
 
   if (!asset) {
     return null;

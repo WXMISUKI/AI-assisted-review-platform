@@ -2,6 +2,7 @@
 
 ## Purpose
 Define the review task aggregate, session service boundary, and recoverable loading snapshot used by the review workflow.
+
 ## Requirements
 ### Requirement: Review task aggregate
 The system SHALL represent each document review as a review task aggregate containing document metadata, lifecycle status, role-compatible mode, review session data, and optional result asset.

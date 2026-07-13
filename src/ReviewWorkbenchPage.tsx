@@ -34,6 +34,7 @@ import type {
   ReviewCompletionPayload,
   ReviewIssue,
   RecoveredDocumentStructure,
+  ReviewSession,
   StatusFilter,
 } from "./domain/reviewTypes";
 import {
@@ -64,6 +65,7 @@ export interface ReviewWorkbenchPageProps {
   onManualIssueAdd?: (issue: ReviewIssue) => void;
   onManualIssueDelete?: (issueId: string) => void;
   recoveredStructure?: RecoveredDocumentStructure;
+  sessionSnapshot?: ReviewSession;
 }
 
 interface SelectionDraft {
@@ -170,9 +172,14 @@ export function ReviewWorkbenchPage({
   onManualIssueAdd,
   onManualIssueDelete,
   recoveredStructure,
+  sessionSnapshot,
 }: ReviewWorkbenchPageProps = {}) {
-  const [issues, setIssues] = useState<ReviewIssue[]>(initialIssuesProp);
-  const [activeIssueId, setActiveIssueId] = useState(initialIssuesProp[0]?.id ?? "");
+  const sessionIssues = sessionSnapshot?.issues ?? initialIssuesProp;
+  const sessionRecoveredStructure = sessionSnapshot?.recoveredStructure ?? recoveredStructure;
+  const sessionParagraphs = sessionSnapshot?.paragraphs ?? paragraphs;
+  const sessionPipelineSnapshot = sessionSnapshot?.pipelineSnapshot;
+  const [issues, setIssues] = useState<ReviewIssue[]>(sessionIssues);
+  const [activeIssueId, setActiveIssueId] = useState(sessionIssues[0]?.id ?? "");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [reviewMode, setReviewMode] = useState<ReviewMode>(() =>
     allowedModes.includes("review") ? "review" : allowedModes[0] ?? "revise",
@@ -189,13 +196,13 @@ export function ReviewWorkbenchPage({
     suggestion: "",
   });
   const [draftSuggestions, setDraftSuggestions] = useState<Record<string, string>>(
-    Object.fromEntries(initialIssuesProp.map((issue) => [issue.id, issue.finding.suggestion])),
+    Object.fromEntries(sessionIssues.map((issue) => [issue.id, issue.finding.suggestion])),
   );
   const paragraphRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const documentScrollRef = useRef<HTMLDivElement | null>(null);
   const scrollRafRef = useRef<number | null>(null);
-  const reviewParagraphs = recoveredStructure?.paragraphs ?? paragraphs;
+  const reviewParagraphs = sessionRecoveredStructure?.paragraphs ?? sessionParagraphs;
 
   const counts = useMemo(() => getIssueCounts(issues), [issues]);
   const reviewComplete = useMemo(() => isReviewComplete(issues), [issues]);
@@ -220,8 +227,8 @@ export function ReviewWorkbenchPage({
     return map;
   }, [issues]);
   const sectionOutline = useMemo(() => {
-    if (recoveredStructure?.sections && recoveredStructure.sections.length > 0) {
-      return recoveredStructure.sections.map((section) => ({
+    if (sessionRecoveredStructure?.sections && sessionRecoveredStructure.sections.length > 0) {
+      return sessionRecoveredStructure.sections.map((section) => ({
         id: section.id,
         title: section.title,
         paragraphCount: section.paragraphIds.length,
@@ -254,11 +261,18 @@ export function ReviewWorkbenchPage({
       paragraphCount: entry.paragraphCount,
       firstParagraphId: entry.firstParagraphId,
     }));
-  }, [recoveredStructure?.sections, reviewParagraphs]);
+  }, [sessionRecoveredStructure?.sections, reviewParagraphs]);
   const defaultSectionTitle =
-    recoveredStructure?.progress.currentSection ?? reviewParagraphs[0]?.section ?? "";
+    sessionRecoveredStructure?.progress.currentSection ??
+    sessionPipelineSnapshot?.currentSection ??
+    sessionPipelineSnapshot?.paragraphLabel ??
+    reviewParagraphs[0]?.section ??
+    "";
   const defaultParagraphId =
-    recoveredStructure?.progress.currentParagraphId ?? reviewParagraphs[0]?.id ?? "";
+    sessionRecoveredStructure?.progress.currentParagraphId ??
+    sessionPipelineSnapshot?.currentParagraphId ??
+    reviewParagraphs[0]?.id ??
+    "";
   const [activeSectionTitle, setActiveSectionTitle] = useState(defaultSectionTitle);
   const [activeParagraphId, setActiveParagraphId] = useState(defaultParagraphId);
   const activeParagraph = useMemo(
@@ -317,16 +331,16 @@ export function ReviewWorkbenchPage({
   } | null>(null);
 
   useEffect(() => {
-    setIssues(initialIssuesProp);
+    setIssues(sessionIssues);
     setActiveIssueId((currentActiveId) =>
-      initialIssuesProp.some((issue) => issue.id === currentActiveId)
+      sessionIssues.some((issue) => issue.id === currentActiveId)
         ? currentActiveId
-        : initialIssuesProp[0]?.id ?? "",
+        : sessionIssues[0]?.id ?? "",
     );
     setDraftSuggestions(
-      Object.fromEntries(initialIssuesProp.map((issue) => [issue.id, issue.finding.suggestion])),
+      Object.fromEntries(sessionIssues.map((issue) => [issue.id, issue.finding.suggestion])),
     );
-  }, [initialIssuesProp]);
+  }, [sessionIssues]);
 
   useEffect(() => {
     setActiveSectionTitle(defaultSectionTitle);
