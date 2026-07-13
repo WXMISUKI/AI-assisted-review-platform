@@ -260,6 +260,14 @@ function createParagraphDrafts(
   });
 }
 
+function formatDraftIssueSummary(
+  issue: ReviewIssue,
+  paragraph: DocumentParagraph | undefined,
+) {
+  const location = paragraph?.section?.trim() || paragraph?.id || issue.anchor.paragraphId;
+  return location ? `${location} 路 ${issue.finding.title}` : issue.finding.title;
+}
+
 export function buildStructureDraftIssues(
   recoveredStructure: RecoveredDocumentStructure | undefined,
 ): ReviewIssue[] {
@@ -282,6 +290,34 @@ export function buildStructureDraftIssues(
   });
 
   return Array.from(deduped.values());
+}
+
+export function summarizeStructureDraftIssues(
+  recoveredStructure: RecoveredDocumentStructure | undefined,
+): Array<{ paragraphId: string; summary: string }> {
+  if (!recoveredStructure || recoveredStructure.paragraphs.length === 0) {
+    return [];
+  }
+
+  const paragraphById = new Map(
+    recoveredStructure.paragraphs.map((paragraph) => [paragraph.id, paragraph] as const),
+  );
+  const draftIssues = buildStructureDraftIssues(recoveredStructure);
+  const summaries = new Map<string, { paragraphId: string; summary: string }>();
+
+  draftIssues.forEach((issue) => {
+    const paragraph = paragraphById.get(issue.anchor.paragraphId);
+    const summary = formatDraftIssueSummary(issue, paragraph);
+    const key = `${issue.anchor.paragraphId}|${summary}`;
+    if (!summaries.has(key)) {
+      summaries.set(key, {
+        paragraphId: issue.anchor.paragraphId,
+        summary,
+      });
+    }
+  });
+
+  return Array.from(summaries.values());
 }
 
 export function mergeRecoveredStructureIssues(

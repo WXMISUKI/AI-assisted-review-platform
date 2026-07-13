@@ -64,3 +64,14 @@ The streaming review workbench SHALL display a compact summary of the hydrated r
 #### Scenario: Current section is known
 - **WHEN** the recovered structure includes a current section or paragraph id
 - **THEN** the locked streaming view can surface that current location to help users understand what the system is processing
+
+### Requirement: Draft issue summaries during review preparation
+The streaming review workbench SHALL present structure-derived draft issue summaries while the task is in review-preparation loading.
+
+#### Scenario: Structure-derived draft issues exist
+- **WHEN** recovered structure produces deterministic draft issues
+- **THEN** the loading view can show the corresponding issue summaries for the current stage or paragraph context
+
+#### Scenario: No draft issues exist
+- **WHEN** recovered structure does not produce draft issues
+- **THEN** the loading view falls back to the existing stage template summaries and progress hints

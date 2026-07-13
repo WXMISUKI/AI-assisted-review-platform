@@ -1,3 +1,4 @@
+import { summarizeStructureDraftIssues } from "./reviewIssueDrafts";
 import type {
   RecoveredDocumentStructure,
   ReviewStreamingStage,
@@ -38,6 +39,7 @@ function createStageFromTemplate(
   template: ReviewStreamingStage,
   recoveredStructure: RecoveredDocumentStructure,
   ratio: number,
+  draftIssueSummariesByParagraphId: Map<string, string[]>,
   fallbackIssueSummaries: string[],
 ): ReviewStreamingStage {
   const selected = getParagraphAt(recoveredStructure, ratio);
@@ -49,7 +51,11 @@ function createStageFromTemplate(
     ? paragraph.text.length > 96
       ? `${paragraph.text.slice(0, 96)}...`
       : paragraph.text
-    : template.documentSnippets[0] ?? "正在读取 OCR 结构恢复结果。";
+    : template.documentSnippets[0] ?? "姝ｅ湪璇诲彇 OCR 缁撴瀯鎭㈠缁撴灉銆?";
+
+  const structureSummaries = paragraph
+    ? draftIssueSummariesByParagraphId.get(paragraph.id)
+    : undefined;
 
   return {
     ...template,
@@ -61,7 +67,11 @@ function createStageFromTemplate(
     outlineItems: outlineItems.length > 0 ? outlineItems : template.outlineItems,
     documentSnippets: [snippet],
     issueSummaries:
-      template.issueSummaries.length > 0 ? template.issueSummaries : fallbackIssueSummaries,
+      structureSummaries && structureSummaries.length > 0
+        ? structureSummaries
+        : template.issueSummaries.length > 0
+          ? template.issueSummaries
+          : fallbackIssueSummaries,
   };
 }
 
@@ -76,9 +86,25 @@ export function buildReviewPreparationStages(
   const fallbackIssueSummaries = [
     `已恢复 ${recoveredStructure.sections.length} 个章节、${recoveredStructure.paragraphs.length} 个段落，正在进入审查准备。`,
   ];
+  const draftIssueSummaries = summarizeStructureDraftIssues(recoveredStructure);
+  const draftIssueSummariesByParagraphId = new Map<string, string[]>();
+
+  draftIssueSummaries.forEach(({ paragraphId, summary }) => {
+    const summaries = draftIssueSummariesByParagraphId.get(paragraphId) ?? [];
+    if (!summaries.includes(summary)) {
+      draftIssueSummariesByParagraphId.set(paragraphId, [...summaries, summary]);
+    }
+  });
+
   const lastIndex = Math.max(1, fallbackStages.length - 1);
 
   return fallbackStages.map((stage, index) =>
-    createStageFromTemplate(stage, recoveredStructure, index / lastIndex, fallbackIssueSummaries),
+    createStageFromTemplate(
+      stage,
+      recoveredStructure,
+      index / lastIndex,
+      draftIssueSummariesByParagraphId,
+      fallbackIssueSummaries,
+    ),
   );
 }

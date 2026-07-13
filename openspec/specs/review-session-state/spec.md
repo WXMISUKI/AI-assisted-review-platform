@@ -116,6 +116,17 @@ The review session state SHALL add deterministic issue drafts from recovered str
 - **WHEN** the recovered structure does not trigger any draft rules
 - **THEN** the session state preserves the existing issue list without fabricating new issues
 
+### Requirement: Structure-driven loading issue summaries
+The review session state SHALL expose draft issue summaries derived from recovered structure so the review-preparation loading flow can reflect real risk signals.
+
+#### Scenario: Draft issues are available
+- **WHEN** OCR hydration produces recovered paragraphs that match known review-risk patterns
+- **THEN** the review-preparation summary can reuse deterministic draft issue titles or short labels from the recovered structure
+
+#### Scenario: No draft issues are generated
+- **WHEN** the recovered structure does not trigger any draft rules
+- **THEN** the loading summary preserves the existing stage templates and fallback progress hints
+
 ### Requirement: OCR result hydration in session state
 The review session service SHALL support hydrating recovered structure from a completed OCR result before review analysis begins.
 
