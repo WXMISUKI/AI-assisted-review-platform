@@ -10,6 +10,10 @@ The system SHALL represent review work after OCR as a staged pipeline that separ
 - **WHEN** a document finishes OCR processing
 - **THEN** the system enters a review-preparation pipeline instead of jumping directly to a ready review state
 
+#### Scenario: OCR recovered structure drives review preparation
+- **WHEN** a document finishes OCR processing and recovered structure is available
+- **THEN** the review-preparation pipeline uses recovered sections and paragraphs as its stage and paragraph context source instead of fixed demo anchors
+
 #### Scenario: Pipeline stage is visible
 - **WHEN** a document is being prepared for review
 - **THEN** the system can expose the current pipeline stage id, stage title, and stage progress to the detail context
@@ -20,6 +24,10 @@ The system SHALL expose review progress at paragraph or section granularity whil
 #### Scenario: A paragraph is being processed
 - **WHEN** the review pipeline is processing content
 - **THEN** the system can report the current paragraph or section being processed together with the total scope being handled
+
+#### Scenario: A recovered paragraph is being processed
+- **WHEN** the review pipeline is processing OCR-hydrated content
+- **THEN** the system reports the current recovered paragraph id, paragraph index, total paragraph count, and section label
 
 #### Scenario: Streaming progress updates incrementally
 - **WHEN** the review pipeline advances

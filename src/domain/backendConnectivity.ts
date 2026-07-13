@@ -219,10 +219,30 @@ export async function hydrateOcrResultStructure(input: {
   return readJson<OcrRecoveredStructureHydrationResult>(response);
 }
 
-export function runReviewStreamConnectivityCheck(timeoutMs = 5000) {
+export function runReviewStreamConnectivityCheck(
+  timeoutMs = 5000,
+  structureSummary?: {
+    sectionCount?: number;
+    paragraphCount?: number;
+    currentSection?: string;
+  },
+) {
   return new Promise<ReviewStreamEvent[]>((resolve, reject) => {
     const events: ReviewStreamEvent[] = [];
-    const eventSource = new EventSource("/api/review-agent/stream");
+    const searchParams = new URLSearchParams();
+    if (structureSummary?.sectionCount) {
+      searchParams.set("sectionCount", String(structureSummary.sectionCount));
+    }
+    if (structureSummary?.paragraphCount) {
+      searchParams.set("paragraphCount", String(structureSummary.paragraphCount));
+    }
+    if (structureSummary?.currentSection) {
+      searchParams.set("currentSection", structureSummary.currentSection);
+    }
+
+    const queryString = searchParams.toString();
+    const streamUrl = queryString ? `/api/review-agent/stream?${queryString}` : "/api/review-agent/stream";
+    const eventSource = new EventSource(streamUrl);
     const timer = window.setTimeout(() => {
       eventSource.close();
       resolve(events);

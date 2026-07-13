@@ -44,6 +44,7 @@ import {
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
 import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
+import { buildReviewPreparationStages } from "./domain/reviewPreparationStages";
 import {
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
@@ -118,8 +119,11 @@ export function App() {
       setLoadingDocId(null);
     };
 
-    const buildStageSnapshot = (stageIndex: number) => {
-      const stage = reviewStreamingStages[stageIndex] ?? reviewStreamingStages[0];
+    const buildPreparationStages = (document: LibraryDocument | undefined) =>
+      buildReviewPreparationStages(document?.recoveredStructure, reviewStreamingStages);
+
+    const buildStageSnapshot = (stageIndex: number, stages = buildPreparationStages(currentDocument)) => {
+      const stage = stages[stageIndex] ?? stages[0] ?? reviewStreamingStages[0];
       return {
         streamStageIndex: stageIndex,
         streamStageType: stage.stageType,
@@ -131,8 +135,9 @@ export function App() {
       };
     };
 
-    const startReviewPreparation = (startIndex: number) => {
-      const initialSnapshot = buildStageSnapshot(startIndex);
+    const startReviewPreparation = (startIndex: number, sourceDocument = currentDocument) => {
+      const preparationStages = buildPreparationStages(sourceDocument);
+      const initialSnapshot = buildStageSnapshot(startIndex, preparationStages);
       setDocuments((currentDocs) => {
         const nextDocuments = updateReviewTaskStreamStage(currentDocs, loadingDocId, initialSnapshot);
         documentsRef.current = nextDocuments;
@@ -142,12 +147,12 @@ export function App() {
       timerId = window.setInterval(() => {
         setStreamStageIndex((currentIndex) => {
           const nextIndex = currentIndex + 1;
-          if (nextIndex < reviewStreamingStages.length) {
+          if (nextIndex < preparationStages.length) {
             setDocuments((currentDocs) => {
               const nextDocuments = updateReviewTaskStreamStage(
                 currentDocs,
                 loadingDocId,
-                buildStageSnapshot(nextIndex),
+                buildStageSnapshot(nextIndex, preparationStages),
               );
               documentsRef.current = nextDocuments;
               return nextDocuments;
@@ -168,7 +173,7 @@ export function App() {
             const nextDocuments = markReviewTaskReady(
               documentsRef.current,
               loadingDocId,
-              buildStageSnapshot(currentIndex),
+              buildStageSnapshot(currentIndex, preparationStages),
             );
             finishReady(nextDocuments);
           }, 650);
@@ -223,9 +228,10 @@ export function App() {
             state: "done",
             recoveredStructure: recoveryResult.recoveredStructure,
           });
+          const hydratedDocument = nextDocuments.find((doc) => doc.id === loadingDocId);
           documentsRef.current = nextDocuments;
           setDocuments(nextDocuments);
-          startReviewPreparation(nextDocuments.find((doc) => doc.id === loadingDocId)?.streamStageIndex ?? 0);
+          startReviewPreparation(hydratedDocument?.streamStageIndex ?? 0, hydratedDocument);
           return;
         }
 

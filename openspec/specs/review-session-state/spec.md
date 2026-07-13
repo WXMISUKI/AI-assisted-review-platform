@@ -83,6 +83,10 @@ The review session state SHALL persist a recovered-structure snapshot alongside 
 - **WHEN** the user refreshes during structure recovery
 - **THEN** the session state restores the recovered paragraphs, active section, and current recovery stage
 
+#### Scenario: Task enters review preparation after OCR hydration
+- **WHEN** OCR hydration stores recovered sections and paragraphs on the task aggregate
+- **THEN** review-preparation stage snapshots use that recovered structure as their current paragraph and section source
+
 ### Requirement: Backend-replaceable structure state
 The session state SHALL keep the recovered-structure contract compatible with a future backend implementation.
 

@@ -98,6 +98,16 @@ function notFound(response) {
   });
 }
 
+function readPositiveIntegerParam(url, name) {
+  const rawValue = url.searchParams.get(name);
+  if (!rawValue) {
+    return 0;
+  }
+
+  const value = Number.parseInt(rawValue, 10);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
 
@@ -227,7 +237,13 @@ const server = createServer(async (request, response) => {
         Connection: "keep-alive",
         "Access-Control-Allow-Origin": "*",
       });
-      await writeReviewAgentStream(response);
+      await writeReviewAgentStream(response, {
+        structureSummary: {
+          sectionCount: readPositiveIntegerParam(url, "sectionCount"),
+          paragraphCount: readPositiveIntegerParam(url, "paragraphCount"),
+          currentSection: url.searchParams.get("currentSection") || "",
+        },
+      });
       response.end();
       return;
     }
