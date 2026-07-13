@@ -2,6 +2,10 @@ import { documentParagraphs, initialReviewIssues } from "./mockReview";
 import { rebindReviewIssueAnchors } from "./reviewIssueAnchorBinding";
 import { mergeRecoveredStructureIssues } from "./reviewIssueDrafts";
 import { recoverStructureFromParagraphs } from "./ocrStructureRecovery";
+import {
+  createReviewPipelineSnapshot,
+  deriveReviewPipelineSnapshot,
+} from "./reviewPipelineSnapshot";
 import { loadReviewTasks, saveReviewTasks } from "./reviewTaskRepository";
 import { getReviewTaskOrchestrationSnapshot } from "./reviewTaskOrchestration";
 import {
@@ -110,6 +114,20 @@ export function createDocumentTask(
     issues,
     recoveredStructure,
     streamStageIndex: 0,
+    pipelineSnapshot: createReviewPipelineSnapshot({
+      stageIndex: 0,
+      stageType: "structure-restoration",
+      agentKey: "structure-restoration",
+      paragraphIndex: input.recoveredStructure?.paragraphs.length ? 1 : undefined,
+      paragraphTotal: input.recoveredStructure?.paragraphs.length ?? documentParagraphs.length,
+      currentParagraphId: input.recoveredStructure?.paragraphs[0]?.id ?? documentParagraphs[0]?.id,
+      paragraphLabel: input.recoveredStructure?.paragraphs[0]?.section ?? documentParagraphs[0]?.section,
+      currentSection:
+        input.recoveredStructure?.progress.currentSection ??
+        input.recoveredStructure?.paragraphs[0]?.section ??
+        documentParagraphs[0]?.section,
+      updatedAt: nowString(),
+    }),
     sourceObject: input.sourceObject,
     ocrJob: input.ocrJob,
     failure: input.status === "failed" ? input.failure : undefined,
@@ -141,6 +159,28 @@ export function updateDocumentTaskUploadResult(
       : task.issues,
     ocrJob: input.ocrJob ?? task.ocrJob,
     recoveredStructure: input.recoveredStructure ?? task.recoveredStructure,
+    pipelineSnapshot: input.recoveredStructure
+      ? createReviewPipelineSnapshot({
+          stageIndex: task.streamStageIndex ?? 0,
+          stageType: task.streamStageType ?? "structure-restoration",
+          agentKey: task.streamAgentKey ?? "structure-restoration",
+          paragraphIndex:
+            task.streamParagraphIndex ?? (input.recoveredStructure.paragraphs.length ? 1 : undefined),
+          paragraphTotal: input.recoveredStructure.paragraphs.length,
+          currentParagraphId:
+            task.streamCurrentParagraphId ??
+            input.recoveredStructure.progress.currentParagraphId ??
+            input.recoveredStructure.paragraphs[0]?.id,
+          paragraphLabel:
+            task.streamParagraphLabel ??
+            input.recoveredStructure.progress.currentSection ??
+            input.recoveredStructure.paragraphs[0]?.section,
+          currentSection:
+            input.recoveredStructure.progress.currentSection ??
+            input.recoveredStructure.paragraphs[0]?.section,
+          updatedAt: nowString(),
+        })
+      : task.pipelineSnapshot,
     failure: input.status === "failed"
       ? {
           message: input.failureMessage || input.ocrJob?.message || "文档上传或解析任务提交失败。",
@@ -187,6 +227,38 @@ export function syncDocumentTaskOcrStatus(
         nextState === "done" ? "reviewing" : terminal ? (nextState === "failed" ? "failed" : "ready") : "parsing",
       streamStageIndex: nextState === "done" ? 0 : task.streamStageIndex,
       recoveredStructure: input.recoveredStructure ?? task.recoveredStructure,
+      pipelineSnapshot:
+        nextState === "done"
+          ? createReviewPipelineSnapshot({
+              stageIndex: 0,
+              stageType: "structure-restoration",
+              agentKey: "structure-restoration",
+              paragraphIndex: input.recoveredStructure?.paragraphs.length ? 1 : undefined,
+              paragraphTotal:
+                input.recoveredStructure?.paragraphs.length ??
+                task.recoveredStructure?.paragraphs.length ??
+                task.paragraphs.length,
+              currentParagraphId:
+                input.recoveredStructure?.progress.currentParagraphId ??
+                input.recoveredStructure?.paragraphs[0]?.id ??
+                task.recoveredStructure?.progress.currentParagraphId ??
+                task.streamCurrentParagraphId ??
+                task.paragraphs[0]?.id,
+              paragraphLabel:
+                input.recoveredStructure?.progress.currentSection ??
+                input.recoveredStructure?.paragraphs[0]?.section ??
+                task.recoveredStructure?.progress.currentSection ??
+                task.streamParagraphLabel ??
+                task.paragraphs[0]?.section,
+              currentSection:
+                input.recoveredStructure?.progress.currentSection ??
+                input.recoveredStructure?.paragraphs[0]?.section ??
+                task.recoveredStructure?.progress.currentSection ??
+                task.streamParagraphLabel ??
+                task.paragraphs[0]?.section,
+              updatedAt: nowString(),
+            })
+          : task.pipelineSnapshot,
       ocrJob: {
         jobId: task.ocrJob?.jobId ?? null,
         state: nextState,
@@ -229,6 +301,28 @@ export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask
       task.streamCurrentParagraphId ?? task.recoveredStructure?.paragraphs[0]?.id ?? task.paragraphs[0]?.id,
     streamParagraphLabel:
       task.streamParagraphLabel ?? task.recoveredStructure?.paragraphs[0]?.section ?? task.paragraphs[0]?.section,
+    pipelineSnapshot: createReviewPipelineSnapshot({
+      stageIndex: 0,
+      stageType: task.streamStageType ?? "structure-restoration",
+      agentKey: task.streamAgentKey ?? "structure-restoration",
+      paragraphIndex:
+        task.streamParagraphIndex ?? (task.recoveredStructure?.paragraphs.length ?? task.paragraphs.length ? 1 : undefined),
+      paragraphTotal: task.streamParagraphTotal ?? task.recoveredStructure?.paragraphs.length ?? task.paragraphs.length,
+      currentParagraphId:
+        task.streamCurrentParagraphId ??
+        task.recoveredStructure?.paragraphs[0]?.id ??
+        task.paragraphs[0]?.id,
+      paragraphLabel:
+        task.streamParagraphLabel ??
+        task.recoveredStructure?.paragraphs[0]?.section ??
+        task.paragraphs[0]?.section,
+      currentSection:
+        task.streamParagraphLabel ??
+        task.recoveredStructure?.progress.currentSection ??
+        task.recoveredStructure?.paragraphs[0]?.section ??
+        task.paragraphs[0]?.section,
+      updatedAt: nowString(),
+    }),
     recoveredStructure:
       task.recoveredStructure && task.recoveredStructure.status !== "done"
         ? {
@@ -266,6 +360,17 @@ export function updateReviewTaskStreamStage(
     streamParagraphTotal: snapshot.streamParagraphTotal ?? task.streamParagraphTotal,
     streamCurrentParagraphId: snapshot.streamCurrentParagraphId ?? task.streamCurrentParagraphId,
     streamParagraphLabel: snapshot.streamParagraphLabel ?? task.streamParagraphLabel,
+    pipelineSnapshot: createReviewPipelineSnapshot({
+      stageIndex: snapshot.streamStageIndex,
+      stageType: snapshot.streamStageType ?? task.streamStageType,
+      agentKey: snapshot.streamAgentKey ?? task.streamAgentKey,
+      paragraphIndex: snapshot.streamParagraphIndex ?? task.streamParagraphIndex,
+      paragraphTotal: snapshot.streamParagraphTotal ?? task.streamParagraphTotal,
+      currentParagraphId: snapshot.streamCurrentParagraphId ?? task.streamCurrentParagraphId,
+      paragraphLabel: snapshot.streamParagraphLabel ?? task.streamParagraphLabel,
+      currentSection: snapshot.streamParagraphLabel ?? task.streamParagraphLabel,
+      updatedAt: nowString(),
+    }),
     updatedAt: nowString(),
   }));
 }
@@ -293,6 +398,17 @@ export function markReviewTaskReady(
     streamParagraphTotal: snapshot?.streamParagraphTotal ?? task.streamParagraphTotal,
     streamCurrentParagraphId: snapshot?.streamCurrentParagraphId ?? task.streamCurrentParagraphId,
     streamParagraphLabel: snapshot?.streamParagraphLabel ?? task.streamParagraphLabel,
+    pipelineSnapshot: createReviewPipelineSnapshot({
+      stageIndex: snapshot?.streamStageIndex ?? task.streamStageIndex,
+      stageType: snapshot?.streamStageType ?? task.streamStageType,
+      agentKey: snapshot?.streamAgentKey ?? task.streamAgentKey,
+      paragraphIndex: snapshot?.streamParagraphIndex ?? task.streamParagraphIndex,
+      paragraphTotal: snapshot?.streamParagraphTotal ?? task.streamParagraphTotal,
+      currentParagraphId: snapshot?.streamCurrentParagraphId ?? task.streamCurrentParagraphId,
+      paragraphLabel: snapshot?.streamParagraphLabel ?? task.streamParagraphLabel,
+      currentSection: snapshot?.streamParagraphLabel ?? task.streamParagraphLabel,
+      updatedAt: nowString(),
+    }),
     recoveredStructure: task.recoveredStructure
       ? {
           ...task.recoveredStructure,
@@ -320,12 +436,14 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
   const resolvedStructure = task.recoveredStructure;
   const resolvedParagraphs = resolvedStructure?.paragraphs ?? task.paragraphs;
   const resolvedIssues = resolveRecoveredStructureIssues(task.issues, resolvedStructure);
+  const pipelineSnapshot = deriveReviewPipelineSnapshot(task);
   return {
     task,
     paragraphs: resolvedParagraphs,
     recoveredStructure: resolvedStructure,
     issues: resolvedIssues,
     processedParagraphs: buildProcessedParagraphs(resolvedParagraphs, resolvedIssues, mode),
+    pipelineSnapshot,
     lifecycle,
   };
 }

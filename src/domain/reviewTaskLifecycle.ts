@@ -20,6 +20,7 @@ function getOcrPercent(task: ReviewTask) {
 }
 
 export function getTaskLifecycleSummary(task: ReviewTask): ReviewTaskLifecycleSummary {
+  const pipelineSnapshot = task.pipelineSnapshot;
   if (task.status === "parsing") {
     const percent = getOcrPercent(task);
     return {
@@ -32,15 +33,19 @@ export function getTaskLifecycleSummary(task: ReviewTask): ReviewTaskLifecycleSu
   }
 
   if (task.status === "reviewing") {
-    const stageLabel = task.streamStageType ?? "structure-restoration";
+    const stageLabel = pipelineSnapshot?.stageType ?? task.streamStageType ?? "structure-restoration";
     const paragraphLabel =
+      pipelineSnapshot?.currentSection ??
+      pipelineSnapshot?.paragraphLabel ??
       task.streamParagraphLabel ??
       task.recoveredStructure?.progress.currentSection ??
       task.streamCurrentParagraphId ??
       "当前段落待恢复";
     const position =
-      task.streamParagraphIndex && task.streamParagraphTotal
-        ? ` ${task.streamParagraphIndex}/${task.streamParagraphTotal}`
+      (pipelineSnapshot?.paragraphIndex && pipelineSnapshot?.paragraphTotal)
+        ? ` ${pipelineSnapshot.paragraphIndex}/${pipelineSnapshot.paragraphTotal}`
+        : task.streamParagraphIndex && task.streamParagraphTotal
+          ? ` ${task.streamParagraphIndex}/${task.streamParagraphTotal}`
         : "";
 
     return {
@@ -53,6 +58,7 @@ export function getTaskLifecycleSummary(task: ReviewTask): ReviewTaskLifecycleSu
     return {
       label: "待审核",
       detail:
+        pipelineSnapshot?.currentSection ??
         task.recoveredStructure?.progress.currentSection ??
         task.recoveredStructure?.sourceFormat ??
         "结构已恢复，等待打开详情",

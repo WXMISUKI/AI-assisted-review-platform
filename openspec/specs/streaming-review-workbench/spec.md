@@ -1,7 +1,7 @@
 # streaming-review-workbench Specification
 
 ## Purpose
-TBD - created by archiving change review-workbench-scroll-preview-streaming. Update Purpose after archive.
+Define the streaming review workbench and locked loading experience, including recoverable backend-driven progress.
 ## Requirements
 ### Requirement: Streaming review panels
 The system SHALL provide a streaming review workbench state with outline, document, and issues panels.

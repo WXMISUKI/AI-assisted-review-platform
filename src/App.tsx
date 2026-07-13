@@ -234,8 +234,9 @@ export function App() {
 
     const startBackendReviewPreparation = (sourceDocument = currentDocument) => {
       const structureSummary = buildStructureSummary(sourceDocument);
-      if (!structureSummary || sourceDocument.streamStageIndex > 0) {
-        startReviewPreparation(sourceDocument.streamStageIndex || 0, sourceDocument);
+      const persistedStageIndex = sourceDocument.pipelineSnapshot?.stageIndex ?? sourceDocument.streamStageIndex;
+      if (!structureSummary || persistedStageIndex > 0) {
+        startReviewPreparation(persistedStageIndex || 0, sourceDocument);
         return;
       }
 
@@ -615,7 +616,7 @@ export function App() {
 
     if (doc.status === "reviewing" || lifecycle.phase === "review-preparation") {
       setLoadingDocId(documentId);
-      setStreamStageIndex(doc.streamStageIndex);
+      setStreamStageIndex(doc.pipelineSnapshot?.stageIndex ?? doc.streamStageIndex);
       setActivePage("review-loading");
       return;
     }

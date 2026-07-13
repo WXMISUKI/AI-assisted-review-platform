@@ -268,6 +268,18 @@ export interface ReviewTaskOcrJob {
   progress?: OcrJobProgress | null;
 }
 
+export interface ReviewPipelineSnapshot {
+  stageIndex: number;
+  stageType?: ReviewPipelineStageType;
+  agentKey?: ReviewAgentKey;
+  paragraphIndex?: number;
+  paragraphTotal?: number;
+  currentParagraphId?: string;
+  paragraphLabel?: string;
+  currentSection?: string;
+  updatedAt: string;
+}
+
 export interface ReviewTaskFailure {
   message: string;
   failedAt: string;
@@ -292,6 +304,7 @@ export interface ReviewTask {
   streamParagraphTotal?: number;
   streamCurrentParagraphId?: string;
   streamParagraphLabel?: string;
+  pipelineSnapshot?: ReviewPipelineSnapshot;
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
@@ -304,6 +317,7 @@ export interface ReviewSession {
   recoveredStructure?: RecoveredDocumentStructure;
   issues: ReviewIssue[];
   processedParagraphs: DocumentParagraph[];
+  pipelineSnapshot?: ReviewPipelineSnapshot;
   lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }
 

@@ -1,5 +1,6 @@
 import { createSeedReviewTasks } from "./mockReviewTaskSeeds";
 import { mergeRecoveredStructureIssues } from "./reviewIssueDrafts";
+import { deriveReviewPipelineSnapshot } from "./reviewPipelineSnapshot";
 import type { ReviewStorageSnapshot, ReviewTask } from "./reviewTypes";
 
 const STORAGE_KEY = "ai-assisted-review-platform.review-tasks";
@@ -19,8 +20,9 @@ function isValidSnapshot(value: unknown): value is ReviewStorageSnapshot {
 }
 
 function normalizeLoadedTask(task: ReviewTask): ReviewTask {
+  const pipelineSnapshot = task.pipelineSnapshot ?? deriveReviewPipelineSnapshot(task);
   if (!task.recoveredStructure) {
-    return task;
+    return pipelineSnapshot ? { ...task, pipelineSnapshot } : task;
   }
 
   const issues = mergeRecoveredStructureIssues(task.issues, task.recoveredStructure);
@@ -29,17 +31,18 @@ function normalizeLoadedTask(task: ReviewTask): ReviewTask {
     issues,
     issueCount: issues.length,
     paragraphs: task.recoveredStructure.paragraphs.length > 0 ? task.recoveredStructure.paragraphs : task.paragraphs,
+    pipelineSnapshot,
   };
 }
 
 export function loadReviewTasks(): ReviewTask[] {
   if (!canUseStorage()) {
-    return createSeedReviewTasks();
+    return createSeedReviewTasks().map(normalizeLoadedTask);
   }
 
   const rawValue = window.localStorage.getItem(STORAGE_KEY);
   if (!rawValue) {
-    const seedTasks = createSeedReviewTasks();
+    const seedTasks = createSeedReviewTasks().map(normalizeLoadedTask);
     saveReviewTasks(seedTasks);
     return seedTasks;
   }
@@ -53,7 +56,7 @@ export function loadReviewTasks(): ReviewTask[] {
     // Invalid MVP storage should never block the review UI.
   }
 
-  const fallbackTasks = createSeedReviewTasks();
+  const fallbackTasks = createSeedReviewTasks().map(normalizeLoadedTask);
   saveReviewTasks(fallbackTasks);
   return fallbackTasks;
 }

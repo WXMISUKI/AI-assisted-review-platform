@@ -39,8 +39,11 @@ function getOcrPercent(task: ReviewTask) {
 export function getReviewTaskOrchestrationSnapshot(task: ReviewTask): ReviewTaskOrchestrationSnapshot {
   const summary = getTaskLifecycleSummary(task);
   const ocrPercent = getOcrPercent(task);
+  const pipelineSnapshot = task.pipelineSnapshot;
   const currentContextLabel =
     task.recoveredStructure?.progress.currentSection ??
+    pipelineSnapshot?.currentSection ??
+    pipelineSnapshot?.paragraphLabel ??
     task.streamParagraphLabel ??
     task.streamCurrentParagraphId ??
     null;
@@ -59,6 +62,7 @@ export function getReviewTaskOrchestrationSnapshot(task: ReviewTask): ReviewTask
   }
 
   if (task.status === "reviewing") {
+    const stageIndex = pipelineSnapshot?.stageIndex ?? task.streamStageIndex;
     return {
       phase: "review-preparation",
       entryTarget: "loading",
@@ -66,11 +70,13 @@ export function getReviewTaskOrchestrationSnapshot(task: ReviewTask): ReviewTask
       resumable: true,
       summary,
       progressLabel:
-        task.streamParagraphIndex && task.streamParagraphTotal
-          ? `阶段 ${task.streamStageIndex + 1} · ${task.streamParagraphIndex}/${task.streamParagraphTotal}`
-          : `阶段 ${task.streamStageIndex + 1}`,
+        (pipelineSnapshot?.paragraphIndex && pipelineSnapshot?.paragraphTotal)
+          ? `阶段 ${stageIndex + 1} · ${pipelineSnapshot.paragraphIndex}/${pipelineSnapshot.paragraphTotal}`
+          : task.streamParagraphIndex && task.streamParagraphTotal
+            ? `阶段 ${stageIndex + 1} · ${task.streamParagraphIndex}/${task.streamParagraphTotal}`
+            : `阶段 ${stageIndex + 1}`,
       currentContextLabel,
-      currentStageLabel: task.streamStageType ?? "structure-restoration",
+      currentStageLabel: pipelineSnapshot?.stageType ?? task.streamStageType ?? "structure-restoration",
     };
   }
 
@@ -83,10 +89,12 @@ export function getReviewTaskOrchestrationSnapshot(task: ReviewTask): ReviewTask
       summary,
       progressLabel: "待进入审查",
       currentContextLabel:
+        pipelineSnapshot?.currentSection ??
+        pipelineSnapshot?.paragraphLabel ??
         task.recoveredStructure?.progress.currentSection ??
         task.recoveredStructure?.sourceFormat ??
         null,
-      currentStageLabel: task.streamStageType ?? null,
+      currentStageLabel: pipelineSnapshot?.stageType ?? task.streamStageType ?? null,
     };
   }
 
