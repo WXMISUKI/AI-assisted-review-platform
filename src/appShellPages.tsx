@@ -1,17 +1,21 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  CheckCircle2,
+  BookOpen,
   Clock3,
   FileSearch,
+  FileText,
   GitCompareArrows,
+  LayoutDashboard,
   ListChecks,
+  LogOut,
   Plus,
   ShieldCheck,
   Sparkles,
   SunMoon,
   Trash2,
   Upload,
+  Users,
   X,
 } from "lucide-react";
 import { agentAssetCatalog, promptAssetRegistry } from "./domain/agentAssets";
@@ -19,21 +23,20 @@ import type {
   BackendHealthResult,
   MinioStatusResult,
   MinioUploadResult,
-  OcrJobStatusResult,
+  OcrStatusResult,
   ProviderCheckResult,
   ReviewStreamEvent,
-  OcrStatusResult,
 } from "./domain/backendConnectivity";
+import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
+import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import type {
   ReviewResultAsset,
   ReviewSession,
   ReviewTask,
   ReviewTaskOcrJob,
 } from "./domain/reviewTypes";
-import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import {
   agentKeyLabels,
-  pipelineStageLabels,
   formatFileSize,
   formatOcrJobLabel,
   formatResultTime,
@@ -52,7 +55,6 @@ import {
 } from "./appShellDisplay";
 import { roleLabels } from "./appShellTypes";
 import type { Role, Session, StreamingStage, ThemeMode, UploadDraft, LibraryDocument } from "./appShellTypes";
-import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
 import {
   fetchBackendHealth,
   fetchMinioStatus,
@@ -61,6 +63,63 @@ import {
   runReviewStreamConnectivityCheck,
   uploadMinioDocument,
 } from "./domain/backendConnectivity";
+
+function getFallbackSummaryLabel(document: LibraryDocument) {
+  return (
+    document.streamParagraphLabel ??
+    document.recoveredStructure?.progress.currentSection ??
+    document.ocrJob?.message ??
+    getReviewTaskOrchestrationSnapshot(document).currentStageLabel ??
+    "待恢复"
+  );
+}
+
+function getResultSourceLabel(document: LibraryDocument, sessionSnapshot?: ReviewSession) {
+  if (sessionSnapshot?.resultAsset) {
+    return "会话快照";
+  }
+
+  if (document.resultAsset) {
+    return "持久化任务";
+  }
+
+  return "暂无结果";
+}
+
+function getResultSourceDetail(document: LibraryDocument, sessionSnapshot?: ReviewSession) {
+  if (sessionSnapshot?.resultAsset) {
+    return "结果直接来自当前会话，适合查看刚完成的审查产物。";
+  }
+
+  if (document.resultAsset) {
+    return "结果从任务实体读取，适合查看已归档的审查产物。";
+  }
+
+  return "当前任务尚未生成可展示的结果资产，页面保留了安全兜底壳。";
+}
+
+function ResultHeaderMeta({
+  sourceLabel,
+  sourceDetail,
+  statusLabel,
+  modeLabel,
+}: {
+  sourceLabel: string;
+  sourceDetail: string;
+  statusLabel: string;
+  modeLabel: string;
+}) {
+  return (
+    <div className="result-source-banner">
+      <span className="result-source-chip">{sourceLabel}</span>
+      <p>{sourceDetail}</p>
+      <div className="result-source-inline-meta">
+        <span>{statusLabel}</span>
+        <span>{modeLabel}</span>
+      </div>
+    </div>
+  );
+}
 
 export function LoginPage({
   onSignIn,
@@ -81,20 +140,22 @@ export function LoginPage({
         <div className="login-hero">
           <span className="eyebrow">AI-assisted review platform</span>
           <h1>施工方案审查平台</h1>
-          <p>登录后进入文档库，按角色进入对应审查模式、数据资产和智能体配置。</p>
+          <p>登录后进入文档库，按角色进入对应审查模式、数据资产和智能体资源配置。</p>
         </div>
 
         <div className="login-form">
           <div className="login-form-topline">
             <button type="button" className="theme-toggle subtle" onClick={onToggleTheme}>
               <SunMoon size={16} />
-              {themeMode === "light" ? "切换到深色" : "切换到浅色"}
+              {themeMode === "light" ? "深色主题" : "浅色主题"}
             </button>
           </div>
+
           <label>
             <span>账号</span>
             <input value={username} onChange={(event) => setUsername(event.target.value)} />
           </label>
+
           <label>
             <span>密码</span>
             <input
@@ -117,11 +178,7 @@ export function LoginPage({
             ))}
           </div>
 
-          <button
-            type="button"
-            className="login-submit"
-            onClick={() => onSignIn({ username, role })}
-          >
+          <button type="button" className="login-submit" onClick={() => onSignIn({ username, role })}>
             <ShieldCheck size={16} />
             登录进入平台
           </button>
@@ -165,7 +222,7 @@ export function DocumentLibraryPage({
   onDeleteDocument: (documentId: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const recentDocs = documents.slice(0, 5);
+  const recentDocs = useMemo(() => documents.slice(0, 5), [documents]);
 
   return (
     <div className="library-layout">
@@ -204,9 +261,10 @@ export function DocumentLibraryPage({
         <div className="library-upload-card">
           <div>
             <span className="eyebrow">上传文档</span>
-            <h2>拖拽或选择文件，建立新的审查任务</h2>
-            <p>上传后可点击开始审核，系统会先模拟文档解析与智能体审查的加载过程。</p>
+            <h2>拖拽或选择文件，创建新的审查任务</h2>
+            <p>上传后可以直接开始审查，系统会先走文档接入与结构恢复流程。</p>
           </div>
+
           <div className={dragging ? "upload-dropzone dragging" : "upload-dropzone"}>
             <input
               ref={fileInputRef}
@@ -221,6 +279,7 @@ export function DocumentLibraryPage({
                 }
               }}
             />
+
             <div
               className="upload-dropzone-body"
               onDragOver={(event) => {
@@ -238,9 +297,10 @@ export function DocumentLibraryPage({
               }}
             >
               <Upload size={22} />
-              <span>{uploading ? "正在上传到对象存储" : "拖拽文件到此处"}</span>
-              <small>支持 PDF、Word，确认添加后写入文档库</small>
+              <span>{uploading ? "正在上传到对象存储..." : "拖拽文件到此处"}</span>
+              <small>支持 PDF、Word，确认后会写入文档库。</small>
             </div>
+
             <button
               type="button"
               className="upload-pick-button"
@@ -250,6 +310,7 @@ export function DocumentLibraryPage({
               {uploading ? "上传中..." : "选择文件"}
             </button>
           </div>
+
           {stagedFile && (
             <div className="staged-file-card" title={stagedFile.name}>
               <div>
@@ -257,122 +318,155 @@ export function DocumentLibraryPage({
                 <small>{formatFileSize(stagedFile.size)} · 待添加</small>
               </div>
               <button type="button" onClick={onStagedFileRemove} disabled={uploading}>
-                <X size={15} />
-                移除
+                <X size={16} />
               </button>
             </div>
           )}
-          {uploadError && <div className="upload-error">{uploadError}</div>}
 
-          <div className="upload-form-row">
+          <div className="library-form">
             <label>
-              <span>文件名</span>
+              <span>文档名称</span>
               <input
                 value={uploadDraft.name}
-                onChange={(event) =>
-                  onUploadDraftChange({ ...uploadDraft, name: event.target.value })
-                }
-                placeholder="输入或粘贴文件名"
+                onChange={(event) => onUploadDraftChange({ ...uploadDraft, name: event.target.value })}
+                placeholder="例如：南京综合楼施工方案"
               />
             </label>
             <label>
               <span>项目名称</span>
               <input
                 value={uploadDraft.project}
-                onChange={(event) =>
-                  onUploadDraftChange({ ...uploadDraft, project: event.target.value })
-                }
+                onChange={(event) => onUploadDraftChange({ ...uploadDraft, project: event.target.value })}
                 placeholder="例如：南京综合楼项目"
               />
             </label>
-            <button type="button" className="upload-button" onClick={onAddDocument} disabled={uploading}>
+            <button type="button" className="primary" onClick={onAddDocument} disabled={uploading}>
               <Plus size={16} />
-              {stagedFile ? "添加文档" : "添加演示文档"}
+              添加文档
             </button>
           </div>
+
+          {uploadError && <div className="connectivity-error">{uploadError}</div>}
         </div>
 
-        <div className="library-table-card">
-          <div className="section-title row">
-            <div>
-              <span className="eyebrow">文档库</span>
-              <h2>当前平台文档</h2>
-            </div>
-            <span className="library-meta">{documents.length} 个文档</span>
-          </div>
+        <div className="document-grid">
+          {documents.map((doc) => {
+            const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
+            const hasResult = Boolean(doc.resultAsset);
 
-          <div className="table-head">
-            <span>文档</span>
-            <span>项目</span>
-            <span>状态</span>
-            <span>模式</span>
-            <span>更新时间</span>
-            <span>操作</span>
-          </div>
-
-          <div className="table-body">
-            {documents.map((doc) => {
-              const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
-
-              return (
-                <div key={doc.id} className="table-row">
+            return (
+              <article key={doc.id} className="document-card">
+                <div className="document-card-head">
                   <div>
-                    <strong>{doc.name}</strong>
-                    <small>
-                      上传人：{doc.uploader}
-                      {doc.sourceObject ? ` · 已存储 ${formatFileSize(doc.sourceObject.size)}` : " · mock"}
-                      {doc.ocrJob ? ` · ${formatOcrJobLabel(doc.ocrJob)}` : ""}
-                      {doc.failure ? ` · ${doc.failure.message}` : ""}
-                    </small>
-                    <small className="table-row-lifecycle">
-                      {lifecycle.summary.label} · {lifecycle.summary.detail}
-                    </small>
+                    <span className="eyebrow">任务 {doc.id}</span>
+                    <h3>{doc.name}</h3>
                   </div>
-                  <span>{doc.project}</span>
+                  <button type="button" className="ghost-icon" onClick={() => onDeleteDocument(doc.id)}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                <p>{doc.project}</p>
+                <div className="document-card-meta">
                   <span className={`status-pill status-${doc.status}`}>{statusLabels[doc.status]}</span>
                   <span className="mode-pill">{modeName(doc.mode)}</span>
-                  <span>{doc.updatedAt}</span>
-                  <div className="row-actions">
-                    <button type="button" onClick={() => onOpenDocument(doc.id)}>
-                      查看
-                    </button>
-                    {doc.resultAsset ? (
-                      <button type="button" className="primary" onClick={() => onOpenResult(doc.id)}>
-                        {doc.resultAsset.type === "supervisor-report" ? "查看报告" : "查看结果"}
-                      </button>
-                    ) : doc.status === "ready" || doc.status === "completed" ? (
-                      <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
-                        打开详情
-                      </button>
-                    ) : doc.status === "parsing" ? (
-                      <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
-                        查看识别进度
-                      </button>
-                    ) : doc.status === "reviewing" ? (
-                      <button type="button" className="primary" onClick={() => onOpenDocument(doc.id)}>
-                        继续审核
-                      </button>
-                    ) : (
-                      <button type="button" className="primary" onClick={() => onStartReview(doc.id)}>
-                        开始审核
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="danger subtle"
-                      onClick={() => onDeleteDocument(doc.id)}
-                    >
-                      <Trash2 size={15} />
-                      删除
-                    </button>
-                  </div>
                 </div>
-              );
-            })}
-          </div>
+                <p className="document-summary">
+                  {lifecycle.summary.label} · {lifecycle.summary.detail}
+                </p>
+                <div className="dialog-actions">
+                  <button type="button" className="secondary" onClick={() => onOpenDocument(doc.id)}>
+                    <FileText size={16} />
+                    打开工作台
+                  </button>
+                  {doc.status === "ready" || doc.status === "reviewing" ? (
+                    <button type="button" className="primary" onClick={() => onStartReview(doc.id)}>
+                      <Sparkles size={16} />
+                      开始审查
+                    </button>
+                  ) : hasResult ? (
+                    <button type="button" className="primary" onClick={() => onOpenResult(doc.id)}>
+                      <FileText size={16} />
+                      查看结果
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
     </div>
+  );
+}
+
+function renderResultAsset(asset: ReviewResultAsset) {
+  if (asset.type === "supervisor-report") {
+    return (
+      <>
+        <article className="result-card">
+          <span className="eyebrow">审查结论</span>
+          <h3>{asset.summary}</h3>
+          <p>{asset.conclusion}</p>
+        </article>
+        <article className="result-card">
+          <span className="eyebrow">主要风险</span>
+          <ul className="result-list">
+            {asset.majorRisks.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </article>
+        <article className="result-card result-card-wide">
+          <span className="eyebrow">问题意见</span>
+          <div className="result-table">
+            {asset.issueOpinions.map((opinion) => (
+              <div key={opinion.issueId} className="result-table-row">
+                <strong>
+                  {opinion.issueId} · {opinion.title}
+                </strong>
+                <span>
+                  {severityName(opinion.severity)} · {opinion.decision}
+                </span>
+                <p>{opinion.opinion}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <article className="result-card">
+        <span className="eyebrow">处理摘要</span>
+        <h3>{asset.processingSummary}</h3>
+        <p>该结果用于展示整改后方案的归并结果与保留项。</p>
+      </article>
+      <article className="result-card">
+        <span className="eyebrow">接受变更</span>
+        <ul className="result-list">
+          {asset.acceptedChanges.map((item) => (
+            <li key={item.issueId}>
+              <strong>{item.issueId}</strong>
+              <span>{item.revisedText}</span>
+            </li>
+          ))}
+        </ul>
+      </article>
+      <article className="result-card result-card-wide">
+        <span className="eyebrow">拒绝项</span>
+        <ul className="result-list">
+          {asset.rejectedItems.map((item) => (
+            <li key={item.issueId}>
+              <strong>{item.issueId}</strong>
+              <span>{item.reason}</span>
+            </li>
+          ))}
+        </ul>
+      </article>
+    </>
   );
 }
 
@@ -380,73 +474,20 @@ export function ResultPreviewPage({
   document,
   sessionSnapshot,
   onBack,
+  onOpenWorkbench,
   themeMode,
   onToggleTheme,
 }: {
   document: LibraryDocument;
   sessionSnapshot?: ReviewSession;
   onBack: () => void;
+  onOpenWorkbench: () => void;
   themeMode: ThemeMode;
   onToggleTheme: () => void;
 }) {
   const asset = sessionSnapshot?.resultAsset ?? document.resultAsset;
-
-  if (!asset) {
-    return (
-      <main className="result-page">
-        <header className="topbar result-topbar">
-          <button type="button" className="detail-back-button" onClick={onBack}>
-            <ArrowLeft size={16} />
-            返回文档库
-          </button>
-          <div>
-            <span className="eyebrow">结果预览 · Fallback Shell</span>
-            <h1>{document.name}</h1>
-          </div>
-          <div className="project-meta" aria-label="结果页操作">
-            <button type="button" className="theme-toggle subtle" onClick={onToggleTheme}>
-              <SunMoon size={16} />
-              {themeMode === "light" ? "深色主题" : "浅色主题"}
-            </button>
-            <span>{document.project}</span>
-            <span>{statusLabels[document.status]}</span>
-          </div>
-        </header>
-
-        <section className="result-hero">
-          <div>
-            <span className="eyebrow">结果尚未可用</span>
-            <h2>当前任务没有可展示的结果资产</h2>
-            <p>
-              该任务已经进入结果页，但系统暂时无法从会话快照或持久化任务中恢复结果资产。
-              你仍然可以返回文档库，重新打开任务或稍后再试，平台会保留现有任务状态。
-            </p>
-          </div>
-          <button type="button" className="export-disabled" disabled>
-            导出 PDF/Word 待接入
-          </button>
-        </section>
-
-        <section className="result-metrics" aria-label="结果概览">
-          <MetricBlock label="任务状态" value={statusLabels[document.status]} />
-          <MetricBlock label="任务模式" value={modeName(document.mode)} />
-          <MetricBlock label="更新时刻" value={document.updatedAt} />
-          <MetricBlock label="当前阶段" value={fallbackSummaryLabel(document)} />
-        </section>
-
-        <section className="result-layout">
-          <article className="result-card result-card-wide">
-            <span className="eyebrow">恢复说明</span>
-            <h2>结果资产缺失时的安全兜底</h2>
-            <p>
-              当任务状态正常但结果资产未落盘或会话快照丢失时，这个页面会保留可返回的安全外壳，
-              避免用户面对空白路由。后续补齐结果资产后，可重新打开看到完整结果。
-            </p>
-          </article>
-        </section>
-      </main>
-    );
-  }
+  const sourceLabel = getResultSourceLabel(document, sessionSnapshot);
+  const sourceDetail = getResultSourceDetail(document, sessionSnapshot);
 
   return (
     <main className="result-page">
@@ -456,25 +497,38 @@ export function ResultPreviewPage({
           返回文档库
         </button>
         <div>
-          <span className="eyebrow">审查结果资产 · Mock Preview</span>
-          <h1>{asset.documentName}</h1>
+          <span className="eyebrow">{asset ? "审查结果资产" : "结果预览 · Fallback Shell"}</span>
+          <h1>{asset?.documentName ?? document.name}</h1>
         </div>
         <div className="project-meta" aria-label="结果页操作">
+          <span>{`来源：${sourceLabel}`}</span>
           <button type="button" className="theme-toggle subtle" onClick={onToggleTheme}>
             <SunMoon size={16} />
             {themeMode === "light" ? "深色主题" : "浅色主题"}
           </button>
-          <span>{resultTypeName(asset)}</span>
-          <span>{asset.projectName}</span>
+          <button type="button" className="theme-toggle subtle" onClick={onOpenWorkbench}>
+            <FileText size={16} />
+            返回工作台
+          </button>
+          <span>{statusLabels[document.status]}</span>
+          <span>{modeName(document.mode)}</span>
         </div>
       </header>
 
       <section className="result-hero">
         <div>
-          <span className="eyebrow">生成时间</span>
-          <h2>{formatResultTime(asset.createdAt)}</h2>
+          <span className="eyebrow">{asset ? "生成时间" : "恢复说明"}</span>
+          {asset ? <h2>{formatResultTime(asset.createdAt)}</h2> : <h2>当前任务没有可展示的结果资产</h2>}
+          <ResultHeaderMeta
+            sourceLabel={sourceLabel}
+            sourceDetail={sourceDetail}
+            statusLabel={statusLabels[document.status]}
+            modeLabel={modeName(document.mode)}
+          />
           <p>
-            该页面用于验证审查完成后的业务产物结构。当前导出、盖章流转与后端归档接口均为预留。
+            {asset
+              ? "页面用于验证审查完成后的业务产物结构，导出和归档仍然保留为后续接入点。"
+              : "系统暂时无法从会话快照或持久化任务中恢复结果资产，但仍保留安全兜底外壳。"}
           </p>
         </div>
         <button type="button" className="export-disabled" disabled>
@@ -482,167 +536,48 @@ export function ResultPreviewPage({
         </button>
       </section>
 
-      <section className="result-metrics" aria-label="结果统计">
-        <MetricBlock label="问题总数" value={asset.issueStats.total} />
-        <MetricBlock label="已接受" value={asset.issueStats.accepted} tone="success" />
-        <MetricBlock label="已拒绝" value={asset.issueStats.rejected} tone="danger" />
-        <MetricBlock label="工作模式" value={modeName(asset.mode)} />
+      <section className="result-metrics" aria-label="结果概览">
+        <MetricBlock label="结果来源" value={sourceLabel} />
+        <MetricBlock label="任务状态" value={statusLabels[document.status]} />
+        <MetricBlock label="任务模式" value={modeName(document.mode)} />
+        <MetricBlock label="更新时间" value={document.updatedAt} />
+        <MetricBlock label="当前阶段" value={getFallbackSummaryLabel(document)} />
       </section>
 
-      {asset.type === "supervisor-report" ? (
-        <SupervisorReportPreview asset={asset} />
+      {!asset ? (
+        <section className="result-layout">
+          <article className="result-card result-card-wide">
+            <span className="eyebrow">恢复路径</span>
+            <h2>结果资产缺失时的安全兜底</h2>
+            <p>
+              这个页面保留了可返回的恢复入口，方便你回到工作台继续检查任务状态、OCR 结果和审查进度。
+            </p>
+            <div className="dialog-actions">
+              <button type="button" className="primary" onClick={onOpenWorkbench}>
+                <FileText size={16} />
+                返回工作台
+              </button>
+              <button type="button" onClick={onBack}>
+                返回文档库
+              </button>
+            </div>
+          </article>
+        </section>
       ) : (
-        <RevisedSnapshotPreview asset={asset} />
+        <section className="result-layout">{renderResultAsset(asset)}</section>
       )}
     </main>
   );
 }
 
-function fallbackSummaryLabel(document: LibraryDocument) {
-  const lifecycle = getReviewTaskOrchestrationSnapshot(document);
-  return lifecycle.currentStageLabel ?? lifecycle.summary.label;
-}
-
-function SupervisorReportPreview({
-  asset,
-}: {
-  asset: Extract<ReviewResultAsset, { type: "supervisor-report" }>;
-}) {
-  return (
-    <section className="result-layout">
-      <article className="result-card result-card-wide">
-        <span className="eyebrow">审核概况</span>
-        <h2>监理审核报告</h2>
-        <p>{asset.summary}</p>
-      </article>
-
-      <article className="result-card">
-        <span className="eyebrow">重大风险</span>
-        <h2>风险摘要</h2>
-        <ul className="result-list">
-          {asset.majorRisks.map((risk) => (
-            <li key={risk}>{risk}</li>
-          ))}
-        </ul>
-      </article>
-
-      <article className="result-card">
-        <span className="eyebrow">整改建议</span>
-        <h2>闭环要求</h2>
-        <ul className="result-list">
-          {asset.rectificationSuggestions.map((suggestion, index) => (
-            <li key={`${suggestion}-${index}`}>{suggestion}</li>
-          ))}
-        </ul>
-      </article>
-
-      <article className="result-card result-card-wide">
-        <span className="eyebrow">逐条审查意见</span>
-        <h2>意见明细</h2>
-        <div className="result-opinion-list">
-          {asset.issueOpinions.map((opinion) => (
-            <section key={opinion.issueId} className="result-opinion">
-              <div>
-                <strong>{opinion.issueId}</strong>
-                <span className={`severity severity-${opinion.severity}`}>
-                  {severityName(opinion.severity)}
-                </span>
-                <span className={`decision-chip ${opinion.decision}`}>
-                  {opinion.decision === "accepted" ? "已接受" : "已拒绝"}
-                </span>
-              </div>
-              <h3>{opinion.title}</h3>
-              <p>{opinion.opinion}</p>
-              <small>{opinion.basis}</small>
-            </section>
-          ))}
-        </div>
-      </article>
-
-      <article className="result-card result-card-wide">
-        <span className="eyebrow">结论</span>
-        <h2>审核结论</h2>
-        <p>{asset.conclusion}</p>
-      </article>
-    </section>
-  );
-}
-
-function RevisedSnapshotPreview({
-  asset,
-}: {
-  asset: Extract<ReviewResultAsset, { type: "revised-plan-snapshot" }>;
-}) {
-  return (
-    <section className="result-layout">
-      <article className="result-card result-card-wide">
-        <span className="eyebrow">处理摘要</span>
-        <h2>整改后方案快照</h2>
-        <p>{asset.processingSummary}</p>
-      </article>
-
-      <article className="result-card">
-        <span className="eyebrow">已采纳修改</span>
-        <h2>替换记录</h2>
-        <div className="change-list">
-          {asset.acceptedChanges.length > 0 ? (
-            asset.acceptedChanges.map((change) => (
-              <section key={change.issueId} className="change-item">
-                <strong>{change.issueId}</strong>
-                <p>
-                  <span>原文</span>
-                  {change.originalText}
-                </p>
-                <p>
-                  <span>修改后</span>
-                  {change.revisedText}
-                </p>
-              </section>
-            ))
-          ) : (
-            <p className="result-empty">本次没有采纳修改。</p>
-          )}
-        </div>
-      </article>
-
-      <article className="result-card">
-        <span className="eyebrow">拒绝保留项</span>
-        <h2>原文保留</h2>
-        <ul className="result-list">
-          {asset.rejectedItems.length > 0 ? (
-            asset.rejectedItems.map((item) => (
-              <li key={item.issueId}>
-                {item.issueId} {item.title}：{item.reason}
-              </li>
-            ))
-          ) : (
-            <li>本次没有拒绝项。</li>
-          )}
-        </ul>
-      </article>
-
-      <article className="result-card result-card-wide">
-        <span className="eyebrow">整改后方案全文</span>
-        <h2>预览正文</h2>
-        <div className="result-document">
-          {asset.processedParagraphs.map((paragraph) => (
-            <section key={paragraph.id} className="result-paragraph">
-              <h3>{paragraph.section}</h3>
-              <p>{paragraph.text}</p>
-            </section>
-          ))}
-        </div>
-      </article>
-    </section>
-  );
-}
-
 export function KnowledgeBasePage() {
   return (
-    <div className="placeholder-page">
-      <span className="eyebrow">知识库</span>
-      <h2>页面暂未开发</h2>
-      <p>后续将接入招标、投标、法规、管理办法、企业标准等资料，并提供上传、切分和检索入口。</p>
+    <div className="assets-grid">
+      <section className="assets-card result-card-wide">
+        <span className="eyebrow">知识库</span>
+        <h2>审查依据与智能体绑定</h2>
+        <p>这里保留知识资产目录的骨架，后续可以继续挂接真实依据、提示词和版本状态。</p>
+      </section>
     </div>
   );
 }
@@ -687,9 +622,7 @@ export function DataAssetsPage({
       const events = await runReviewStreamConnectivityCheck();
       setStreamEvents(events);
     } catch (error) {
-      setConnectivityError(
-        error instanceof Error ? error.message : "后端连通性检查失败。",
-      );
+      setConnectivityError(error instanceof Error ? error.message : "后端连通性检查失败");
     } finally {
       setCheckingConnectivity(false);
     }
@@ -707,14 +640,16 @@ export function DataAssetsPage({
       const result = await uploadMinioDocument(file);
       setMinioUploadResult(result);
       if (!result.ok) {
-        setConnectivityError(result.message || "MinIO 上传验证失败。");
+        setConnectivityError(result.message || "MinIO 上传验证失败");
       }
     } catch (error) {
-      setConnectivityError(error instanceof Error ? error.message : "MinIO 上传验证失败。");
+      setConnectivityError(error instanceof Error ? error.message : "MinIO 上传验证失败");
     } finally {
       setUploadingToMinio(false);
     }
   }
+
+  const healthSummary = healthResult?.providers?.summary?.overall ?? "unconfigured";
 
   return (
     <div className="assets-grid">
@@ -742,21 +677,16 @@ export function DataAssetsPage({
               </div>
             ))}
           </div>
-          {agent.key === "construction-review" ? (
-            <button type="button" className="primary" onClick={onOpenDocument}>
-              先去文档库
-            </button>
-          ) : (
-            <button type="button" className="secondary" onClick={onOpenDocument}>
-              返回文档库
-            </button>
-          )}
+          <button type="button" className={agent.key === "construction-review" ? "primary" : "secondary"} onClick={onOpenDocument}>
+            {agent.key === "construction-review" ? "先去文档库" : "返回文档库"}
+          </button>
         </section>
       ))}
+
       <section className="assets-card">
         <span className="eyebrow">提示词资产</span>
         <h2>{editable ? "可维护" : "只读"}</h2>
-        <p>提示词资产将按智能体绑定、版本、负责人和状态进行管理。当前先展示草稿目录。</p>
+        <p>提示词资产按智能体绑定、版本、负责人和状态管理，这里先展示目录骨架。</p>
         <div className="prompt-asset-list">
           {promptAssetRegistry.map((prompt) => (
             <article key={prompt.name} className="prompt-asset-item">
@@ -772,6 +702,7 @@ export function DataAssetsPage({
           ))}
         </div>
       </section>
+
       <section className="assets-card connectivity-card">
         <div className="section-title row">
           <div>
@@ -782,103 +713,83 @@ export function DataAssetsPage({
             {checkingConnectivity ? "检查中..." : "运行检查"}
           </button>
         </div>
-        <p>用于验证本地 BFF、OpenAI-compatible LLM、PaddleOCR-VL 和 SSE 流式通道。不会显示任何密钥。</p>
+        <p>用于验证本地 BFF、OpenAI-compatible LLM、PaddleOCR-VL 与 SSE 流式通道，不会显示任何密钥。</p>
         {connectivityError && <div className="connectivity-error">{connectivityError}</div>}
+
         <div className="connectivity-grid">
           <ConnectivityStatus
             title="后端 BFF"
             status={healthResult?.ok ? "ready" : "pending"}
-            detail={
-              healthResult
-                ? `${healthResult.service ?? "backend"} · ${
-                    healthResult.providers?.summary
-                      ? `${healthResult.providers.summary.overall} ${healthResult.providers.summary.ready}/${healthResult.providers.summary.total}`
-                      : "无摘要"
-                  } · ${healthResult.timestamp ?? "无时间戳"}`
-                : "等待检查"
-            }
+            detail={healthResult?.providers?.summary ? `整体状态：${healthSummary}` : "尚未检查"}
           />
           <ConnectivityStatus
             title="LLM"
-            status={llmResult?.ok ? "ready" : llmResult ? "failed" : "pending"}
-            detail={
-              llmResult
-                ? `${llmResult.model ?? "未配置模型"} · ${
-                    llmResult.configured ? "配置完整" : "配置不完整"
-                  }${llmResult.hasBaseURL ? " · 自定义 BaseURL" : ""} · ${
-                    llmResult.preview || llmResult.message || llmResult.status || "已返回"
-                  }`
-                : healthResult?.providers?.openai?.configured
-                  ? `已配置 ${healthResult.providers.openai.model}`
-                  : "等待配置或检查"
-            }
+            status={llmResult?.ok ? "ready" : "pending"}
+            detail={llmResult?.message ?? llmResult?.preview ?? "等待检查"}
           />
           <ConnectivityStatus
-            title="PaddleOCR-VL"
-            status={ocrResult?.ok ? "ready" : ocrResult ? "failed" : "pending"}
-            detail={
-              ocrResult
-                ? `${ocrResult.model} · ${ocrResult.configured ? "配置完整" : "配置不完整"} · ${
-                    ocrResult.hasToken ? "Token 已配置" : "Token 未配置"
-                  }`
-                : "等待检查"
-            }
+            title="OCR"
+            status={ocrResult?.ok ? "ready" : "pending"}
+            detail={ocrResult?.model ?? "等待检查"}
           />
           <ConnectivityStatus
-            title="MinIO 私有桶"
-            status={minioResult?.ok ? "ready" : minioResult ? "failed" : "pending"}
-            detail={
-              minioResult
-                ? `${minioResult.bucket ?? "未配置桶"} · ${
-                    minioResult.configured ? "配置完整" : "配置不完整"
-                  } · ${minioResult.hasPublicEndpoint ? "有公开端点" : "无公开端点"}`
-                : healthResult?.providers?.minio?.configured
-                  ? `已配置 ${healthResult.providers.minio.bucket}`
-                  : "等待配置或检查"
-            }
-          />
-          <ConnectivityStatus
-            title="SSE 流式"
-            status={streamEvents.length > 0 ? "ready" : "pending"}
-            detail={
-              streamEvents.length > 0
-                ? `已收到 ${streamEvents.length} 个事件，最后：${
-                    streamEvents[streamEvents.length - 1]?.title
-                  }${streamEvents[streamEvents.length - 1]?.currentSection ? ` · ${streamEvents[streamEvents.length - 1].currentSection}` : ""}`
-                : "等待检查"
-            }
+            title="MinIO"
+            status={minioResult?.ok ? "ready" : "pending"}
+            detail={minioResult?.summary ?? "等待检查"}
           />
         </div>
-        <div className="storage-smoke-panel">
-          <div>
-            <strong>MinIO 上传验证</strong>
-            <p>选择一个小文件写入私有桶，用于确认服务器凭证、桶权限和对象写入链路。</p>
-            {minioUploadResult?.object && (
-              <small>
-                已写入 {minioUploadResult.object.bucket}/{minioUploadResult.object.key} ·{" "}
-                {formatFileSize(minioUploadResult.object.size)}
-              </small>
+
+        <div className="connectivity-grid">
+          <article className="connectivity-stream-card">
+            <span className="eyebrow">SSE 流</span>
+            <h3>review stream connectivity</h3>
+            <div className="stream-event-list">
+              {streamEvents.length === 0 ? (
+                <p>点击上方按钮后查看事件流。</p>
+              ) : (
+                streamEvents.map((event) => (
+                  <div key={`${event.stageId}-${event.type}`} className="stream-event-item">
+                    <strong>
+                      {event.type} · {event.title}
+                    </strong>
+                    <span>{event.detail}</span>
+                    {event.completedAt && <small>{event.completedAt}</small>}
+                  </div>
+                ))
+              )}
+            </div>
+          </article>
+
+          <article className="connectivity-stream-card">
+            <span className="eyebrow">MinIO 冒烟上传</span>
+            <h3>对象存储写入验证</h3>
+            <p>用于检查对象存储写入链路是否可用。</p>
+            <input
+              ref={storageSmokeInputRef}
+              type="file"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void handleMinioSmokeUpload(file);
+                  event.target.value = "";
+                }
+              }}
+            />
+            {minioUploadResult && (
+              <div className="stream-event-item">
+                <strong>{minioUploadResult.ok ? "上传成功" : "上传失败"}</strong>
+                <span>{minioUploadResult.message ?? minioUploadResult.object?.summary ?? "无附加说明"}</span>
+              </div>
             )}
-          </div>
-          <input
-            ref={storageSmokeInputRef}
-            type="file"
-            className="upload-input"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              void handleMinioSmokeUpload(file);
-              event.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => storageSmokeInputRef.current?.click()}
-            disabled={uploadingToMinio}
-          >
-            <Upload size={16} />
-            {uploadingToMinio ? "上传中..." : "选择文件验证"}
-          </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => storageSmokeInputRef.current?.click()}
+              disabled={uploadingToMinio}
+            >
+              选择文件
+            </button>
+          </article>
         </div>
       </section>
     </div>
@@ -914,11 +825,11 @@ export function ReviewLoadingPage({
       <div className="streaming-review-page">
         <section className="streaming-hero ocr-hero">
           <div>
-            <span className="eyebrow">OCR 识别中 · {statusLabel}</span>
+            <span className="eyebrow">OCR 识别 · {statusLabel}</span>
             <h2>{document?.name ?? "文档接入任务"}</h2>
-            <p>系统正在识别版面、章节和可锚定文本。完成后会自动进入审查准备阶段。</p>
+            <p>系统正在识别版面、章节和可锚定文本，完成后会自动进入审查准备阶段。</p>
             <div className="streaming-meta">
-              <span>{lifecycle?.currentStageLabel ?? pipelineStageLabels[stage.stageType ?? "ocr"]}</span>
+              <span>{lifecycle?.currentStageLabel ?? stage.title}</span>
               {stage.agentLabel && <span>{stage.agentLabel}</span>}
               {stage.currentParagraphLabel && <span>{stage.currentParagraphLabel}</span>}
             </div>
@@ -943,11 +854,7 @@ export function ReviewLoadingPage({
               {["接收文件", "识别版面", "提取章节", "生成结构化结果"].map((item, index) => (
                 <div
                   key={item}
-                  className={
-                    index <= getOcrStepIndex(ocrPercent)
-                      ? "streaming-step done"
-                      : "streaming-step"
-                  }
+                  className={index <= getOcrStepIndex(ocrPercent) ? "streaming-step done" : "streaming-step"}
                 >
                   <span />
                   <p>{item}</p>
@@ -965,7 +872,7 @@ export function ReviewLoadingPage({
               <Sparkles size={18} />
               <div>
                 <strong>{lifecycle?.summary.label ?? "OCR 正在处理"}</strong>
-                <p>{lifecycle?.summary.detail ?? document?.ocrJob?.message ?? "等待 OCR 服务返回分页与版面信息。"}</p>
+                <p>{lifecycle?.summary.detail ?? document?.ocrJob?.message ?? "等待 OCR 服务返回分页与版面信息"}</p>
               </div>
             </div>
             <div className="streaming-snippets">
@@ -1005,14 +912,11 @@ export function ReviewLoadingPage({
     <div className="streaming-review-page">
       <section className="streaming-hero">
         <div>
-          <span className="eyebrow">审查准备中 · {statusLabel}</span>
+          <span className="eyebrow">审查准备 · {statusLabel}</span>
           <h2>{document?.name ?? "文档审查任务"}</h2>
-          <p>
-            {roleLabel}可在详情页观察文档结构化、依据匹配、问题生成的流式进度。当前任务已经接入真实
-            OCR 结构恢复结果。
-          </p>
+          <p>{roleLabel}可在详情页观察文档结构化、依据匹配、问题生成的流式进度。</p>
           <div className="streaming-meta">
-            <span>{pipelineStageLabels[stage.stageType ?? "structure-restoration"]}</span>
+            <span>{stage.stageType ? pageLabels.documents : "审查中"}</span>
             <span>{stage.agentLabel ?? agentKeyLabels[stage.agentKey ?? "construction-review"]}</span>
             {recoveredStructure && <span>{recoveredStructure.sourceFormat}</span>}
             {stage.currentParagraphLabel && (
@@ -1027,89 +931,34 @@ export function ReviewLoadingPage({
         </div>
         <div className="streaming-progress">
           <strong>{stage.progress}%</strong>
-          <span>{stage.title}</span>
+          <span>{stage.detail}</span>
         </div>
       </section>
 
-      {recoveredStructure && (
-        <section className="streaming-kernel-strip recovered-structure-strip" aria-label="恢复结构摘要">
-          <span>
-            <strong>结构来源</strong>
-            {recoveredStructure.sourceFormat}
-          </span>
-          <span>
-            <strong>章节</strong>
-            {recoveredSections.length}
-          </span>
-          <span>
-            <strong>段落</strong>
-            {recoveredParagraphs.length}
-          </span>
-          <span>
-            <strong>当前章节</strong>
-            {recoveredCurrentSection}
-          </span>
-        </section>
-      )}
-
-      {(stage.hazardLabel || stage.basisTrace) && (
-        <section className="streaming-kernel-strip" aria-label="审查内核状态">
-          {stage.hazardLabel && (
-            <span>
-              <strong>危大判定</strong>
-              {stage.hazardLabel}
-            </span>
-          )}
-          {stage.basisTrace && (
-            <span>
-              <strong>依据追溯</strong>
-              完整 {stage.basisTrace.complete} · 部分 {stage.basisTrace.partial} · 缺失{" "}
-              {stage.basisTrace.missing}
-            </span>
-          )}
-        </section>
-      )}
-
-      <div className="streaming-progress-bar" aria-label="AI 审核进度">
+      <div className="streaming-progress-bar" aria-label="审查准备进度">
         <span style={{ width: `${stage.progress}%` }} />
       </div>
 
-      <section className="streaming-layout" aria-label="流式审核工作台">
+      <section className="streaming-layout" aria-label="审查准备进度">
         <aside className="streaming-panel streaming-outline">
           <div className="streaming-panel-title">
             <ListChecks size={18} />
-            <span>{recoveredSections.length > 0 ? "恢复章节" : "目录识别"}</span>
+            <span>准备阶段</span>
           </div>
-          {recoveredSections.length > 0 ? (
-            recoveredSections.map((section) => (
-              <div
-                key={section.id}
-                className={
-                  recoveredCurrentSection === section.title
-                    ? "streaming-outline-item active"
-                    : "streaming-outline-item"
-                }
-              >
-                <CheckCircle2 size={15} />
-                {section.title} · {section.paragraphIds.length} 段
+          <div className="streaming-timeline">
+            {stages.map((item, index) => (
+              <div key={item.id} className={index <= stageIndex ? "streaming-step done" : "streaming-step"}>
+                <span />
+                <p>{item.title}</p>
               </div>
-            ))
-          ) : stage.outlineItems.length > 0 ? (
-            stage.outlineItems.map((item) => (
-              <div key={item} className="streaming-outline-item">
-                <CheckCircle2 size={15} />
-                {item}
-              </div>
-            ))
-          ) : (
-            <p className="streaming-empty">等待章节结构解析。</p>
-          )}
+            ))}
+          </div>
         </aside>
 
         <section className="streaming-panel streaming-document">
           <div className="streaming-panel-title">
             <FileSearch size={18} />
-            <span>文档解析与依据匹配</span>
+            <span>当前流式阶段</span>
           </div>
           <div className="streaming-stage-card">
             <Sparkles size={18} />
@@ -1118,75 +967,38 @@ export function ReviewLoadingPage({
               <p>{stage.detail}</p>
             </div>
           </div>
-          <div className="streaming-stage-focus">
-            <article>
-              <span>当前智能体</span>
-              <strong>{stage.agentLabel ?? agentKeyLabels[stage.agentKey ?? "construction-review"]}</strong>
-              <p>{stage.stageType ? pipelineStageLabels[stage.stageType] : "审查准备"}</p>
-            </article>
-            <article>
-              <span>当前段落</span>
-              <strong>
-                {recoveredStructure?.progress.currentParagraphId
-                  ? recoveredStructure.progress.currentParagraphId
-                  : stage.currentParagraphLabel
-                    ? `${stage.currentParagraphIndex}/${stage.currentParagraphTotal}`
-                    : "待定位"}
-              </strong>
-              <p>{recoveredStructure?.progress.currentSection ?? stage.currentParagraphLabel ?? "等待段落锚点恢复"}</p>
-            </article>
-          </div>
           <div className="streaming-snippets">
-            {recoveredStructure?.paragraphs.slice(0, 3).map((paragraph, index) => (
-              <article key={paragraph.id}>
-                <span>
-                  恢复段落 {index + 1}
-                  {paragraph.section ? ` · ${paragraph.section}` : ""}
-                </span>
-                <p>{paragraph.text}</p>
-              </article>
-            ))}
-            {recoveredStructure?.paragraphs.length ? null : stage.documentSnippets.map((snippet, index) => (
-              <article key={`${stage.id}-${index}`}>
-                <span>片段 {index + 1}</span>
-                <p>{snippet}</p>
-              </article>
-            ))}
+            <article>
+              <span>当前上下文</span>
+              <p>{recoveredCurrentSection}</p>
+            </article>
+            <article>
+              <span>结构状态</span>
+              <p>
+                {recoveredSections.length} 个章节 · {recoveredParagraphs.length} 个段落
+              </p>
+            </article>
           </div>
         </section>
 
         <aside className="streaming-panel streaming-issues">
           <div className="streaming-panel-title">
             <Clock3 size={18} />
-            <span>问题生成</span>
-          </div>
-          <div className="streaming-timeline">
-            {stages.map((item, index) => (
-              <div
-                key={item.id}
-                className={
-                  index < stageIndex
-                    ? "streaming-step done"
-                    : index === stageIndex
-                      ? "streaming-step active"
-                      : "streaming-step"
-                }
-              >
-                <span />
-                <p>{item.title}</p>
-              </div>
-            ))}
+            <span>任务提示</span>
           </div>
           <div className="streaming-issue-list">
             {stage.issueSummaries.length > 0 ? (
-              stage.issueSummaries.map((issue, index) => (
-                <div key={`${issue}-${index}`} className="streaming-issue-item">
+              stage.issueSummaries.map((item, index) => (
+                <div key={item} className="streaming-issue-item">
                   <AlertBadge index={index + 1} />
-                  <p>{issue}</p>
+                  <p>{item}</p>
                 </div>
               ))
             ) : (
-              <p className="streaming-empty">AI 尚未输出结构化问题。</p>
+              <div className="streaming-issue-item">
+                <AlertBadge index={1} />
+                <p>当前阶段尚未生成问题摘要。</p>
+              </div>
             )}
           </div>
         </aside>

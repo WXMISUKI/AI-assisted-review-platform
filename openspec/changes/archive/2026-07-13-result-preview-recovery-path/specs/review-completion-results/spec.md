@@ -1,7 +1,8 @@
 # review-completion-results Specification
 
 ## Purpose
-TBD - created by archiving change review-completion-report-and-result-assets. Update Purpose after archive.
+Define mode-specific mock result generation and result preview behavior for completed review tasks.
+
 ## Requirements
 ### Requirement: Mode-specific result asset
 The system SHALL generate a mode-specific mock result asset when a review is completed.
@@ -78,4 +79,3 @@ The system SHALL store generated review result assets through the review session
 #### Scenario: Result is reopened
 - **WHEN** a completed task with a result asset is opened from the document library
 - **THEN** the result preview is loaded from persisted task session state
-

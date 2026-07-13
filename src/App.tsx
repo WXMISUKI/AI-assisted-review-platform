@@ -730,6 +730,10 @@ export function App() {
         document={selectedDocument}
         sessionSnapshot={selectedDocumentSession ?? undefined}
         onBack={() => setActivePage("documents")}
+        onOpenWorkbench={() => {
+          setSelectedDocId(selectedDocument.id);
+          setActivePage("review-detail");
+        }}
         themeMode={themeMode}
         onToggleTheme={toggleTheme}
       />
