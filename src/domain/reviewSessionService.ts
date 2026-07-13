@@ -1,5 +1,6 @@
 import { documentParagraphs, initialReviewIssues } from "./mockReview";
 import { rebindReviewIssueAnchors } from "./reviewIssueAnchorBinding";
+import { mergeRecoveredStructureIssues } from "./reviewIssueDrafts";
 import { recoverStructureFromParagraphs } from "./ocrStructureRecovery";
 import { loadReviewTasks, saveReviewTasks } from "./reviewTaskRepository";
 import { getReviewTaskOrchestrationSnapshot } from "./reviewTaskOrchestration";
@@ -46,6 +47,16 @@ function cloneParagraphsFromStructure(recoveredStructure: RecoveredDocumentStruc
   return recoveredStructure.paragraphs.map((paragraph) => ({ ...paragraph }));
 }
 
+function resolveRecoveredStructureIssues(
+  issues: ReviewIssue[],
+  recoveredStructure: RecoveredDocumentStructure | undefined,
+) {
+  return mergeRecoveredStructureIssues(
+    rebindReviewIssueAnchors(issues, recoveredStructure),
+    recoveredStructure,
+  );
+}
+
 function createIdleRecoveredStructure(): RecoveredDocumentStructure {
   return {
     status: "idle",
@@ -76,6 +87,14 @@ export function createDocumentTask(
   tasks: ReviewTask[],
   input: CreateReviewTaskInput,
 ): ReviewTask[] {
+  const recoveredStructure =
+    input.recoveredStructure ??
+    (input.status === "uploaded" || input.status === "parsing"
+      ? createIdleRecoveredStructure()
+      : recoverStructureFromParagraphs(cloneParagraphs(documentParagraphs)));
+  const issues = recoveredStructure
+    ? resolveRecoveredStructureIssues(cloneIssues(), recoveredStructure)
+    : cloneIssues();
   const newTask: ReviewTask = {
     id: `doc-${Date.now()}`,
     name: input.name,
@@ -83,19 +102,13 @@ export function createDocumentTask(
     uploader: input.uploader,
     updatedAt: nowString(),
     status: input.status ?? "uploaded",
-    issueCount: 0,
+    issueCount: getIssueCounts(issues).total,
     mode: input.mode,
     paragraphs: input.recoveredStructure
       ? cloneParagraphsFromStructure(input.recoveredStructure)
       : cloneParagraphs(documentParagraphs),
-    issues: input.recoveredStructure
-      ? rebindReviewIssueAnchors(cloneIssues(), input.recoveredStructure)
-      : cloneIssues(),
-    recoveredStructure:
-      input.recoveredStructure ??  
-      (input.status === "uploaded" || input.status === "parsing"
-        ? createIdleRecoveredStructure()
-        : recoverStructureFromParagraphs(cloneParagraphs(documentParagraphs))),
+    issues,
+    recoveredStructure,
     streamStageIndex: 0,
     sourceObject: input.sourceObject,
     ocrJob: input.ocrJob,
@@ -124,7 +137,7 @@ export function updateDocumentTaskUploadResult(
       ? cloneParagraphsFromStructure(input.recoveredStructure)
       : task.paragraphs,
     issues: input.recoveredStructure
-      ? rebindReviewIssueAnchors(task.issues, input.recoveredStructure)
+      ? resolveRecoveredStructureIssues(task.issues, input.recoveredStructure)
       : task.issues,
     ocrJob: input.ocrJob ?? task.ocrJob,
     recoveredStructure: input.recoveredStructure ?? task.recoveredStructure,
@@ -134,6 +147,9 @@ export function updateDocumentTaskUploadResult(
           failedAt: new Date().toISOString(),
         }
       : undefined,
+    issueCount: input.recoveredStructure
+      ? getIssueCounts(resolveRecoveredStructureIssues(task.issues, input.recoveredStructure)).total
+      : task.issueCount,
     updatedAt: nowString(),
   }));
 }
@@ -186,7 +202,14 @@ export function syncDocumentTaskOcrStatus(
               failedAt: new Date().toISOString(),
             }
           : undefined,
-      issueCount: nextState === "done" ? getIssueCounts(task.issues).total : task.issueCount,
+      issueCount:
+        nextState === "done"
+          ? getIssueCounts(
+              input.recoveredStructure
+                ? resolveRecoveredStructureIssues(task.issues, input.recoveredStructure)
+                : task.issues,
+            ).total
+          : task.issueCount,
       updatedAt: nowString(),
     };
   });
@@ -296,7 +319,7 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
   const lifecycle = getReviewTaskOrchestrationSnapshot(task);
   const resolvedStructure = task.recoveredStructure;
   const resolvedParagraphs = resolvedStructure?.paragraphs ?? task.paragraphs;
-  const resolvedIssues = rebindReviewIssueAnchors(task.issues, resolvedStructure);
+  const resolvedIssues = resolveRecoveredStructureIssues(task.issues, resolvedStructure);
   return {
     task,
     paragraphs: resolvedParagraphs,

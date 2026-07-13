@@ -1,4 +1,5 @@
 import { createSeedReviewTasks } from "./mockReviewTaskSeeds";
+import { mergeRecoveredStructureIssues } from "./reviewIssueDrafts";
 import type { ReviewStorageSnapshot, ReviewTask } from "./reviewTypes";
 
 const STORAGE_KEY = "ai-assisted-review-platform.review-tasks";
@@ -17,6 +18,20 @@ function isValidSnapshot(value: unknown): value is ReviewStorageSnapshot {
   return snapshot.schemaVersion === STORAGE_VERSION && Array.isArray(snapshot.tasks);
 }
 
+function normalizeLoadedTask(task: ReviewTask): ReviewTask {
+  if (!task.recoveredStructure) {
+    return task;
+  }
+
+  const issues = mergeRecoveredStructureIssues(task.issues, task.recoveredStructure);
+  return {
+    ...task,
+    issues,
+    issueCount: issues.length,
+    paragraphs: task.recoveredStructure.paragraphs.length > 0 ? task.recoveredStructure.paragraphs : task.paragraphs,
+  };
+}
+
 export function loadReviewTasks(): ReviewTask[] {
   if (!canUseStorage()) {
     return createSeedReviewTasks();
@@ -32,7 +47,7 @@ export function loadReviewTasks(): ReviewTask[] {
   try {
     const parsedValue: unknown = JSON.parse(rawValue);
     if (isValidSnapshot(parsedValue)) {
-      return parsedValue.tasks;
+      return parsedValue.tasks.map(normalizeLoadedTask);
     }
   } catch {
     // Invalid MVP storage should never block the review UI.

@@ -62,3 +62,7 @@ Every kernel conclusion SHALL be traceable to document location and review basis
 - **WHEN** the kernel emits a finding
 - **THEN** the finding includes the source document anchor, the basis reference, the check domain, the判定标准, and the recommended verification method
 
+#### Scenario: Draft issue is generated from recovered structure
+- **WHEN** a deterministic draft issue is generated from OCR-hydrated content
+- **THEN** the finding still includes a stable document anchor and basis reference rather than a free-form placeholder
+

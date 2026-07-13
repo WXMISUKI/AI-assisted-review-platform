@@ -1,5 +1,7 @@
 import { documentParagraphs, initialReviewIssues } from "./mockReview";
 import { recoverStructureFromParagraphs } from "./ocrStructureRecovery";
+import { mergeRecoveredStructureIssues } from "./reviewIssueDrafts";
+import { getIssueCounts } from "./reviewUtils";
 import type { ReviewStreamingStage, ReviewTask } from "./reviewTypes";
 
 function cloneParagraphs() {
@@ -12,19 +14,31 @@ function cloneIssues() {
 
 export function createSeedReviewTasks(): ReviewTask[] {
   const totalParagraphs = documentParagraphs.length;
+
+  const buildSeedTask = (task: Omit<ReviewTask, "issueCount" | "paragraphs" | "issues" | "recoveredStructure"> & {
+    issueCount?: number;
+  }): ReviewTask => {
+    const paragraphs = cloneParagraphs();
+    const recoveredStructure = recoverStructureFromParagraphs(paragraphs);
+    const issues = mergeRecoveredStructureIssues(cloneIssues(), recoveredStructure);
+    return {
+      ...task,
+      paragraphs,
+      recoveredStructure,
+      issues,
+      issueCount: getIssueCounts(issues).total,
+    };
+  };
+
   return [
-    {
+    buildSeedTask({
       id: "doc-001",
       name: "南京综合楼施工组织设计.pdf",
       project: "南京综合楼项目",
       uploader: "张工",
       updatedAt: "2026-07-09 09:12",
       status: "ready",
-      issueCount: 4,
       mode: "review",
-      paragraphs: cloneParagraphs(),
-      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
-      issues: cloneIssues(),
       streamStageIndex: 0,
       streamStageType: "structure-restoration",
       streamAgentKey: "structure-restoration",
@@ -32,19 +46,15 @@ export function createSeedReviewTasks(): ReviewTask[] {
       streamParagraphTotal: totalParagraphs,
       streamCurrentParagraphId: "p-001",
       streamParagraphLabel: "一、工程概况",
-    },
-    {
+    }),
+    buildSeedTask({
       id: "doc-002",
       name: "塔吊专项施工方案.docx",
       project: "南京综合楼项目",
       uploader: "李工",
       updatedAt: "2026-07-08 18:43",
       status: "reviewing",
-      issueCount: 0,
       mode: "revise",
-      paragraphs: cloneParagraphs(),
-      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
-      issues: cloneIssues(),
       streamStageIndex: 3,
       streamStageType: "rule-review",
       streamAgentKey: "construction-review",
@@ -52,41 +62,33 @@ export function createSeedReviewTasks(): ReviewTask[] {
       streamParagraphTotal: totalParagraphs,
       streamCurrentParagraphId: "p-003",
       streamParagraphLabel: "三、塔吊安装与附着",
-    },
-    {
+    }),
+    buildSeedTask({
       id: "doc-003",
       name: "脚手架专项方案（整改版）.pdf",
       project: "西湖机电安装项目",
       uploader: "王工",
       updatedAt: "2026-07-07 15:20",
       status: "completed",
-      issueCount: 6,
       mode: "review",
-      paragraphs: cloneParagraphs(),
-      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
-      issues: cloneIssues(),
       streamStageIndex: 0,
       streamStageType: "result-packaging",
       streamAgentKey: "report-generation",
       streamParagraphTotal: totalParagraphs,
-    },
-    {
+    }),
+    buildSeedTask({
       id: "doc-004",
       name: "临时用电方案（初稿）.pdf",
       project: "东苑住宅项目",
       uploader: "陈工",
       updatedAt: "2026-07-09 08:20",
       status: "uploaded",
-      issueCount: 0,
       mode: "revise",
-      paragraphs: cloneParagraphs(),
-      recoveredStructure: recoverStructureFromParagraphs(cloneParagraphs()),
-      issues: cloneIssues(),
       streamStageIndex: 0,
       streamStageType: "structure-restoration",
       streamAgentKey: "structure-restoration",
       streamParagraphTotal: totalParagraphs,
-    },
+    }),
   ];
 }
 
