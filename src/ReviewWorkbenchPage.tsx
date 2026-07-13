@@ -156,6 +156,36 @@ const modeCopy: Record<ReviewMode, { label: string; title: string; note: string 
   },
 };
 
+function resolveInitialIssueId(
+  issues: ReviewIssue[],
+  paragraphs: DocumentParagraph[],
+  currentParagraphId?: string | null,
+  currentSectionTitle?: string | null,
+) {
+  if (issues.length === 0) {
+    return "";
+  }
+
+  if (currentParagraphId) {
+    const paragraphMatch = issues.find((issue) => issue.anchor.paragraphId === currentParagraphId);
+    if (paragraphMatch) {
+      return paragraphMatch.id;
+    }
+  }
+
+  if (currentSectionTitle) {
+    const sectionParagraphIds = new Set(
+      paragraphs.filter((paragraph) => paragraph.section === currentSectionTitle).map((paragraph) => paragraph.id),
+    );
+    const sectionMatch = issues.find((issue) => sectionParagraphIds.has(issue.anchor.paragraphId));
+    if (sectionMatch) {
+      return sectionMatch.id;
+    }
+  }
+
+  return issues[0]?.id ?? "";
+}
+
 export function ReviewWorkbenchPage({
   allowedModes = ["review", "revise"],
   roleLabel = "监理",
@@ -179,7 +209,6 @@ export function ReviewWorkbenchPage({
   const sessionParagraphs = sessionSnapshot?.paragraphs ?? paragraphs;
   const sessionPipelineSnapshot = sessionSnapshot?.pipelineSnapshot;
   const [issues, setIssues] = useState<ReviewIssue[]>(sessionIssues);
-  const [activeIssueId, setActiveIssueId] = useState(sessionIssues[0]?.id ?? "");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [reviewMode, setReviewMode] = useState<ReviewMode>(() =>
     allowedModes.includes("review") ? "review" : allowedModes[0] ?? "revise",
@@ -206,6 +235,34 @@ export function ReviewWorkbenchPage({
 
   const counts = useMemo(() => getIssueCounts(issues), [issues]);
   const reviewComplete = useMemo(() => isReviewComplete(issues), [issues]);
+  const defaultSectionTitle =
+    sessionRecoveredStructure?.progress.currentSection ??
+    sessionPipelineSnapshot?.currentSection ??
+    sessionPipelineSnapshot?.paragraphLabel ??
+    reviewParagraphs[0]?.section ??
+    "";
+  const defaultParagraphId =
+    sessionRecoveredStructure?.progress.currentParagraphId ??
+    sessionPipelineSnapshot?.currentParagraphId ??
+    reviewParagraphs[0]?.id ??
+    "";
+  const initialActiveIssueId = useMemo(
+    () =>
+      resolveInitialIssueId(
+        sessionIssues,
+        reviewParagraphs,
+        sessionRecoveredStructure?.progress.currentParagraphId ?? sessionPipelineSnapshot?.currentParagraphId ?? null,
+        defaultSectionTitle,
+      ),
+    [
+      defaultSectionTitle,
+      reviewParagraphs,
+      sessionIssues,
+      sessionPipelineSnapshot?.currentParagraphId,
+      sessionRecoveredStructure?.progress.currentParagraphId,
+    ],
+  );
+  const [activeIssueId, setActiveIssueId] = useState(initialActiveIssueId);
   const sectionByParagraphId = useMemo(() => {
     const map = new Map<string, string>();
     reviewParagraphs.forEach((paragraph) => {
@@ -262,17 +319,6 @@ export function ReviewWorkbenchPage({
       firstParagraphId: entry.firstParagraphId,
     }));
   }, [sessionRecoveredStructure?.sections, reviewParagraphs]);
-  const defaultSectionTitle =
-    sessionRecoveredStructure?.progress.currentSection ??
-    sessionPipelineSnapshot?.currentSection ??
-    sessionPipelineSnapshot?.paragraphLabel ??
-    reviewParagraphs[0]?.section ??
-    "";
-  const defaultParagraphId =
-    sessionRecoveredStructure?.progress.currentParagraphId ??
-    sessionPipelineSnapshot?.currentParagraphId ??
-    reviewParagraphs[0]?.id ??
-    "";
   const [activeSectionTitle, setActiveSectionTitle] = useState(defaultSectionTitle);
   const [activeParagraphId, setActiveParagraphId] = useState(defaultParagraphId);
   const activeParagraph = useMemo(
@@ -335,12 +381,12 @@ export function ReviewWorkbenchPage({
     setActiveIssueId((currentActiveId) =>
       sessionIssues.some((issue) => issue.id === currentActiveId)
         ? currentActiveId
-        : sessionIssues[0]?.id ?? "",
+        : initialActiveIssueId,
     );
     setDraftSuggestions(
       Object.fromEntries(sessionIssues.map((issue) => [issue.id, issue.finding.suggestion])),
     );
-  }, [sessionIssues]);
+  }, [initialActiveIssueId, sessionIssues]);
 
   useEffect(() => {
     setActiveSectionTitle(defaultSectionTitle);
