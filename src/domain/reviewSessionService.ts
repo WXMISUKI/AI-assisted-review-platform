@@ -23,8 +23,10 @@ import type {
   ReviewDraftIssueGenerationDiagnostics,
   ReviewDraftIssueGenerationSource,
   ReviewDraftIssueGenerationStatus,
+  ReviewGenerationActivity,
   ReviewGenerationRunActiveStage,
   ReviewGenerationRunDiagnostics,
+  ReviewGenerationRunStatus,
   ReviewIssue,
   ReviewMode,
   ReviewSession,
@@ -98,6 +100,16 @@ function createGenerationRunId(taskId: string) {
   return `review-generation-${taskId}-${Date.now().toString(36)}`;
 }
 
+function createGenerationActivityId(runId: string, type: ReviewGenerationActivity["type"]) {
+  return `review-activity-${runId}-${type}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 7)}`;
+}
+
+function isTerminalGenerationRunStatus(status: ReviewGenerationRunStatus | undefined) {
+  return status === "ready" || status === "degraded" || status === "failed";
+}
+
 function shouldReuseGenerationRun(task: ReviewTask) {
   return task.reviewGenerationRun?.status === "running";
 }
@@ -138,14 +150,92 @@ function normalizeGenerationRunDiagnostics(
     : undefined;
 }
 
+function sanitizeActivityMessage(message: string | undefined) {
+  if (!message) {
+    return undefined;
+  }
+
+  if (/https?:\/\/|api[_-]?key|token|secret|password|authorization/i.test(message)) {
+    return undefined;
+  }
+
+  return message.slice(0, 140);
+}
+
+function appendReviewGenerationActivities(
+  task: ReviewTask,
+  activities: Array<
+    Omit<ReviewGenerationActivity, "id" | "occurredAt"> & {
+      occurredAt?: string;
+    }
+  >,
+) {
+  if (activities.length === 0) {
+    return task;
+  }
+
+  const safeActivities = activities.map((activity) => ({
+    ...activity,
+    id: createGenerationActivityId(activity.runId, activity.type),
+    occurredAt: activity.occurredAt ?? nowIsoString(),
+    message: sanitizeActivityMessage(activity.message),
+  }));
+
+  return {
+    ...task,
+    reviewGenerationActivities: [...(task.reviewGenerationActivities ?? []), ...safeActivities].slice(-50),
+  };
+}
+
+function isSameGenerationStage(
+  left: ReviewGenerationRunActiveStage | undefined,
+  right: ReviewGenerationRunActiveStage | undefined,
+) {
+  return (
+    left?.stageIndex === right?.stageIndex &&
+    left?.stageType === right?.stageType &&
+    left?.agentKey === right?.agentKey &&
+    left?.paragraphIndex === right?.paragraphIndex &&
+    left?.paragraphTotal === right?.paragraphTotal &&
+    left?.currentParagraphId === right?.currentParagraphId &&
+    left?.paragraphLabel === right?.paragraphLabel &&
+    left?.currentSection === right?.currentSection
+  );
+}
+
+function appendGenerationTerminalActivity(
+  task: ReviewTask,
+  status: "ready" | "degraded",
+  input: {
+    preparationPackageId?: string;
+    draftIssueGenerationRunId?: string;
+    generatedIssueCount?: number;
+    diagnostics?: ReviewGenerationRunDiagnostics;
+    completedAt?: string;
+  },
+) {
+  const runId = task.reviewGenerationRun?.runId ?? createGenerationRunId(task.id);
+  return appendReviewGenerationActivities(task, [
+    {
+      type: status === "ready" ? "run-ready" : "run-degraded",
+      runId,
+      occurredAt: input.completedAt,
+      status,
+      message: input.diagnostics?.message,
+      preparationPackageId: input.preparationPackageId,
+      draftIssueGenerationRunId: input.draftIssueGenerationRunId,
+      issueCount: input.generatedIssueCount,
+    },
+  ]);
+}
+
 function startGenerationRunForTask(
   task: ReviewTask,
   activeStage?: ReviewGenerationRunActiveStage,
 ) {
   const reuseRun = shouldReuseGenerationRun(task);
   const startedAt = reuseRun ? task.reviewGenerationRun!.startedAt : nowIsoString();
-
-  return {
+  const nextTask = {
     ...task,
     reviewGenerationRun: {
       runId: reuseRun ? task.reviewGenerationRun!.runId : createGenerationRunId(task.id),
@@ -159,6 +249,33 @@ function startGenerationRunForTask(
       diagnostics: undefined,
     },
   };
+
+  if (reuseRun) {
+    return nextTask;
+  }
+
+  const runId = nextTask.reviewGenerationRun.runId;
+  return appendReviewGenerationActivities(nextTask, [
+    ...(isTerminalGenerationRunStatus(task.reviewGenerationRun?.status)
+      ? [
+          {
+            type: "run-retried" as const,
+            runId,
+            occurredAt: startedAt,
+            status: "running" as const,
+            message: "Review generation restarted after a terminal run.",
+          },
+        ]
+      : []),
+    {
+      type: "run-started",
+      runId,
+      occurredAt: startedAt,
+      stage: activeStage,
+      status: "running",
+      message: "Review generation started.",
+    },
+  ]);
 }
 
 function updateGenerationRunForTask(
@@ -224,12 +341,28 @@ export function updateReviewGenerationRunStage(
   taskId: string,
   snapshot: Parameters<typeof createGenerationRunActiveStage>[0],
 ): ReviewTask[] {
-  return updateTask(tasks, taskId, (task) =>
-    updateGenerationRunForTask(task, {
+  return updateTask(tasks, taskId, (task) => {
+    const activeStage = createGenerationRunActiveStage(snapshot, task);
+    const nextTask = updateGenerationRunForTask(task, {
       status: task.reviewGenerationRun?.status === "running" ? "running" : undefined,
-      activeStage: createGenerationRunActiveStage(snapshot, task),
-    }),
-  );
+      activeStage,
+    });
+    const existingActivities = task.reviewGenerationActivities ?? [];
+    const lastActivity = existingActivities[existingActivities.length - 1];
+
+    if (lastActivity?.type === "stage-updated" && isSameGenerationStage(lastActivity.stage, activeStage)) {
+      return nextTask;
+    }
+
+    return appendReviewGenerationActivities(nextTask, [
+      {
+        type: "stage-updated",
+        runId: nextTask.reviewGenerationRun!.runId,
+        stage: activeStage,
+        status: nextTask.reviewGenerationRun!.status,
+      },
+    ]);
+  });
 }
 
 export function completeReviewGenerationRun(
@@ -244,16 +377,18 @@ export function completeReviewGenerationRun(
     diagnostics?: ReviewGenerationRunDiagnostics;
   },
 ): ReviewTask[] {
-  return updateTask(tasks, taskId, (task) =>
-    updateGenerationRunForTask(task, {
+  return updateTask(tasks, taskId, (task) => {
+    const nextTask = updateGenerationRunForTask(task, {
       status: input.status,
       completedAt: input.completedAt ?? nowIsoString(),
       preparationPackageId: input.preparationPackageId,
       draftIssueGenerationRunId: input.draftIssueGenerationRunId,
       generatedIssueCount: input.generatedIssueCount,
       diagnostics: input.diagnostics,
-    }),
-  );
+    });
+
+    return appendGenerationTerminalActivity(nextTask, input.status, input);
+  });
 }
 
 export function failReviewGenerationRun(
@@ -261,13 +396,24 @@ export function failReviewGenerationRun(
   taskId: string,
   diagnostics: ReviewGenerationRunDiagnostics,
 ): ReviewTask[] {
-  return updateTask(tasks, taskId, (task) =>
-    updateGenerationRunForTask(task, {
+  return updateTask(tasks, taskId, (task) => {
+    const completedAt = nowIsoString();
+    const nextTask = updateGenerationRunForTask(task, {
       status: "failed",
-      completedAt: nowIsoString(),
+      completedAt,
       diagnostics,
-    }),
-  );
+    });
+
+    return appendReviewGenerationActivities(nextTask, [
+      {
+        type: "run-failed",
+        runId: nextTask.reviewGenerationRun!.runId,
+        occurredAt: completedAt,
+        status: "failed",
+        message: diagnostics.message,
+      },
+    ]);
+  });
 }
 
 export function listReviewTasks(): ReviewTask[] {
@@ -635,6 +781,7 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
     preparationPackage: task.preparationPackage,
     draftIssueGenerationSnapshot: task.draftIssueGenerationSnapshot,
     reviewGenerationRun: task.reviewGenerationRun,
+    reviewGenerationActivities: task.reviewGenerationActivities ?? [],
     resultAsset: task.resultAsset,
     lifecycle,
   };
@@ -660,8 +807,8 @@ export function updateReviewTaskPreparationPackage(
   taskId: string,
   preparationPackage: ReviewPreparationPackage,
 ): ReviewTask[] {
-  return updateTask(tasks, taskId, (task) =>
-    updateGenerationRunForTask(
+  return updateTask(tasks, taskId, (task) => {
+    const nextTask = updateGenerationRunForTask(
       {
         ...task,
         preparationPackage,
@@ -675,11 +822,24 @@ export function updateReviewTaskPreparationPackage(
                 status: preparationPackage.status,
                 message: preparationPackage.message ?? "Review preparation package failed.",
                 source: preparationPackage.source === "local-fallback" ? "local-fallback" : "review-preparation",
-              }
+            }
             : undefined,
       },
-    ),
-  );
+    );
+
+    return appendReviewGenerationActivities(
+      nextTask,
+      [
+        {
+          type: "package-persisted",
+          runId: nextTask.reviewGenerationRun!.runId,
+          status: preparationPackage.status,
+          message: preparationPackage.message,
+          preparationPackageId: preparationPackage.packageId,
+        },
+      ],
+    );
+  });
 }
 
 function mergeReviewIssues(existingIssues: ReviewIssue[], generatedIssues: ReviewIssue[]) {
@@ -750,7 +910,7 @@ export function mergeGeneratedReviewIssues(
     };
 
     const terminalStatus = metadata.status === "ready" ? "ready" : "degraded";
-    return updateGenerationRunForTask(nextTask, {
+    const taskWithRun = updateGenerationRunForTask(nextTask, {
       status: terminalStatus,
       completedAt,
       preparationPackageId: metadata.preparationPackageId,
@@ -764,6 +924,37 @@ export function mergeGeneratedReviewIssues(
               source: "draft-issue-generation",
             }
           : undefined,
+    });
+
+    const taskWithDraftActivity = appendReviewGenerationActivities(
+      taskWithRun,
+      [
+        {
+          type: "draft-issues-generated",
+          runId: taskWithRun.reviewGenerationRun!.runId,
+          occurredAt: completedAt,
+          status: metadata.status,
+          message: metadata.diagnostics?.message,
+          preparationPackageId: metadata.preparationPackageId,
+          draftIssueGenerationRunId: runId,
+          issueCount: acceptedIssueIds.size,
+        },
+      ],
+    );
+
+    return appendGenerationTerminalActivity(taskWithDraftActivity, terminalStatus, {
+      preparationPackageId: metadata.preparationPackageId,
+      draftIssueGenerationRunId: runId,
+      generatedIssueCount: acceptedIssueIds.size,
+      diagnostics:
+        terminalStatus === "degraded" && metadata.diagnostics
+          ? {
+              status: metadata.diagnostics.status,
+              message: metadata.diagnostics.message,
+              source: "draft-issue-generation",
+            }
+          : undefined,
+      completedAt,
     });
   });
 }

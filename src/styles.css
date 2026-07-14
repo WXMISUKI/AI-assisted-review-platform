@@ -1269,6 +1269,37 @@ button {
   line-height: 1.6;
 }
 
+.streaming-activity-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.streaming-activity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-muted);
+}
+
+.streaming-activity-item span {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.streaming-activity-item small {
+  flex: 0 0 auto;
+  color: var(--ink-subtle);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .streaming-stage-focus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

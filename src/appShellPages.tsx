@@ -33,6 +33,7 @@ import type {
   ReviewResultAsset,
   ReviewSession,
   ReviewTask,
+  ReviewGenerationActivity,
   ReviewTaskOcrJob,
 } from "./domain/reviewTypes";
 import {
@@ -103,6 +104,57 @@ function getGenerationRunSummaryLabel(document: LibraryDocument) {
   }
 
   return "等待审查生成";
+}
+
+function getReviewGenerationActivityLabel(activity: ReviewGenerationActivity) {
+  const stageLabel = activity.stage ? `阶段 ${activity.stage.stageIndex + 1}` : null;
+  const countLabel =
+    typeof activity.issueCount === "number" ? `${activity.issueCount} 条候选` : null;
+
+  if (activity.type === "run-started") {
+    return stageLabel ? `生成已启动 · ${stageLabel}` : "生成已启动";
+  }
+
+  if (activity.type === "run-retried") {
+    return "失败后重新生成";
+  }
+
+  if (activity.type === "stage-updated") {
+    return stageLabel ? `进度更新 · ${stageLabel}` : "进度已更新";
+  }
+
+  if (activity.type === "package-persisted") {
+    return activity.status ? `准备包已保存 · ${activity.status}` : "准备包已保存";
+  }
+
+  if (activity.type === "draft-issues-generated") {
+    return countLabel ? `候选问题已生成 · ${countLabel}` : "候选问题已生成";
+  }
+
+  if (activity.type === "run-ready") {
+    return countLabel ? `生成完成 · ${countLabel}` : "生成完成";
+  }
+
+  if (activity.type === "run-degraded") {
+    return countLabel ? `降级可审查 · ${countLabel}` : "降级可审查";
+  }
+
+  if (activity.type === "run-failed") {
+    return activity.status ? `生成失败 · ${activity.status}` : "生成失败";
+  }
+
+  return "生成状态已更新";
+}
+
+function getLatestReviewGenerationActivityLabel(document: LibraryDocument) {
+  const activities = document.reviewGenerationActivities ?? [];
+  const latestActivity = activities[activities.length - 1];
+  return latestActivity ? getReviewGenerationActivityLabel(latestActivity) : null;
+}
+
+function getRecentReviewGenerationActivities(document: LibraryDocument | undefined, limit = 4) {
+  const activities = document?.reviewGenerationActivities ?? [];
+  return activities.slice(Math.max(0, activities.length - limit)).reverse();
 }
 
 function getResultSourceLabel(document: LibraryDocument, sessionSnapshot?: ReviewSession) {
@@ -266,6 +318,7 @@ export function DocumentLibraryPage({
           {recentDocs.map((doc) => {
             const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
             const generationRunSummary = getGenerationRunSummaryLabel(doc);
+            const latestGenerationActivity = getLatestReviewGenerationActivityLabel(doc);
 
             return (
               <button
@@ -283,6 +336,9 @@ export function DocumentLibraryPage({
                   </small>
                   {generationRunSummary && (
                     <small className="history-lifecycle">{generationRunSummary}</small>
+                  )}
+                  {latestGenerationActivity && (
+                    <small className="history-lifecycle">{latestGenerationActivity}</small>
                   )}
                 </span>
                 <GitCompareArrows size={16} />
@@ -388,6 +444,7 @@ export function DocumentLibraryPage({
           {documents.map((doc) => {
             const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
             const generationRunSummary = getGenerationRunSummaryLabel(doc);
+            const latestGenerationActivity = getLatestReviewGenerationActivityLabel(doc);
             const hasResult = Boolean(doc.resultAsset);
             const canRetryGeneration = lifecycle.phase === "review-failed" && lifecycle.resumable;
 
@@ -411,6 +468,7 @@ export function DocumentLibraryPage({
                 <p className="document-summary">
                   {lifecycle.summary.label} · {lifecycle.summary.detail}
                   {generationRunSummary ? ` · ${generationRunSummary}` : ""}
+                  {latestGenerationActivity ? ` · ${latestGenerationActivity}` : ""}
                 </p>
                 <div className="dialog-actions">
                   <button type="button" className="secondary" onClick={() => onOpenDocument(doc.id)}>
@@ -855,6 +913,7 @@ export function ReviewLoadingPage({
   stageIndex: number;
 }) {
   const lifecycle = document ? getReviewTaskOrchestrationSnapshot(document) : null;
+  const recentGenerationActivities = getRecentReviewGenerationActivities(document);
   const loadingMode = lifecycle?.phase === "ocr-processing" ? "ocr" : "review";
   const ocrPercent = getOcrPercent(document?.ocrJob);
   const recoveredStructure = document?.recoveredStructure;
@@ -1018,6 +1077,16 @@ export function ReviewLoadingPage({
               <p>{stage.detail}</p>
             </div>
           </div>
+          {recentGenerationActivities.length > 0 && (
+            <div className="streaming-activity-list" aria-label="最近生成活动">
+              {recentGenerationActivities.map((activity) => (
+                <div key={activity.id} className="streaming-activity-item">
+                  <span>{getReviewGenerationActivityLabel(activity)}</span>
+                  <small>{new Date(activity.occurredAt).toLocaleTimeString()}</small>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="streaming-snippets">
             <article>
               <span>当前上下文</span>

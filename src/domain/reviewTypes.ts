@@ -315,6 +315,16 @@ export interface ReviewDraftIssueGenerationSnapshot {
 
 export type ReviewGenerationRunStatus = "idle" | "running" | "ready" | "degraded" | "failed";
 
+export type ReviewGenerationActivityType =
+  | "run-started"
+  | "stage-updated"
+  | "package-persisted"
+  | "draft-issues-generated"
+  | "run-ready"
+  | "run-degraded"
+  | "run-failed"
+  | "run-retried";
+
 export interface ReviewGenerationRunActiveStage {
   stageIndex: number;
   stageType?: ReviewPipelineStageType;
@@ -343,6 +353,19 @@ export interface ReviewGenerationRunSnapshot {
   draftIssueGenerationRunId?: string;
   generatedIssueCount: number;
   diagnostics?: ReviewGenerationRunDiagnostics;
+}
+
+export interface ReviewGenerationActivity {
+  id: string;
+  type: ReviewGenerationActivityType;
+  occurredAt: string;
+  runId: string;
+  stage?: ReviewGenerationRunActiveStage;
+  status?: ReviewGenerationRunStatus | ReviewPreparationPackageStatus | ReviewDraftIssueGenerationStatus;
+  message?: string;
+  preparationPackageId?: string;
+  draftIssueGenerationRunId?: string;
+  issueCount?: number;
 }
 
 export interface ReviewTaskSourceObject {
@@ -418,6 +441,7 @@ export interface ReviewTask {
   preparationPackage?: ReviewPreparationPackage;
   draftIssueGenerationSnapshot?: ReviewDraftIssueGenerationSnapshot;
   reviewGenerationRun?: ReviewGenerationRunSnapshot;
+  reviewGenerationActivities?: ReviewGenerationActivity[];
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
@@ -435,6 +459,7 @@ export interface ReviewSession {
   preparationPackage?: ReviewPreparationPackage;
   draftIssueGenerationSnapshot?: ReviewDraftIssueGenerationSnapshot;
   reviewGenerationRun?: ReviewGenerationRunSnapshot;
+  reviewGenerationActivities?: ReviewGenerationActivity[];
   resultAsset?: ReviewResultAsset;
   lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }
