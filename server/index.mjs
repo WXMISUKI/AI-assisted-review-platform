@@ -15,6 +15,13 @@ import {
   createReviewGenerationRun,
   writeReviewGenerationRunStream,
 } from "./reviewGenerationRunBridge.mjs";
+import {
+  getReviewTask,
+  getReviewTaskStoreInfo,
+  listReviewTasks,
+  replaceReviewTasks,
+  upsertReviewTask,
+} from "./reviewTaskStore.mjs";
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -136,6 +143,10 @@ const server = createServer(async (request, response) => {
           "GET /api/health",
           "POST /api/llm/check",
           "GET /api/ocr/status",
+          "GET /api/review-tasks",
+          "GET /api/review-tasks/:taskId",
+          "PUT /api/review-tasks/:taskId",
+          "POST /api/review-tasks/bulk",
           "POST /api/ocr/jobs/url",
           "POST /api/ocr/jobs/object",
           "GET /api/ocr/jobs/:id",
@@ -169,6 +180,22 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/api/ocr/status") {
       sendJson(response, 200, getOcrStatus());
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/review-tasks") {
+      sendJson(response, 200, {
+        ok: true,
+        ...(await listReviewTasks()),
+        store: getReviewTaskStoreInfo(),
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/review-tasks/bulk") {
+      const body = await readJson(request);
+      const result = await replaceReviewTasks(Array.isArray(body.tasks) ? body.tasks : []);
+      sendJson(response, 200, result);
       return;
     }
 
@@ -249,6 +276,32 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && ocrJobMatch) {
       sendJson(response, 200, await getOcrJobStatus(ocrJobMatch[1]));
       return;
+    }
+
+    const reviewTaskMatch = url.pathname.match(/^\/api\/review-tasks\/([^/]+)$/);
+    if (reviewTaskMatch) {
+      const taskId = decodeURIComponent(reviewTaskMatch[1]);
+      if (request.method === "GET") {
+        const task = await getReviewTask(taskId);
+        sendJson(response, task ? 200 : 404, task
+          ? {
+              ok: true,
+              task,
+            }
+          : {
+              ok: false,
+              status: "not_found",
+              message: "Review task not found.",
+            });
+        return;
+      }
+
+      if (request.method === "PUT") {
+        const body = await readJson(request);
+        const result = await upsertReviewTask(taskId, body.task ?? body);
+        sendJson(response, result.ok ? 200 : 400, result);
+        return;
+      }
     }
 
     const generationRunStreamMatch = url.pathname.match(

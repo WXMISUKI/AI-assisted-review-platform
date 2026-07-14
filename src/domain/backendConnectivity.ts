@@ -5,6 +5,8 @@ import type {
   ReviewDraftIssueGenerationResult,
   ReviewMode,
   ReviewPreparationPackage,
+  ReviewStorageSnapshot,
+  ReviewTask,
 } from "./reviewTypes";
 
 export interface BackendHealthResult {
@@ -194,6 +196,19 @@ export interface ReviewGenerationRunCreateResult {
   message?: string;
 }
 
+export interface ReviewTasksListResult extends ReviewStorageSnapshot {
+  ok: boolean;
+  message?: string;
+}
+
+export interface ReviewTasksBulkSyncResult {
+  ok: boolean;
+  schemaVersion?: number;
+  savedCount?: number;
+  tasks?: ReviewTask[];
+  message?: string;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
@@ -211,6 +226,22 @@ export async function runLlmConnectivityCheck() {
 export async function fetchOcrStatus() {
   const response = await fetch("/api/ocr/status");
   return readJson<OcrStatusResult>(response);
+}
+
+export async function fetchPersistedReviewTasks() {
+  const response = await fetch("/api/review-tasks");
+  return readJson<ReviewTasksListResult>(response);
+}
+
+export async function syncPersistedReviewTasks(tasks: ReviewTask[]) {
+  const response = await fetch("/api/review-tasks/bulk", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tasks }),
+  });
+  return readJson<ReviewTasksBulkSyncResult>(response);
 }
 
 export async function fetchOcrJobStatus(jobId: string): Promise<OcrJobStatusResult> {

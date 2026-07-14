@@ -5,6 +5,8 @@ import type { ReviewStorageSnapshot, ReviewTask } from "./reviewTypes";
 
 const STORAGE_KEY = "ai-assisted-review-platform.review-tasks";
 const STORAGE_VERSION = 1;
+const BACKEND_TASKS_ENDPOINT = "/api/review-tasks";
+const BACKEND_TASKS_BULK_ENDPOINT = "/api/review-tasks/bulk";
 
 function canUseStorage() {
   return typeof window !== "undefined" && Boolean(window.localStorage);
@@ -35,7 +37,7 @@ function normalizeLoadedTask(task: ReviewTask): ReviewTask {
   };
 }
 
-export function loadReviewTasks(): ReviewTask[] {
+function loadLocalReviewTasks() {
   if (!canUseStorage()) {
     return createSeedReviewTasks().map(normalizeLoadedTask);
   }
@@ -61,6 +63,88 @@ export function loadReviewTasks(): ReviewTask[] {
   return fallbackTasks;
 }
 
+function loadBackendCachedReviewTasks() {
+  if (!canUseStorage()) {
+    return [];
+  }
+
+  const rawValue = window.localStorage.getItem(`${STORAGE_KEY}.backend-cache`);
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsedValue: unknown = JSON.parse(rawValue);
+    if (isValidSnapshot(parsedValue)) {
+      return parsedValue.tasks.map(normalizeLoadedTask);
+    }
+  } catch {
+    // Backend cache is opportunistic and should never block fallback state.
+  }
+
+  return [];
+}
+
+function cacheBackendReviewTasks(tasks: ReviewTask[]) {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  const snapshot: ReviewStorageSnapshot = {
+    schemaVersion: STORAGE_VERSION,
+    tasks,
+  };
+  window.localStorage.setItem(`${STORAGE_KEY}.backend-cache`, JSON.stringify(snapshot));
+}
+
+function refreshBackendTaskCache() {
+  if (typeof window === "undefined" || typeof window.fetch !== "function") {
+    return;
+  }
+
+  window.fetch(BACKEND_TASKS_ENDPOINT)
+    .then((response) => (response.ok ? response.json() : null))
+    .then((payload: unknown) => {
+      if (!isValidSnapshot(payload)) {
+        return;
+      }
+
+      const tasks = payload.tasks.map(normalizeLoadedTask);
+      if (tasks.length > 0) {
+        cacheBackendReviewTasks(tasks);
+      }
+    })
+    .catch(() => {
+      // Backend persistence is a best-effort foundation in this slice.
+    });
+}
+
+function syncBackendReviewTasks(tasks: ReviewTask[]) {
+  if (typeof window === "undefined" || typeof window.fetch !== "function") {
+    return;
+  }
+
+  window.fetch(BACKEND_TASKS_BULK_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tasks }),
+  }).catch(() => {
+    // Keep local state authoritative when the backend is unavailable.
+  });
+}
+
+export function loadReviewTasks(): ReviewTask[] {
+  const backendCachedTasks = loadBackendCachedReviewTasks();
+  refreshBackendTaskCache();
+  if (backendCachedTasks.length > 0) {
+    return backendCachedTasks;
+  }
+
+  return loadLocalReviewTasks();
+}
+
 export function saveReviewTasks(tasks: ReviewTask[]): ReviewTask[] {
   if (canUseStorage()) {
     const snapshot: ReviewStorageSnapshot = {
@@ -69,6 +153,8 @@ export function saveReviewTasks(tasks: ReviewTask[]): ReviewTask[] {
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   }
+
+  syncBackendReviewTasks(tasks);
 
   return tasks;
 }
