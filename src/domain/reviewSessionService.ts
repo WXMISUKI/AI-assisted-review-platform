@@ -28,6 +28,7 @@ import type {
   ReviewTaskOcrJob,
   ReviewTaskSourceObject,
   RecoveredDocumentStructure,
+  ReviewViewContext,
 } from "./reviewTypes";
 
 function nowString() {
@@ -444,9 +445,25 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
     issues: resolvedIssues,
     processedParagraphs: buildProcessedParagraphs(resolvedParagraphs, resolvedIssues, mode),
     pipelineSnapshot,
+    reviewViewContext: task.reviewViewContext,
     resultAsset: task.resultAsset,
     lifecycle,
   };
+}
+
+export function updateReviewTaskViewContext(
+  tasks: ReviewTask[],
+  taskId: string,
+  context: ReviewViewContext,
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) => ({
+    ...task,
+    reviewViewContext: {
+      ...task.reviewViewContext,
+      ...context,
+    },
+    updatedAt: nowString(),
+  }));
 }
 
 export function resolveTaskIssue(

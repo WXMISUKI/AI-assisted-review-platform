@@ -47,6 +47,7 @@ import {
   startReviewTask,
   syncDocumentTaskOcrStatus,
   updateReviewTaskStreamStage,
+  updateReviewTaskViewContext,
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
 import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
@@ -697,6 +698,20 @@ export function App() {
     );
   }
 
+  function updateSelectedViewContext(context: {
+    activeSectionTitle?: string;
+    activeParagraphId?: string;
+    activeIssueId?: string;
+  }) {
+    if (!selectedDocument) {
+      return;
+    }
+
+    setDocuments((currentDocs) =>
+      updateReviewTaskViewContext(currentDocs, selectedDocument.id, context),
+    );
+  }
+
   if (!session) {
     return <LoginPage onSignIn={handleSignIn} themeMode={themeMode} onToggleTheme={toggleTheme} />;
   }
@@ -720,6 +735,7 @@ export function App() {
         onIssueDraftChange={updateSelectedIssueDraft}
         onManualIssueAdd={addSelectedManualIssue}
         onManualIssueDelete={deleteSelectedManualIssue}
+        onViewContextChange={updateSelectedViewContext}
       />
     );
   }

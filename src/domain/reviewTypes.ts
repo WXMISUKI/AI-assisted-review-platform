@@ -280,6 +280,12 @@ export interface ReviewPipelineSnapshot {
   updatedAt: string;
 }
 
+export interface ReviewViewContext {
+  activeSectionTitle?: string;
+  activeParagraphId?: string;
+  activeIssueId?: string;
+}
+
 export interface ReviewTaskFailure {
   message: string;
   failedAt: string;
@@ -305,6 +311,7 @@ export interface ReviewTask {
   streamCurrentParagraphId?: string;
   streamParagraphLabel?: string;
   pipelineSnapshot?: ReviewPipelineSnapshot;
+  reviewViewContext?: ReviewViewContext;
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
@@ -318,6 +325,7 @@ export interface ReviewSession {
   issues: ReviewIssue[];
   processedParagraphs: DocumentParagraph[];
   pipelineSnapshot?: ReviewPipelineSnapshot;
+  reviewViewContext?: ReviewViewContext;
   resultAsset?: ReviewResultAsset;
   lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }

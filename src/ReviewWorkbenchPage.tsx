@@ -36,6 +36,7 @@ import type {
   RecoveredDocumentStructure,
   ReviewSession,
   StatusFilter,
+  ReviewViewContext,
 } from "./domain/reviewTypes";
 import {
   buildProcessedParagraphs,
@@ -64,6 +65,7 @@ export interface ReviewWorkbenchPageProps {
   onIssueDraftChange?: (issueId: string, suggestion: string) => void;
   onManualIssueAdd?: (issue: ReviewIssue) => void;
   onManualIssueDelete?: (issueId: string) => void;
+  onViewContextChange?: (context: ReviewViewContext) => void;
   recoveredStructure?: RecoveredDocumentStructure;
   sessionSnapshot?: ReviewSession;
 }
@@ -201,6 +203,7 @@ export function ReviewWorkbenchPage({
   onIssueDraftChange,
   onManualIssueAdd,
   onManualIssueDelete,
+  onViewContextChange,
   recoveredStructure,
   sessionSnapshot,
 }: ReviewWorkbenchPageProps = {}) {
@@ -208,6 +211,7 @@ export function ReviewWorkbenchPage({
   const sessionRecoveredStructure = sessionSnapshot?.recoveredStructure ?? recoveredStructure;
   const sessionParagraphs = sessionSnapshot?.paragraphs ?? paragraphs;
   const sessionPipelineSnapshot = sessionSnapshot?.pipelineSnapshot;
+  const sessionViewContext = sessionSnapshot?.reviewViewContext;
   const [issues, setIssues] = useState<ReviewIssue[]>(sessionIssues);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [reviewMode, setReviewMode] = useState<ReviewMode>(() =>
@@ -246,13 +250,19 @@ export function ReviewWorkbenchPage({
     sessionPipelineSnapshot?.currentParagraphId ??
     reviewParagraphs[0]?.id ??
     "";
+  const initialSectionTitle = sessionViewContext?.activeSectionTitle ?? defaultSectionTitle;
+  const initialParagraphId = sessionViewContext?.activeParagraphId ?? defaultParagraphId;
   const initialActiveIssueId = useMemo(
     () =>
+      sessionViewContext?.activeIssueId ??
       resolveInitialIssueId(
         sessionIssues,
         reviewParagraphs,
-        sessionRecoveredStructure?.progress.currentParagraphId ?? sessionPipelineSnapshot?.currentParagraphId ?? null,
-        defaultSectionTitle,
+        sessionViewContext?.activeParagraphId ??
+          sessionRecoveredStructure?.progress.currentParagraphId ??
+          sessionPipelineSnapshot?.currentParagraphId ??
+          null,
+        sessionViewContext?.activeSectionTitle ?? defaultSectionTitle,
       ),
     [
       defaultSectionTitle,
@@ -260,9 +270,14 @@ export function ReviewWorkbenchPage({
       sessionIssues,
       sessionPipelineSnapshot?.currentParagraphId,
       sessionRecoveredStructure?.progress.currentParagraphId,
+      sessionViewContext?.activeIssueId,
+      sessionViewContext?.activeParagraphId,
+      sessionViewContext?.activeSectionTitle,
     ],
   );
   const [activeIssueId, setActiveIssueId] = useState(initialActiveIssueId);
+  const [activeSectionTitle, setActiveSectionTitle] = useState(initialSectionTitle);
+  const [activeParagraphId, setActiveParagraphId] = useState(initialParagraphId);
   const sectionByParagraphId = useMemo(() => {
     const map = new Map<string, string>();
     reviewParagraphs.forEach((paragraph) => {
@@ -312,15 +327,13 @@ export function ReviewWorkbenchPage({
       });
     });
 
-    return Array.from(fallback.entries()).map(([title, entry], index) => ({
+  return Array.from(fallback.entries()).map(([title, entry], index) => ({
       id: `section-fallback-${index + 1}`,
       title,
       paragraphCount: entry.paragraphCount,
       firstParagraphId: entry.firstParagraphId,
     }));
   }, [sessionRecoveredStructure?.sections, reviewParagraphs]);
-  const [activeSectionTitle, setActiveSectionTitle] = useState(defaultSectionTitle);
-  const [activeParagraphId, setActiveParagraphId] = useState(defaultParagraphId);
   const activeParagraph = useMemo(
     () => reviewParagraphs.find((paragraph) => paragraph.id === activeParagraphId) ?? null,
     [activeParagraphId, reviewParagraphs],
@@ -520,7 +533,13 @@ export function ReviewWorkbenchPage({
 
     setActiveIssueId(issueId);
     setActiveParagraphId(issue.anchor.paragraphId);
-    setActiveSectionTitle(sectionByParagraphId.get(issue.anchor.paragraphId) ?? defaultSectionTitle);
+    const nextSectionTitle = sectionByParagraphId.get(issue.anchor.paragraphId) ?? defaultSectionTitle;
+    setActiveSectionTitle(nextSectionTitle);
+    onViewContextChange?.({
+      activeSectionTitle: nextSectionTitle,
+      activeParagraphId: issue.anchor.paragraphId,
+      activeIssueId: issueId,
+    });
     window.requestAnimationFrame(() => {
       const element =
         target === "paragraph"
@@ -541,6 +560,11 @@ export function ReviewWorkbenchPage({
     );
     onIssueResolve?.(issueId, status, editedText);
     setActiveIssueId(issueId);
+    onViewContextChange?.({
+      activeSectionTitle,
+      activeParagraphId,
+      activeIssueId: issueId,
+    });
   }
 
   function deleteManualIssue(issueId: string) {
@@ -558,6 +582,11 @@ export function ReviewWorkbenchPage({
       }
 
       const nextIssue = issues.find((issue) => issue.id !== issueId);
+      onViewContextChange?.({
+        activeSectionTitle,
+        activeParagraphId,
+        activeIssueId: nextIssue?.id ?? "",
+      });
       return nextIssue?.id ?? "";
     });
   }
@@ -627,6 +656,11 @@ export function ReviewWorkbenchPage({
     });
     setActiveParagraphId(paragraph.id);
     setActiveSectionTitle(paragraph.section);
+    onViewContextChange?.({
+      activeSectionTitle: paragraph.section,
+      activeParagraphId: paragraph.id,
+      activeIssueId,
+    });
     setManualForm({
       title: "人工补充审查意见",
       reason: "",
@@ -687,6 +721,13 @@ export function ReviewWorkbenchPage({
     onManualIssueAdd?.(newIssue);
     setFilter("all");
     setActiveIssueId(issueId);
+    onViewContextChange?.({
+      activeSectionTitle:
+        reviewParagraphs.find((paragraph) => paragraph.id === selectionDraft.paragraphId)?.section ??
+        defaultSectionTitle,
+      activeParagraphId: selectionDraft.paragraphId,
+      activeIssueId: issueId,
+    });
     cancelSelectionDraft();
     window.requestAnimationFrame(() => {
       cardRefs.current[issueId]?.scrollIntoView({ behavior: "smooth", block: "center" });
