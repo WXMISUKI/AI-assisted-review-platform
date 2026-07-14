@@ -120,6 +120,14 @@ async function writeSnapshot(snapshot, storePath = DEFAULT_STORE_PATH) {
   return normalized;
 }
 
+async function mutateSnapshot(mutator) {
+  const snapshot = await readSnapshot();
+  const result = await mutator(snapshot);
+  const nextSnapshot = result?.snapshot ?? snapshot;
+  await writeSnapshot(nextSnapshot);
+  return result?.value;
+}
+
 export async function listReviewTasks() {
   return readSnapshot();
 }
@@ -153,6 +161,58 @@ export async function upsertReviewTask(taskId, task) {
     ok: true,
     task: normalizedTask,
   };
+}
+
+export async function mutateReviewTask(taskId, updater) {
+  if (typeof updater !== "function") {
+    return {
+      ok: false,
+      status: "invalid_input",
+      message: "A review task updater function is required.",
+    };
+  }
+
+  const value = await mutateSnapshot((snapshot) => {
+    const index = snapshot.tasks.findIndex((task) => task.id === taskId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Review task not found.",
+        },
+      };
+    }
+
+    const existingTask = snapshot.tasks[index];
+    const nextTask = normalizeTask(updater(existingTask));
+    if (!nextTask) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "invalid_output",
+          message: "Review task updater returned an invalid task.",
+        },
+      };
+    }
+
+    const nextTasks = [...snapshot.tasks];
+    nextTasks[index] = nextTask;
+    return {
+      snapshot: {
+        schemaVersion: STORAGE_VERSION,
+        tasks: nextTasks,
+      },
+      value: {
+        ok: true,
+        task: nextTask,
+      },
+    };
+  });
+
+  return value;
 }
 
 export async function replaceReviewTasks(tasks) {

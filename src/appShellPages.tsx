@@ -756,6 +756,9 @@ export function DataAssetsPage({
   }
 
   const healthSummary = healthResult?.providers?.summary?.overall ?? "unconfigured";
+  const agentServiceSummary = healthResult?.agentService
+    ? `${healthResult.agentService.source} | ${healthResult.agentService.status}`
+    : "waiting";
   const queueSummary = queueResult
     ? `${queueResult.adapter ?? "queue"} | queued ${queueResult.counts?.queued ?? 0} | active ${queueResult.activeJobCount ?? 0}`
     : "waiting";
@@ -845,6 +848,17 @@ export function DataAssetsPage({
             title="MinIO"
             status={minioResult?.ok ? "ready" : "pending"}
             detail={minioResult?.summary ?? "等待检查"}
+          />
+          <ConnectivityStatus
+            title="Agent Service"
+            status={
+              healthResult?.agentService?.ready
+                ? "ready"
+                : healthResult?.agentService?.configured
+                  ? "failed"
+                  : "pending"
+            }
+            detail={healthResult?.agentService?.summary ?? agentServiceSummary}
           />
           <ConnectivityStatus
             title="Worker Queue"

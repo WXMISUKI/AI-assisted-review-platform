@@ -40,8 +40,22 @@ export interface BackendHealthResult {
       overall: "ready" | "degraded" | "unconfigured";
     };
   };
+  agentService?: AgentServiceReadinessSummary;
   queue?: ReviewQueueStatusResult;
   message?: string;
+}
+
+export interface AgentServiceReadinessSummary {
+  configured: boolean;
+  ready: boolean;
+  status: "ready" | "degraded" | "unavailable" | "disabled";
+  source: "python-agent-service" | "local-fallback";
+  summary: string;
+  diagnostics?: Array<{
+    status?: string;
+    message?: string;
+    statusCode?: number;
+  }>;
 }
 
 export interface ReviewQueueStatusResult {
@@ -174,6 +188,15 @@ export interface ReviewStreamEvent {
     message: string;
     candidateCount?: number;
   };
+  agentExecution?: {
+    source?: "python-agent-service" | "local-fallback" | string;
+    status?: "ready" | "degraded" | "failed" | string;
+    diagnostics?: Array<{
+      status?: string;
+      message?: string;
+      statusCode?: number;
+    }>;
+  };
   preparationPackage?: Pick<
     ReviewPreparationPackage,
     | "packageId"
@@ -256,6 +279,16 @@ export interface ReviewGenerationRunStatusResult {
   maxIssues?: number;
   preparationPackageSummary?: unknown;
   draftIssueGenerationSummary?: unknown;
+  agentExecutionSummary?: {
+    source?: "python-agent-service" | "local-fallback" | string;
+    status?: "ready" | "degraded" | "failed" | string;
+    completedAt?: string;
+    diagnostics?: Array<{
+      status?: string;
+      message?: string;
+      statusCode?: number;
+    }>;
+  };
   diagnostics?: {
     status?: string;
     message?: string;

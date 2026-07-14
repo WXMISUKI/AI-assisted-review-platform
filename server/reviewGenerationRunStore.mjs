@@ -137,6 +137,21 @@ function summarizeDraftIssueGeneration(value) {
   });
 }
 
+function summarizeAgentExecution(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  return sanitizeValue({
+    source: normalizeString(value.source, "", 80),
+    status: normalizeString(value.status, "", 80),
+    completedAt: normalizeString(value.completedAt, "", 80),
+    diagnostics: Array.isArray(value.diagnostics)
+      ? value.diagnostics.slice(0, 5).map((item) => sanitizeValue(item))
+      : value.diagnostics,
+  });
+}
+
 function normalizeEvent(value, fallbackSequence = 0) {
   if (!isPlainObject(value)) {
     return null;
@@ -167,6 +182,7 @@ function normalizeEvent(value, fallbackSequence = 0) {
     occurredAt,
     completedAt: normalizeString(value.completedAt, "", 80) || undefined,
     diagnostics: value.diagnostics,
+    agentExecution: summarizeAgentExecution(value.agentExecution),
     preparationPackage: value.preparationPackage,
     draftIssueGeneration: value.draftIssueGeneration,
   });
@@ -215,6 +231,7 @@ function normalizeRun(value) {
     draftIssueGenerationSummary: summarizeDraftIssueGeneration(
       value.draftIssueGenerationSummary ?? value.draftIssueGeneration,
     ),
+    agentExecutionSummary: summarizeAgentExecution(value.agentExecutionSummary ?? value.agentExecution),
     safeDiagnostics: sanitizeValue(value.safeDiagnostics ?? value.diagnostics),
     events,
     lastSequence,
@@ -395,6 +412,8 @@ export async function appendGenerationRunEvent(runId, event) {
         summarizePreparationPackage(normalizedEvent.preparationPackage) ?? existingRun.preparationPackageSummary,
       draftIssueGenerationSummary:
         summarizeDraftIssueGeneration(normalizedEvent.draftIssueGeneration) ?? existingRun.draftIssueGenerationSummary,
+      agentExecutionSummary:
+        summarizeAgentExecution(normalizedEvent.agentExecution) ?? existingRun.agentExecutionSummary,
       safeDiagnostics: normalizedEvent.diagnostics ?? existingRun.safeDiagnostics,
       events: [...existingRun.events, normalizedEvent].slice(-MAX_EVENTS_PER_RUN),
     });

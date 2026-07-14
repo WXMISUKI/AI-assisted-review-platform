@@ -11,6 +11,7 @@ import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs"
 import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
 import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
+import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
 import {
   createReviewGenerationRun,
   getReviewGenerationRunEvents,
@@ -159,6 +160,7 @@ const server = createServer(async (request, response) => {
           "GET /api/ocr/jobs/:id",
           "POST /api/ocr/results/hydrate",
           "POST /api/review-agent/generation-runs",
+          "GET /api/review-agent/service/status",
           "GET /api/review-agent/generation-runs/:runId",
           "GET /api/review-agent/generation-runs/:runId/events",
           "GET /api/review-agent/generation-runs/:runId/stream",
@@ -180,6 +182,7 @@ const server = createServer(async (request, response) => {
         service: "ai-assisted-review-backend",
         timestamp: new Date().toISOString(),
         providers: getSafeProviderStatus(),
+        agentService: await getAgentServiceReadiness(),
         queue: {
           ...(await getQueueStatus()),
           worker: getReviewWorkerLoopInfo(),
@@ -277,6 +280,14 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/review-agent/draft-issues") {
       const body = await readJson(request);
       sendJson(response, 200, await generateDraftIssues(body));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/review-agent/service/status") {
+      sendJson(response, 200, {
+        ok: true,
+        agentService: await getAgentServiceReadiness(),
+      });
       return;
     }
 

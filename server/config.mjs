@@ -34,6 +34,19 @@ function normalizeOpenAIBaseURL(value) {
   return /\/v\d+$/.test(trimmedValue) ? trimmedValue : `${trimmedValue}/v1`;
 }
 
+function normalizeBaseURL(value) {
+  return typeof value === "string" ? value.trim().replace(/\/$/, "") : "";
+}
+
+function normalizePositiveInteger(value, fallback, max) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    return fallback;
+  }
+
+  return Math.min(Math.floor(numberValue), max);
+}
+
 export const config = {
   port: Number(process.env.BACKEND_PORT || 8787),
   openai: {
@@ -47,12 +60,16 @@ export const config = {
     model: (process.env.PADDLEOCR_MODEL || "PaddleOCR-VL-1.6").trim(),
   },
   minio: {
-    endpoint: (process.env.MINIO_ENDPOINT || "").replace(/\/$/, ""),
-    publicEndpoint: (process.env.MINIO_PUBLIC_ENDPOINT || "").replace(/\/$/, ""),
+    endpoint: normalizeBaseURL(process.env.MINIO_ENDPOINT || ""),
+    publicEndpoint: normalizeBaseURL(process.env.MINIO_PUBLIC_ENDPOINT || ""),
     accessKey: process.env.MINIO_ACCESS_KEY || "",
     secretKey: process.env.MINIO_SECRET_KEY || "",
     bucket: process.env.MINIO_BUCKET || "construction-review-docs",
     region: process.env.MINIO_REGION || "us-east-1",
+  },
+  agentService: {
+    baseURL: normalizeBaseURL(process.env.AGENT_SERVICE_BASE_URL || ""),
+    timeoutMs: normalizePositiveInteger(process.env.AGENT_SERVICE_TIMEOUT_MS, 5000, 60_000),
   },
 };
 
@@ -84,6 +101,10 @@ export function getSafeProviderStatus() {
       hasSecretKey: Boolean(config.minio.secretKey),
       bucket: config.minio.bucket || null,
       region: config.minio.region,
+    },
+    agentService: {
+      configured: Boolean(config.agentService.baseURL),
+      timeoutMs: config.agentService.timeoutMs,
     },
     summary: {
       total: 3,

@@ -1,8 +1,4 @@
-import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
-import {
-  buildPreparationPackagePayload,
-  createStructureAwareStages,
-} from "./reviewAgentStream.mjs";
+import { executeReviewGenerationWithAgentBridge } from "./reviewAgentServiceAdapter.mjs";
 import {
   appendGenerationRunEvent,
   createGenerationRunRecord,
@@ -10,6 +6,10 @@ import {
   listGenerationRunEvents,
   updateGenerationRunRecord,
 } from "./reviewGenerationRunStore.mjs";
+import {
+  materializeReviewGenerationFailureToTask,
+  materializeReviewGenerationRunToTask,
+} from "./reviewGenerationTaskMaterializer.mjs";
 import {
   enqueueReviewGenerationJob,
   getQueueStatus,
@@ -76,27 +76,6 @@ function isTerminalStatus(status) {
   return ["ready", "degraded", "failed", "expired"].includes(status);
 }
 
-function normalizeDraftIssueCompletion(result) {
-  const issues = Array.isArray(result?.issues) ? result.issues : [];
-  return {
-    ok: result?.ok !== false,
-    source: result?.source === "llm" ? "llm" : "deterministic-fallback",
-    status: result?.status === "ready" ? "ready" : result?.status === "failed" ? "failed" : "fallback",
-    issues,
-    diagnostics: result?.diagnostics
-      ? {
-          status: normalizeString(result.diagnostics.status, 80),
-          message: normalizeString(result.diagnostics.message, 180),
-          candidateCount: normalizePositiveInteger(result.diagnostics.candidateCount, issues.length, 100),
-        }
-      : {
-          status: "completed",
-          message: "Draft issue generation completed.",
-          candidateCount: issues.length,
-        },
-  };
-}
-
 function toStatusPayload(run) {
   if (!run) {
     return {
@@ -125,6 +104,7 @@ function toStatusPayload(run) {
     maxIssues: run.maxIssues,
     preparationPackageSummary: run.preparationPackageSummary,
     draftIssueGenerationSummary: run.draftIssueGenerationSummary,
+    agentExecutionSummary: run.agentExecutionSummary,
     diagnostics: run.safeDiagnostics,
     lastSequence: run.lastSequence ?? 0,
     statusUrl: `/api/review-agent/generation-runs/${encodeURIComponent(run.runId)}`,
@@ -175,82 +155,16 @@ export async function executeReviewGenerationRunJob(job) {
     currentSection: run.structureSummary.currentSection,
   });
 
-  const stages = createStructureAwareStages(run.structureSummary);
-  for (const stage of stages) {
-    await appendRunEvent(run, {
-      ...stage,
-      status: "running",
-    });
-    await sleep(250);
+  const adapterResult = await executeReviewGenerationWithAgentBridge(run);
+  for (const event of adapterResult.stageEvents ?? []) {
+    await appendRunEvent(run, event);
   }
-
-  const completedAt = nowIsoString();
-  const preparationPackage = buildPreparationPackagePayload(run.structureSummary, stages, completedAt);
-  await appendRunEvent(run, {
-    type: "review.stage",
-    stageId: "draft-issues",
-    stageType: "issue-structuring",
-    title: "Generating draft review issues",
-    detail: "The backend is generating structured draft issue candidates from the preparation package.",
-    progress: 92,
-    status: "running",
-    agentKey: "construction-review",
-    agentLabel: "Construction plan review agent",
-    issueSummaries: preparationPackage.issueSummaries ?? [],
-    currentSection: run.structureSummary.currentSection,
-  });
-
-  let draftIssueGeneration;
-  try {
-    draftIssueGeneration = normalizeDraftIssueCompletion(
-      await generateDraftIssues({
-        taskId: run.taskId,
-        mode: run.mode,
-        preparationPackage,
-        paragraphs: run.paragraphs ?? [],
-        maxIssues: run.maxIssues,
-      }),
-    );
-  } catch (error) {
-    draftIssueGeneration = {
-      ok: true,
-      source: "deterministic-fallback",
-      status: "fallback",
-      issues: [],
-      diagnostics: {
-        status: "request_failed",
-        message: error instanceof Error ? error.message.slice(0, 180) : "Draft issue generation failed.",
-        candidateCount: 0,
-      },
-    };
-  }
-
-  const terminalStatus =
-    draftIssueGeneration.status === "ready" && draftIssueGeneration.issues.length > 0 ? "ready" : "degraded";
-  await appendRunEvent(run, {
-    type: "review.complete",
-    stageId: "complete",
-    title: terminalStatus === "ready" ? "Review generation completed" : "Review generation completed with fallback",
-    detail:
-      terminalStatus === "ready"
-        ? "The backend generated a preparation package and draft issue candidates."
-        : "The backend produced a reviewable preparation package with safe degraded draft issue output.",
-    progress: 100,
-    status: terminalStatus,
-    completedAt,
-    issueSummaries: preparationPackage.issueSummaries ?? [],
-    preparationPackage,
-    draftIssueGeneration: {
-      ...draftIssueGeneration,
-      runId: `draft-issues-${runId}`,
-      startedAt: completedAt,
-      completedAt,
-    },
-  });
 
   return {
     skipped: false,
-    status: terminalStatus,
+    status: adapterResult.status ?? "degraded",
+    source: adapterResult.source,
+    materialized: await materializeReviewGenerationRunToTask(runId),
   };
 }
 
@@ -275,6 +189,8 @@ export async function failReviewGenerationRunFromWorker(runId, error) {
       message: error instanceof Error ? error.message.slice(0, 180) : "Review generation worker failed.",
     },
   });
+
+  await materializeReviewGenerationFailureToTask(runId, error);
 }
 
 export async function createReviewGenerationRun(input = {}) {

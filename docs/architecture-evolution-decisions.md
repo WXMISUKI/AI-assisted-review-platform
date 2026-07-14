@@ -87,3 +87,18 @@ After backend-owned task snapshots and replayable run events, the next implement
 - persist only safe job summaries and diagnostics.
 
 This keeps the Node BFF as the frontend-facing API seam while making execution ownership replaceable. Redis, PostgreSQL-backed queues, Temporal, Celery, BullMQ, or Python workers can later replace the local adapter without changing the review-loading UI contract.
+
+## Python Agent Service Bridge Decision
+
+After the local worker queue foundation, the next implementation layer is a backend-facing Python agent service bridge. This is still not the final production agent runtime. It is a small contract that lets the Node worker delegate review-generation execution to a configured Python service when ready, while preserving the existing local Node fallback path.
+
+The bridge introduces the runtime shape future Python services must honor:
+
+- expose a safe health/readiness endpoint;
+- accept bounded review-generation context with run id, task id, mode, structure summary, paragraph excerpts, max issue count, and safe provider summaries;
+- return schema-valid stage events, preparation package output, draft issue generation output, completion metadata, and safe diagnostics;
+- never require the browser to know service URLs, auth headers, prompts, raw provider traces, private object URLs, or unbounded OCR text;
+- degrade to local fallback when the service is disabled, unavailable, timed out, or returns invalid payloads;
+- keep run status, run events, replayable SSE, and worker queue ownership as the frontend-facing source of truth.
+
+This keeps the current Node BFF valuable as the API gateway and review-loading contract while making the long-running intelligent-agent execution layer replaceable.
