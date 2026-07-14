@@ -2,6 +2,7 @@ import type {
   DocumentParagraph,
   RecoveredDocumentSection,
   RecoveredDocumentStructure,
+  ReviewPreparationPackage,
 } from "./reviewTypes";
 
 export interface BackendHealthResult {
@@ -139,6 +140,18 @@ export interface ReviewStreamEvent {
   issueSummaries: string[];
   providers?: BackendHealthResult["providers"];
   completedAt?: string;
+  preparationPackage?: Pick<
+    ReviewPreparationPackage,
+    | "packageId"
+    | "source"
+    | "status"
+    | "structureSummary"
+    | "issueSummaries"
+    | "providerSummary"
+    | "message"
+  > & {
+    stageEvents?: Array<Omit<ReviewStreamEvent, "preparationPackage" | "providers">>;
+  };
 }
 
 export interface ReviewStreamStructureSummary {

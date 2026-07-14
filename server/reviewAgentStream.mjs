@@ -185,6 +185,36 @@ function createStructureAwareStages(structureSummary = {}) {
   ].filter(Boolean);
 }
 
+function buildPreparationStructureSummary(structureSummary = {}) {
+  return {
+    sectionCount: normalizeCount(structureSummary.sectionCount),
+    paragraphCount: normalizeCount(structureSummary.paragraphCount),
+    currentSection: normalizeLabel(structureSummary.currentSection, ""),
+    currentParagraphLabel: normalizeLabel(structureSummary.currentParagraphLabel, ""),
+    currentParagraphIndex: normalizeCount(structureSummary.currentParagraphIndex) || undefined,
+    currentParagraphTotal: normalizeCount(structureSummary.currentParagraphTotal) || undefined,
+  };
+}
+
+function collectIssueSummaries(stages) {
+  return Array.from(new Set(stages.flatMap((stage) => stage.issueSummaries ?? [])));
+}
+
+function buildPreparationPackagePayload(structureSummary, stages, completedAt) {
+  const providerStatus = getSafeProviderStatus();
+  return {
+    packageId: `backend-sse-${Date.now()}`,
+    source: "backend-sse",
+    status: "ready",
+    structureSummary: buildPreparationStructureSummary(structureSummary),
+    stageEvents: stages,
+    issueSummaries: collectIssueSummaries(stages),
+    providerSummary: providerStatus.summary,
+    message: "Structure-aware review preparation package completed.",
+    completedAt,
+  };
+}
+
 export async function writeReviewAgentStream(response, options = {}) {
   const send = (event, data) => {
     response.write(`event: ${event}\n`);
@@ -213,6 +243,7 @@ export async function writeReviewAgentStream(response, options = {}) {
       await sleep(350);
     }
 
+    const completedAt = new Date().toISOString();
     send("review-event", {
       type: "review.complete",
       stageId: "complete",
@@ -220,7 +251,8 @@ export async function writeReviewAgentStream(response, options = {}) {
       detail: "后端 SSE 已完成一次 OCR 结构摘要驱动的审查准备输出。",
       progress: 100,
       issueSummaries: ["可继续接入真实 LLM 审查与结构化问题生成。"],
-      completedAt: new Date().toISOString(),
+      completedAt,
+      preparationPackage: buildPreparationPackagePayload(structureSummary, stages, completedAt),
     });
     return;
   }

@@ -46,12 +46,18 @@ import {
   resolveTaskIssue,
   startReviewTask,
   syncDocumentTaskOcrStatus,
+  updateReviewTaskPreparationPackage,
   updateReviewTaskStreamStage,
   updateReviewTaskViewContext,
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
 import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
 import { buildReviewPreparationStages } from "./domain/reviewPreparationStages";
+import {
+  createLocalFallbackPreparationPackage,
+  createPreparationStructureSummary,
+  normalizeBackendPreparationPackage,
+} from "./domain/reviewPreparationPackage";
 import {
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
@@ -85,8 +91,11 @@ export function App() {
     [selectedDocument],
   );
   const loadingStages = useMemo(
-    () => buildReviewPreparationStages(selectedDocument?.recoveredStructure, reviewStreamingStages),
-    [selectedDocument?.recoveredStructure],
+    () =>
+      selectedDocument?.preparationPackage?.stageEvents.length
+        ? selectedDocument.preparationPackage.stageEvents
+        : buildReviewPreparationStages(selectedDocument?.recoveredStructure, reviewStreamingStages),
+    [selectedDocument?.preparationPackage, selectedDocument?.recoveredStructure],
   );
 
   useEffect(() => {
@@ -167,31 +176,8 @@ export function App() {
       };
     };
 
-    const buildStructureSummary = (document: LibraryDocument | undefined) => {
-      const recoveredStructure = document?.recoveredStructure;
-      if (!recoveredStructure || recoveredStructure.paragraphs.length === 0) {
-        return null;
-      }
-
-      const currentParagraphId =
-        recoveredStructure.progress.currentParagraphId ?? recoveredStructure.paragraphs[0]?.id ?? "";
-      const currentParagraphIndex = recoveredStructure.paragraphs.findIndex(
-        (paragraph) => paragraph.id === currentParagraphId,
-      );
-
-      return {
-        sectionCount: recoveredStructure.sections.length,
-        paragraphCount: recoveredStructure.paragraphs.length,
-        currentSection:
-          recoveredStructure.progress.currentSection ?? recoveredStructure.paragraphs[0]?.section ?? "",
-        currentParagraphLabel:
-          recoveredStructure.paragraphs[currentParagraphIndex >= 0 ? currentParagraphIndex : 0]?.section ??
-          recoveredStructure.progress.currentSection ??
-          "",
-        currentParagraphIndex: currentParagraphIndex >= 0 ? currentParagraphIndex + 1 : 1,
-        currentParagraphTotal: recoveredStructure.paragraphs.length,
-      };
-    };
+    const buildStructureSummary = (document: LibraryDocument | undefined) =>
+      createPreparationStructureSummary(document?.recoveredStructure);
 
     const startReviewPreparation = (startIndex: number, sourceDocument = currentDocument) => {
       stopActiveStreams();
@@ -229,11 +215,23 @@ export function App() {
               return;
             }
 
-            const nextDocuments = markReviewTaskReady(
+            let nextDocuments = markReviewTaskReady(
               documentsRef.current,
               loadingDocId,
               buildStageSnapshot(currentIndex, preparationStages),
             );
+            const preparationPackage = createLocalFallbackPreparationPackage({
+              taskId: loadingDocId,
+              recoveredStructure: sourceDocument.recoveredStructure,
+              stages: preparationStages,
+            });
+            if (preparationPackage) {
+              nextDocuments = updateReviewTaskPreparationPackage(
+                nextDocuments,
+                loadingDocId,
+                preparationPackage,
+              );
+            }
             finishReady(nextDocuments);
           }, 650);
 
@@ -261,6 +259,7 @@ export function App() {
       ] as const;
       let latestStageIndex = 0;
       let completed = false;
+      const backendEvents: Parameters<typeof normalizeBackendPreparationPackage>[0]["events"] = [];
 
       const buildSnapshotFromEvent = (
         event: {
@@ -297,6 +296,7 @@ export function App() {
               return;
             }
 
+            backendEvents.push(event);
             const stageIndex =
               event.type === "review.complete"
                 ? stageOrder.length - 1
@@ -322,11 +322,23 @@ export function App() {
                   return;
                 }
 
-                const nextDocuments = markReviewTaskReady(
+                let nextDocuments = markReviewTaskReady(
                   documentsRef.current,
                   loadingDocId,
                   snapshot,
                 );
+                const preparationPackage = normalizeBackendPreparationPackage({
+                  taskId: loadingDocId,
+                  recoveredStructure: sourceDocument.recoveredStructure,
+                  events: backendEvents,
+                });
+                if (preparationPackage) {
+                  nextDocuments = updateReviewTaskPreparationPackage(
+                    nextDocuments,
+                    loadingDocId,
+                    preparationPackage,
+                  );
+                }
                 finishReady(nextDocuments);
               }, 650);
             }

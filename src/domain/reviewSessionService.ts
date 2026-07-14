@@ -24,6 +24,7 @@ import type {
   ReviewMode,
   ReviewSession,
   ReviewPipelineStageType,
+  ReviewPreparationPackage,
   ReviewTask,
   ReviewTaskOcrJob,
   ReviewTaskSourceObject,
@@ -446,6 +447,7 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
     processedParagraphs: buildProcessedParagraphs(resolvedParagraphs, resolvedIssues, mode),
     pipelineSnapshot,
     reviewViewContext: task.reviewViewContext,
+    preparationPackage: task.preparationPackage,
     resultAsset: task.resultAsset,
     lifecycle,
   };
@@ -462,6 +464,18 @@ export function updateReviewTaskViewContext(
       ...task.reviewViewContext,
       ...context,
     },
+    updatedAt: nowString(),
+  }));
+}
+
+export function updateReviewTaskPreparationPackage(
+  tasks: ReviewTask[],
+  taskId: string,
+  preparationPackage: ReviewPreparationPackage,
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) => ({
+    ...task,
+    preparationPackage,
     updatedAt: nowString(),
   }));
 }

@@ -242,6 +242,40 @@ export interface ReviewStreamingStage {
   };
 }
 
+export type ReviewPreparationPackageSource = "backend-sse" | "local-fallback";
+
+export type ReviewPreparationPackageStatus = "ready" | "fallback" | "failed";
+
+export interface ReviewPreparationStructureSummary {
+  sectionCount: number;
+  paragraphCount: number;
+  currentSection?: string;
+  currentParagraphId?: string;
+  currentParagraphLabel?: string;
+  currentParagraphIndex?: number;
+  currentParagraphTotal?: number;
+  sourceFormat?: RecoveredDocumentStructure["sourceFormat"];
+}
+
+export interface ReviewPreparationProviderSummary {
+  total: number;
+  ready: number;
+  overall: "ready" | "degraded" | "unconfigured";
+}
+
+export interface ReviewPreparationPackage {
+  packageId: string;
+  source: ReviewPreparationPackageSource;
+  status: ReviewPreparationPackageStatus;
+  createdAt: string;
+  completedAt?: string;
+  structureSummary: ReviewPreparationStructureSummary;
+  stageEvents: ReviewStreamingStage[];
+  issueSummaries: string[];
+  providerSummary?: ReviewPreparationProviderSummary;
+  message?: string;
+}
+
 export interface ReviewTaskSourceObject {
   bucket: string;
   key: string;
@@ -312,6 +346,7 @@ export interface ReviewTask {
   streamParagraphLabel?: string;
   pipelineSnapshot?: ReviewPipelineSnapshot;
   reviewViewContext?: ReviewViewContext;
+  preparationPackage?: ReviewPreparationPackage;
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
@@ -326,6 +361,7 @@ export interface ReviewSession {
   processedParagraphs: DocumentParagraph[];
   pipelineSnapshot?: ReviewPipelineSnapshot;
   reviewViewContext?: ReviewViewContext;
+  preparationPackage?: ReviewPreparationPackage;
   resultAsset?: ReviewResultAsset;
   lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }
