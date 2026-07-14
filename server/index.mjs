@@ -11,6 +11,10 @@ import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs"
 import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
 import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
+import {
+  createReviewGenerationRun,
+  writeReviewGenerationRunStream,
+} from "./reviewGenerationRunBridge.mjs";
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -136,6 +140,8 @@ const server = createServer(async (request, response) => {
           "POST /api/ocr/jobs/object",
           "GET /api/ocr/jobs/:id",
           "POST /api/ocr/results/hydrate",
+          "POST /api/review-agent/generation-runs",
+          "GET /api/review-agent/generation-runs/:runId/stream",
           "POST /api/review-agent/draft-issues",
           "GET /api/minio/status",
           "POST /api/minio/upload",
@@ -232,9 +238,31 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/review-agent/generation-runs") {
+      const body = await readJson(request);
+      const result = createReviewGenerationRun(body);
+      sendJson(response, result.ok ? 200 : 400, result);
+      return;
+    }
+
     const ocrJobMatch = url.pathname.match(/^\/api\/ocr\/jobs\/([^/]+)$/);
     if (request.method === "GET" && ocrJobMatch) {
       sendJson(response, 200, await getOcrJobStatus(ocrJobMatch[1]));
+      return;
+    }
+
+    const generationRunStreamMatch = url.pathname.match(
+      /^\/api\/review-agent\/generation-runs\/([^/]+)\/stream$/,
+    );
+    if (request.method === "GET" && generationRunStreamMatch) {
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      });
+      await writeReviewGenerationRunStream(response, decodeURIComponent(generationRunStreamMatch[1]));
+      response.end();
       return;
     }
 

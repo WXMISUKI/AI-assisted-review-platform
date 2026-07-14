@@ -33,6 +33,7 @@ import type {
   ReviewPipelineStageType,
   ReviewAgentKey,
 } from "./domain/reviewTypes";
+import type { ReviewStreamEvent, ReviewStreamSubscriptionHandlers } from "./domain/backendConnectivity";
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import {
   addManualTaskIssue,
@@ -64,9 +65,11 @@ import {
   normalizeBackendPreparationPackage,
 } from "./domain/reviewPreparationPackage";
 import {
+  createReviewGenerationRun,
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
   requestDraftIssueGeneration,
+  subscribeReviewGenerationRunEvents,
   subscribeReviewStreamEvents,
   submitStoredObjectOcrJob,
   uploadMinioDocument,
@@ -241,6 +244,26 @@ export function App() {
       }
     };
 
+    const enrichDocumentsWithBackendDraftIssues = (
+      nextDocuments: LibraryDocument[],
+      preparationPackage: NonNullable<LibraryDocument["preparationPackage"]>,
+      draftIssueGeneration: NonNullable<ReviewStreamEvent["draftIssueGeneration"]>,
+    ) => {
+      if (!draftIssueGeneration) {
+        return null;
+      }
+
+      return mergeGeneratedReviewIssues(nextDocuments, loadingDocId, draftIssueGeneration.issues ?? [], {
+        source: draftIssueGeneration.source,
+        status: draftIssueGeneration.status,
+        diagnostics: draftIssueGeneration.diagnostics,
+        preparationPackageId: preparationPackage.packageId,
+        startedAt: draftIssueGeneration.startedAt,
+        completedAt: draftIssueGeneration.completedAt,
+        runId: draftIssueGeneration.runId,
+      });
+    };
+
     const startReviewPreparation = (startIndex: number, sourceDocument = currentDocument) => {
       stopActiveStreams();
       const preparationStages = buildPreparationStages(sourceDocument);
@@ -316,10 +339,10 @@ export function App() {
       }, 850);
     };
 
-    const startBackendReviewPreparation = (sourceDocument = currentDocument) => {
+    const startBackendReviewPreparation = async (sourceDocument = currentDocument) => {
       const structureSummary = buildStructureSummary(sourceDocument);
       const persistedStageIndex = sourceDocument.pipelineSnapshot?.stageIndex ?? sourceDocument.streamStageIndex;
-      if (!structureSummary || persistedStageIndex > 0) {
+      if (!structureSummary || !sourceDocument.recoveredStructure?.paragraphs.length || persistedStageIndex > 0) {
         startReviewPreparation(persistedStageIndex || 0, sourceDocument);
         return;
       }
@@ -365,8 +388,7 @@ export function App() {
         streamParagraphLabel: event.currentParagraphLabel ?? event.currentSection ?? sourceDocument.streamParagraphLabel,
       });
 
-      streamSubscription = subscribeReviewStreamEvents(
-        {
+      const streamHandlers: ReviewStreamSubscriptionHandlers = {
           onEvent: (event) => {
             if (cancelled || completed) {
               return;
@@ -418,11 +440,21 @@ export function App() {
                     loadingDocId,
                     preparationPackage,
                   );
-                  nextDocuments = await enrichDocumentsWithGeneratedIssues(
-                    nextDocuments,
-                    sourceDocument,
-                    preparationPackage,
-                  );
+                  const completionEvent = backendEvents.find((item) => item.type === "review.complete");
+                  const backendDraftDocuments = completionEvent?.draftIssueGeneration
+                    ? enrichDocumentsWithBackendDraftIssues(
+                        nextDocuments,
+                        preparationPackage,
+                        completionEvent.draftIssueGeneration,
+                      )
+                    : null;
+                  nextDocuments =
+                    backendDraftDocuments ??
+                    (await enrichDocumentsWithGeneratedIssues(
+                      nextDocuments,
+                      sourceDocument,
+                      preparationPackage,
+                    ));
                 }
                 finishReady(nextDocuments);
               }, 650);
@@ -442,7 +474,31 @@ export function App() {
 
             startReviewPreparation(latestStageIndex, sourceDocument);
           },
-        },
+        };
+
+      try {
+        const generationRun = await createReviewGenerationRun({
+          taskId: loadingDocId,
+          structureSummary,
+          paragraphs: sourceDocument.recoveredStructure.paragraphs,
+          mode: sourceDocument.mode,
+          maxIssues: 6,
+        });
+
+        if (!cancelled && generationRun.ok && generationRun.streamUrl) {
+          streamSubscription = subscribeReviewGenerationRunEvents(
+            generationRun.streamUrl,
+            streamHandlers,
+            12000,
+          );
+          return;
+        }
+      } catch {
+        // The bridge is optional in this slice; fall through to the existing SSE path.
+      }
+
+      streamSubscription = subscribeReviewStreamEvents(
+        streamHandlers,
         structureSummary,
         10000,
       );

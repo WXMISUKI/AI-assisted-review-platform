@@ -132,6 +132,8 @@ export interface ReviewStreamEvent {
   title: string;
   detail: string;
   progress: number;
+  runId?: string;
+  status?: "running" | "ready" | "degraded" | "failed";
   agentKey?: string;
   agentLabel?: string;
   currentSection?: string;
@@ -142,6 +144,11 @@ export interface ReviewStreamEvent {
   issueSummaries: string[];
   providers?: BackendHealthResult["providers"];
   completedAt?: string;
+  diagnostics?: {
+    status: string;
+    message: string;
+    candidateCount?: number;
+  };
   preparationPackage?: Pick<
     ReviewPreparationPackage,
     | "packageId"
@@ -153,6 +160,11 @@ export interface ReviewStreamEvent {
     | "message"
   > & {
     stageEvents?: Array<Omit<ReviewStreamEvent, "preparationPackage" | "providers">>;
+  };
+  draftIssueGeneration?: ReviewDraftIssueGenerationResult & {
+    runId?: string;
+    startedAt?: string;
+    completedAt?: string;
   };
 }
 
@@ -170,6 +182,16 @@ export interface ReviewStreamSubscriptionHandlers {
   onComplete?: (events: ReviewStreamEvent[]) => void;
   onError?: (error: Error) => void;
   onTimeout?: (events: ReviewStreamEvent[]) => void;
+}
+
+export interface ReviewGenerationRunCreateResult {
+  ok: boolean;
+  runId?: string;
+  status?: string;
+  streamUrl?: string;
+  expiresAt?: string;
+  acceptedParagraphCount?: number;
+  message?: string;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -310,6 +332,81 @@ export function subscribeReviewStreamEvents(
   return {
     close,
   };
+}
+
+function subscribeReviewEventsFromUrl(
+  streamUrl: string,
+  handlers: ReviewStreamSubscriptionHandlers = {},
+  timeoutMs = 10000,
+) {
+  const events: ReviewStreamEvent[] = [];
+  const eventSource = new EventSource(streamUrl);
+  const timer = timeoutMs > 0 ? window.setTimeout(() => {
+    eventSource.close();
+    handlers.onTimeout?.(events);
+  }, timeoutMs) : null;
+
+  const close = () => {
+    if (timer != null) {
+      window.clearTimeout(timer);
+    }
+    eventSource.close();
+  };
+
+  eventSource.addEventListener("review-event", (event) => {
+    const payload = JSON.parse(event.data) as ReviewStreamEvent;
+    events.push(payload);
+    handlers.onEvent?.(payload);
+    if (payload.type === "review.complete" || payload.type === "review.failed") {
+      close();
+      handlers.onComplete?.(events);
+    }
+  });
+
+  eventSource.onerror = () => {
+    close();
+    handlers.onError?.(new Error("Review generation run stream failed."));
+  };
+
+  return {
+    close,
+  };
+}
+
+export async function createReviewGenerationRun(input: {
+  taskId: string;
+  structureSummary: ReviewStreamStructureSummary;
+  paragraphs: DocumentParagraph[];
+  mode: ReviewMode;
+  maxIssues?: number;
+}) {
+  const response = await fetch("/api/review-agent/generation-runs", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      taskId: input.taskId,
+      structureSummary: input.structureSummary,
+      paragraphs: input.paragraphs.slice(0, 12).map((paragraph) => ({
+        id: paragraph.id,
+        section: paragraph.section,
+        text: paragraph.text.slice(0, 1600),
+      })),
+      mode: input.mode,
+      maxIssues: input.maxIssues ?? 6,
+    }),
+  });
+
+  return readJson<ReviewGenerationRunCreateResult>(response);
+}
+
+export function subscribeReviewGenerationRunEvents(
+  streamUrl: string,
+  handlers: ReviewStreamSubscriptionHandlers = {},
+  timeoutMs = 10000,
+) {
+  return subscribeReviewEventsFromUrl(streamUrl, handlers, timeoutMs);
 }
 
 export function runReviewStreamConnectivityCheck(

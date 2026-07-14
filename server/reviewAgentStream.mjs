@@ -145,7 +145,7 @@ function buildStructureAwareStage(stageType, structureSummary) {
   return stageMap[stageType];
 }
 
-function createStructureAwareStages(structureSummary = {}) {
+export function createStructureAwareStages(structureSummary = {}) {
   const structureMode = hasStructureContext(structureSummary);
 
   if (!structureMode) {
@@ -200,7 +200,7 @@ function collectIssueSummaries(stages) {
   return Array.from(new Set(stages.flatMap((stage) => stage.issueSummaries ?? [])));
 }
 
-function buildPreparationPackagePayload(structureSummary, stages, completedAt) {
+export function buildPreparationPackagePayload(structureSummary, stages, completedAt) {
   const providerStatus = getSafeProviderStatus();
   return {
     packageId: `backend-sse-${Date.now()}`,

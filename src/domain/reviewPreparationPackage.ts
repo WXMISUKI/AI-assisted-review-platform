@@ -70,6 +70,7 @@ export function mapReviewStreamEventToStage(event: ReviewStreamEvent): ReviewStr
 
 export function createReviewPreparationPackage(input: {
   taskId: string;
+  packageId?: string;
   source: ReviewPreparationPackageSource;
   status: ReviewPreparationPackageStatus;
   structureSummary: ReviewPreparationStructureSummary;
@@ -81,7 +82,7 @@ export function createReviewPreparationPackage(input: {
   const completedAt = input.completedAt ?? new Date().toISOString();
 
   return {
-    packageId: createPackageId(input.taskId, input.source),
+    packageId: input.packageId ?? createPackageId(input.taskId, input.source),
     source: input.source,
     status: input.status,
     createdAt: completedAt,
@@ -136,8 +137,9 @@ export function normalizeBackendPreparationPackage(input: {
 
   return createReviewPreparationPackage({
     taskId: input.taskId,
-    source: "backend-sse",
-    status: "ready",
+    packageId: completionEvent?.preparationPackage?.packageId,
+    source: completionEvent?.preparationPackage?.source ?? "backend-sse",
+    status: completionEvent?.preparationPackage?.status ?? "ready",
     structureSummary,
     stages: stageEvents,
     providerSummary: completionEvent?.preparationPackage?.providerSummary,
