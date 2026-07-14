@@ -3,6 +3,60 @@
 ## Purpose
 Define the review task aggregate, session service boundary, and recoverable loading snapshot used by the review workflow.
 ## Requirements
+### Requirement: Failed generation retry starts a fresh run
+The review session state SHALL start a fresh review generation run when a user retries after a failed terminal run.
+
+#### Scenario: Failed run is retried
+- **WHEN** a task has a failed review generation run and the user starts review generation again
+- **THEN** the task receives a new generation run id, running status, fresh timestamps, and no stale run diagnostics
+
+#### Scenario: Existing task data is preserved
+- **WHEN** a failed run is retried
+- **THEN** existing issues, manual decisions, preparation package snapshots, and result assets are not destructively removed by the retry action
+
+### Requirement: Degraded generation remains reviewable
+The review session state SHALL treat degraded generation as a recoverable review state rather than a failed task.
+
+#### Scenario: Degraded run is reopened
+- **WHEN** a task has a degraded review generation run and reviewable document state
+- **THEN** the session state allows the workbench to open without requiring retry first
+
+### Requirement: Legacy retry fallback
+The review session state SHALL preserve existing task-status behavior when no review generation run snapshot exists.
+
+#### Scenario: Older failed task is retried
+- **WHEN** a failed task has no review generation run snapshot
+- **THEN** the retry action can still enter the existing review start flow
+
+### Requirement: Review generation run snapshot
+The review session state SHALL persist the latest review generation run snapshot on the review task aggregate.
+
+#### Scenario: Review generation starts
+- **WHEN** review preparation begins for a document task
+- **THEN** the task stores a generation run id, running status, start time, update time, and active stage summary
+
+#### Scenario: Review generation completes
+- **WHEN** review preparation and draft issue generation have completed
+- **THEN** the task stores a terminal run status, completion time, preparation package id, draft issue generation run id, and generated issue count
+
+### Requirement: Degraded generation is recoverable
+The review session state SHALL distinguish degraded generation from failed review tasks.
+
+#### Scenario: Fallback generation completes
+- **WHEN** draft issue generation completes through deterministic fallback or no-candidate recovery
+- **THEN** the run snapshot can be marked degraded while the task remains available for workbench review
+
+#### Scenario: Generation cannot produce a reviewable state
+- **WHEN** review preparation cannot produce usable structure or safe fallback state
+- **THEN** the run snapshot can be marked failed with non-secret diagnostics
+
+### Requirement: Run snapshot remains backend-replaceable
+The review generation run snapshot SHALL avoid UI-only fields so future backend task APIs can replace local persistence.
+
+#### Scenario: Backend run state is returned
+- **WHEN** a future backend API returns review generation run metadata
+- **THEN** the session state can map it into the same run snapshot contract without changing page-level consumers
+
 ### Requirement: Draft issue generation snapshot
 The review session state SHALL persist the latest draft issue generation snapshot on the review task aggregate.
 

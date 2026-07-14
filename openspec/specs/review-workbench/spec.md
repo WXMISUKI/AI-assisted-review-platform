@@ -3,6 +3,53 @@
 ## Purpose
 TBD - created by archiving change interactive-review-mvp. Update Purpose after archive.
 ## Requirements
+### Requirement: Failed generation shows retry action
+The document library SHALL expose a retry action for failed review generation tasks.
+
+#### Scenario: Failed generation task is listed
+- **WHEN** a document task has a failed review generation run or failed task status
+- **THEN** the document library shows a clear retry action that restarts the locked generation flow
+
+#### Scenario: Retry starts
+- **WHEN** the user activates retry
+- **THEN** the UI routes to the review-loading flow rather than opening the editable workbench immediately
+
+### Requirement: Degraded generation remains openable
+The document library SHALL keep degraded review generation tasks openable in the workbench.
+
+#### Scenario: Degraded task is listed
+- **WHEN** a document task has a degraded review generation run
+- **THEN** the primary open action can enter the workbench while safe degraded context remains visible in summaries
+
+### Requirement: Recovery diagnostics remain safe
+The workbench and document library SHALL only display safe recovery summaries.
+
+#### Scenario: Failure details are shown
+- **WHEN** a failed generation run has diagnostics
+- **THEN** the UI displays only high-level status/message fields and never exposes prompts, secrets, provider traces, raw document text, or private object URLs
+
+### Requirement: Workbench unlock follows generation run state
+The review workbench SHALL prefer the review generation run snapshot when deciding whether a task can be edited.
+
+#### Scenario: Run is ready
+- **WHEN** a task has a ready generation run snapshot
+- **THEN** the workbench can open with editable issue decisions
+
+#### Scenario: Run is degraded
+- **WHEN** a task has a degraded generation run snapshot with reviewable document state
+- **THEN** the workbench can open while preserving safe degraded context
+
+#### Scenario: Run is running
+- **WHEN** a task has a running generation run snapshot
+- **THEN** the detail page remains in locked loading or observation mode
+
+### Requirement: Legacy tasks remain openable
+The workbench SHALL preserve existing task-status fallback behavior for tasks that do not yet have a generation run snapshot.
+
+#### Scenario: Snapshot is absent
+- **WHEN** an older task has no review generation run snapshot
+- **THEN** the workbench uses the existing task status, preparation package, and issue state behavior without blocking entry
+
 ### Requirement: Compact issue provenance display
 The review workbench SHALL display compact provenance labels for review issues when provenance metadata is available.
 

@@ -37,16 +37,20 @@ import { mockStreamingStages as reviewStreamingStages } from "./domain/mockRevie
 import {
   addManualTaskIssue,
   completeReviewTask,
+  completeReviewGenerationRun,
   createDocumentTask,
   createReviewSession,
   deleteDocumentTask,
   deleteManualTaskIssue,
+  failReviewGenerationRun,
   listReviewTasks,
   markReviewTaskReady,
   mergeGeneratedReviewIssues,
   resolveTaskIssue,
+  startReviewGenerationRun,
   startReviewTask,
   syncDocumentTaskOcrStatus,
+  updateReviewGenerationRunStage,
   updateReviewTaskPreparationPackage,
   updateReviewTaskStreamStage,
   updateReviewTaskViewContext,
@@ -155,8 +159,13 @@ export function App() {
       }
 
       stopActiveStreams();
-      documentsRef.current = nextDocuments;
-      setDocuments(nextDocuments);
+      const failedDocuments = failReviewGenerationRun(nextDocuments, loadingDocId, {
+        status: "failed",
+        message,
+        source: "ocr-hydration",
+      });
+      documentsRef.current = failedDocuments;
+      setDocuments(failedDocuments);
       setDocumentUploadError(message);
       setActivePage("documents");
       setLoadingDocId(null);
@@ -187,7 +196,16 @@ export function App() {
       preparationPackage: NonNullable<LibraryDocument["preparationPackage"]>,
     ) => {
       if (!sourceDocument.recoveredStructure?.paragraphs.length) {
-        return nextDocuments;
+        return completeReviewGenerationRun(nextDocuments, loadingDocId, {
+          status: "degraded",
+          preparationPackageId: preparationPackage.packageId,
+          generatedIssueCount: 0,
+          diagnostics: {
+            status: "no-paragraphs",
+            message: "No recovered paragraphs were available for draft issue generation.",
+            source: "draft-issue-generation",
+          },
+        });
       }
 
       try {
@@ -209,8 +227,17 @@ export function App() {
           startedAt,
           completedAt,
         });
-      } catch {
-        return nextDocuments;
+      } catch (error) {
+        return completeReviewGenerationRun(nextDocuments, loadingDocId, {
+          status: "degraded",
+          preparationPackageId: preparationPackage.packageId,
+          generatedIssueCount: 0,
+          diagnostics: {
+            status: "request-failed",
+            message: error instanceof Error ? error.message : "Draft issue generation request failed.",
+            source: "draft-issue-generation",
+          },
+        });
       }
     };
 
@@ -219,7 +246,11 @@ export function App() {
       const preparationStages = buildPreparationStages(sourceDocument);
       const initialSnapshot = buildStageSnapshot(startIndex, preparationStages);
       setDocuments((currentDocs) => {
-        const nextDocuments = updateReviewTaskStreamStage(currentDocs, loadingDocId, initialSnapshot);
+        const nextDocuments = updateReviewGenerationRunStage(
+          updateReviewTaskStreamStage(currentDocs, loadingDocId, initialSnapshot),
+          loadingDocId,
+          initialSnapshot,
+        );
         documentsRef.current = nextDocuments;
         return nextDocuments;
       });
@@ -229,10 +260,15 @@ export function App() {
           const nextIndex = currentIndex + 1;
           if (nextIndex < preparationStages.length) {
             setDocuments((currentDocs) => {
-              const nextDocuments = updateReviewTaskStreamStage(
-                currentDocs,
+              const nextSnapshot = buildStageSnapshot(nextIndex, preparationStages);
+              const nextDocuments = updateReviewGenerationRunStage(
+                updateReviewTaskStreamStage(
+                  currentDocs,
+                  loadingDocId,
+                  nextSnapshot,
+                ),
                 loadingDocId,
-                buildStageSnapshot(nextIndex, preparationStages),
+                nextSnapshot,
               );
               documentsRef.current = nextDocuments;
               return nextDocuments;
@@ -346,8 +382,12 @@ export function App() {
 
             const snapshot = buildSnapshotFromEvent(event, latestStageIndex);
             setDocuments((currentDocs) => {
-              const nextDocuments = updateReviewTaskStreamStage(
-                currentDocs,
+              const nextDocuments = updateReviewGenerationRunStage(
+                updateReviewTaskStreamStage(
+                  currentDocs,
+                  loadingDocId,
+                  snapshot,
+                ),
                 loadingDocId,
                 snapshot,
               );
@@ -646,7 +686,7 @@ export function App() {
     setSelectedDocId(documentId);
     setLoadingDocId(documentId);
     setStreamStageIndex(0);
-    setDocuments((currentDocs) => startReviewTask(currentDocs, documentId));
+    setDocuments((currentDocs) => startReviewGenerationRun(startReviewTask(currentDocs, documentId), documentId));
     setActivePage("review-loading");
   }
 
@@ -664,7 +704,7 @@ export function App() {
       return;
     }
 
-    if (lifecycle.entryTarget === "detail" || doc.status === "ready") {
+    if (lifecycle.entryTarget === "detail") {
       setActivePage("review-detail");
       return;
     }

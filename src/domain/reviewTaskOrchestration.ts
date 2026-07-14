@@ -36,6 +36,31 @@ function getOcrPercent(task: ReviewTask) {
   return task.ocrJob?.state === "done" ? 100 : null;
 }
 
+function getGenerationRunProgressLabel(task: ReviewTask) {
+  const run = task.reviewGenerationRun;
+  if (!run) {
+    return null;
+  }
+
+  if (run.status === "running") {
+    return run.activeStage ? `阶段 ${run.activeStage.stageIndex + 1}` : "审查生成中";
+  }
+
+  if (run.status === "ready") {
+    return `生成完成 · ${run.generatedIssueCount} 条`;
+  }
+
+  if (run.status === "degraded") {
+    return `降级可审查 · ${run.generatedIssueCount} 条`;
+  }
+
+  if (run.status === "failed") {
+    return "审查生成失败";
+  }
+
+  return "等待生成";
+}
+
 export function getReviewTaskOrchestrationSnapshot(task: ReviewTask): ReviewTaskOrchestrationSnapshot {
   const summary = getTaskLifecycleSummary(task);
   const ocrPercent = getOcrPercent(task);
@@ -58,6 +83,37 @@ export function getReviewTaskOrchestrationSnapshot(task: ReviewTask): ReviewTask
       progressLabel: ocrPercent != null ? `OCR ${ocrPercent}%` : "OCR处理中",
       currentContextLabel,
       currentStageLabel: task.ocrJob?.message ?? "正在识别版面与段落",
+    };
+  }
+
+  if (task.reviewGenerationRun?.status === "running") {
+    const run = task.reviewGenerationRun;
+    return {
+      phase: "review-preparation",
+      entryTarget: "loading",
+      locked: true,
+      resumable: true,
+      summary,
+      progressLabel: getGenerationRunProgressLabel(task),
+      currentContextLabel:
+        run.activeStage?.currentSection ??
+        run.activeStage?.paragraphLabel ??
+        currentContextLabel,
+      currentStageLabel: run.activeStage?.stageType ?? pipelineSnapshot?.stageType ?? null,
+    };
+  }
+
+  if (task.reviewGenerationRun?.status === "failed") {
+    const run = task.reviewGenerationRun;
+    return {
+      phase: "review-failed",
+      entryTarget: "none",
+      locked: true,
+      resumable: true,
+      summary,
+      progressLabel: getGenerationRunProgressLabel(task),
+      currentContextLabel: run.diagnostics?.message ?? currentContextLabel,
+      currentStageLabel: run.diagnostics?.source ?? run.activeStage?.stageType ?? null,
     };
   }
 
@@ -87,7 +143,7 @@ export function getReviewTaskOrchestrationSnapshot(task: ReviewTask): ReviewTask
       locked: false,
       resumable: true,
       summary,
-      progressLabel: "待进入审查",
+      progressLabel: getGenerationRunProgressLabel(task) ?? "待进入审查",
       currentContextLabel:
         pipelineSnapshot?.currentSection ??
         pipelineSnapshot?.paragraphLabel ??

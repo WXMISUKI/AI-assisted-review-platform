@@ -23,6 +23,8 @@ import type {
   ReviewDraftIssueGenerationDiagnostics,
   ReviewDraftIssueGenerationSource,
   ReviewDraftIssueGenerationStatus,
+  ReviewGenerationRunActiveStage,
+  ReviewGenerationRunDiagnostics,
   ReviewIssue,
   ReviewMode,
   ReviewSession,
@@ -42,6 +44,10 @@ function nowString() {
   ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
     date.getMinutes(),
   ).padStart(2, "0")}`;
+}
+
+function nowIsoString() {
+  return new Date().toISOString();
 }
 
 function cloneParagraphs(paragraphs: DocumentParagraph[]) {
@@ -86,6 +92,182 @@ function updateTask(
   updater: (task: ReviewTask) => ReviewTask,
 ): ReviewTask[] {
   return saveReviewTasks(tasks.map((task) => (task.id === taskId ? updater(task) : task)));
+}
+
+function createGenerationRunId(taskId: string) {
+  return `review-generation-${taskId}-${Date.now().toString(36)}`;
+}
+
+function shouldReuseGenerationRun(task: ReviewTask) {
+  return task.reviewGenerationRun?.status === "running";
+}
+
+function createGenerationRunActiveStage(
+  snapshot: {
+    streamStageIndex?: number;
+    streamStageType?: ReviewPipelineStageType;
+    streamAgentKey?: ReviewAgentKey;
+    streamParagraphIndex?: number;
+    streamParagraphTotal?: number;
+    streamCurrentParagraphId?: string;
+    streamParagraphLabel?: string;
+  },
+  task?: ReviewTask,
+): ReviewGenerationRunActiveStage {
+  return {
+    stageIndex: snapshot.streamStageIndex ?? task?.streamStageIndex ?? 0,
+    stageType: snapshot.streamStageType ?? task?.streamStageType,
+    agentKey: snapshot.streamAgentKey ?? task?.streamAgentKey,
+    paragraphIndex: snapshot.streamParagraphIndex ?? task?.streamParagraphIndex,
+    paragraphTotal: snapshot.streamParagraphTotal ?? task?.streamParagraphTotal,
+    currentParagraphId: snapshot.streamCurrentParagraphId ?? task?.streamCurrentParagraphId,
+    paragraphLabel: snapshot.streamParagraphLabel ?? task?.streamParagraphLabel,
+    currentSection: snapshot.streamParagraphLabel ?? task?.streamParagraphLabel,
+  };
+}
+
+function normalizeGenerationRunDiagnostics(
+  diagnostics: ReviewGenerationRunDiagnostics | undefined,
+) {
+  return diagnostics
+    ? {
+        status: diagnostics.status,
+        message: diagnostics.message,
+        source: diagnostics.source,
+      }
+    : undefined;
+}
+
+function startGenerationRunForTask(
+  task: ReviewTask,
+  activeStage?: ReviewGenerationRunActiveStage,
+) {
+  const reuseRun = shouldReuseGenerationRun(task);
+  const startedAt = reuseRun ? task.reviewGenerationRun!.startedAt : nowIsoString();
+
+  return {
+    ...task,
+    reviewGenerationRun: {
+      runId: reuseRun ? task.reviewGenerationRun!.runId : createGenerationRunId(task.id),
+      status: "running" as const,
+      startedAt,
+      updatedAt: nowIsoString(),
+      activeStage: activeStage ?? (reuseRun ? task.reviewGenerationRun?.activeStage : undefined),
+      preparationPackageId: reuseRun ? task.reviewGenerationRun?.preparationPackageId : undefined,
+      draftIssueGenerationRunId: reuseRun ? task.reviewGenerationRun?.draftIssueGenerationRunId : undefined,
+      generatedIssueCount: reuseRun ? task.reviewGenerationRun?.generatedIssueCount ?? 0 : 0,
+      diagnostics: undefined,
+    },
+  };
+}
+
+function updateGenerationRunForTask(
+  task: ReviewTask,
+  update: {
+    activeStage?: ReviewGenerationRunActiveStage;
+    preparationPackageId?: string;
+    draftIssueGenerationRunId?: string;
+    generatedIssueCount?: number;
+    status?: "running" | "ready" | "degraded" | "failed";
+    completedAt?: string;
+    diagnostics?: ReviewGenerationRunDiagnostics;
+  },
+) {
+  const currentRun = task.reviewGenerationRun;
+  const startedAt = currentRun?.startedAt ?? nowIsoString();
+  const updatedAt = nowIsoString();
+
+  return {
+    ...task,
+    reviewGenerationRun: {
+      runId: currentRun?.runId ?? createGenerationRunId(task.id),
+      status: update.status ?? currentRun?.status ?? "running",
+      startedAt,
+      updatedAt,
+      completedAt: update.completedAt ?? currentRun?.completedAt,
+      activeStage: update.activeStage ?? currentRun?.activeStage,
+      preparationPackageId: update.preparationPackageId ?? currentRun?.preparationPackageId,
+      draftIssueGenerationRunId:
+        update.draftIssueGenerationRunId ?? currentRun?.draftIssueGenerationRunId,
+      generatedIssueCount: update.generatedIssueCount ?? currentRun?.generatedIssueCount ?? 0,
+      diagnostics: normalizeGenerationRunDiagnostics(update.diagnostics) ?? currentRun?.diagnostics,
+    },
+  };
+}
+
+export function startReviewGenerationRun(
+  tasks: ReviewTask[],
+  taskId: string,
+  snapshot?: Parameters<typeof createGenerationRunActiveStage>[0],
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) =>
+    startGenerationRunForTask(
+      task,
+      createGenerationRunActiveStage(
+        snapshot ?? {
+          streamStageIndex: task.streamStageIndex,
+          streamStageType: task.streamStageType,
+          streamAgentKey: task.streamAgentKey,
+          streamParagraphIndex: task.streamParagraphIndex,
+          streamParagraphTotal: task.streamParagraphTotal,
+          streamCurrentParagraphId: task.streamCurrentParagraphId,
+          streamParagraphLabel: task.streamParagraphLabel,
+        },
+        task,
+      ),
+    ),
+  );
+}
+
+export function updateReviewGenerationRunStage(
+  tasks: ReviewTask[],
+  taskId: string,
+  snapshot: Parameters<typeof createGenerationRunActiveStage>[0],
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) =>
+    updateGenerationRunForTask(task, {
+      status: task.reviewGenerationRun?.status === "running" ? "running" : undefined,
+      activeStage: createGenerationRunActiveStage(snapshot, task),
+    }),
+  );
+}
+
+export function completeReviewGenerationRun(
+  tasks: ReviewTask[],
+  taskId: string,
+  input: {
+    status: "ready" | "degraded";
+    preparationPackageId?: string;
+    draftIssueGenerationRunId?: string;
+    generatedIssueCount?: number;
+    completedAt?: string;
+    diagnostics?: ReviewGenerationRunDiagnostics;
+  },
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) =>
+    updateGenerationRunForTask(task, {
+      status: input.status,
+      completedAt: input.completedAt ?? nowIsoString(),
+      preparationPackageId: input.preparationPackageId,
+      draftIssueGenerationRunId: input.draftIssueGenerationRunId,
+      generatedIssueCount: input.generatedIssueCount,
+      diagnostics: input.diagnostics,
+    }),
+  );
+}
+
+export function failReviewGenerationRun(
+  tasks: ReviewTask[],
+  taskId: string,
+  diagnostics: ReviewGenerationRunDiagnostics,
+): ReviewTask[] {
+  return updateTask(tasks, taskId, (task) =>
+    updateGenerationRunForTask(task, {
+      status: "failed",
+      completedAt: nowIsoString(),
+      diagnostics,
+    }),
+  );
 }
 
 export function listReviewTasks(): ReviewTask[] {
@@ -452,6 +634,7 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
     reviewViewContext: task.reviewViewContext,
     preparationPackage: task.preparationPackage,
     draftIssueGenerationSnapshot: task.draftIssueGenerationSnapshot,
+    reviewGenerationRun: task.reviewGenerationRun,
     resultAsset: task.resultAsset,
     lifecycle,
   };
@@ -477,11 +660,26 @@ export function updateReviewTaskPreparationPackage(
   taskId: string,
   preparationPackage: ReviewPreparationPackage,
 ): ReviewTask[] {
-  return updateTask(tasks, taskId, (task) => ({
-    ...task,
-    preparationPackage,
-    updatedAt: nowString(),
-  }));
+  return updateTask(tasks, taskId, (task) =>
+    updateGenerationRunForTask(
+      {
+        ...task,
+        preparationPackage,
+        updatedAt: nowString(),
+      },
+      {
+        preparationPackageId: preparationPackage.packageId,
+        diagnostics:
+          preparationPackage.status === "failed"
+            ? {
+                status: preparationPackage.status,
+                message: preparationPackage.message ?? "Review preparation package failed.",
+                source: preparationPackage.source === "local-fallback" ? "local-fallback" : "review-preparation",
+              }
+            : undefined,
+      },
+    ),
+  );
 }
 
 function mergeReviewIssues(existingIssues: ReviewIssue[], generatedIssues: ReviewIssue[]) {
@@ -531,7 +729,7 @@ export function mergeGeneratedReviewIssues(
         .map((issue) => issue.id),
     );
 
-    return {
+    const nextTask: ReviewTask = {
       ...task,
       issues,
       issueCount: getIssueCounts(issues).total,
@@ -550,6 +748,23 @@ export function mergeGeneratedReviewIssues(
       },
       updatedAt: nowString(),
     };
+
+    const terminalStatus = metadata.status === "ready" ? "ready" : "degraded";
+    return updateGenerationRunForTask(nextTask, {
+      status: terminalStatus,
+      completedAt,
+      preparationPackageId: metadata.preparationPackageId,
+      draftIssueGenerationRunId: runId,
+      generatedIssueCount: acceptedIssueIds.size,
+      diagnostics:
+        terminalStatus === "degraded" && metadata.diagnostics
+          ? {
+              status: metadata.diagnostics.status,
+              message: metadata.diagnostics.message,
+              source: "draft-issue-generation",
+            }
+          : undefined,
+    });
   });
 }
 

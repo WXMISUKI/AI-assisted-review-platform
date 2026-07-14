@@ -74,6 +74,37 @@ function getFallbackSummaryLabel(document: LibraryDocument) {
   );
 }
 
+function getGenerationRunSummaryLabel(document: LibraryDocument) {
+  const run = document.reviewGenerationRun;
+  if (!run) {
+    return null;
+  }
+
+  if (run.status === "running") {
+    return run.activeStage
+      ? `审查生成中 · 阶段 ${run.activeStage.stageIndex + 1}`
+      : "审查生成中";
+  }
+
+  if (run.status === "ready") {
+    return `生成完成 · ${run.generatedIssueCount} 条候选`;
+  }
+
+  if (run.status === "degraded") {
+    return run.diagnostics?.message
+      ? `降级可审查 · ${run.diagnostics.status}`
+      : `降级可审查 · ${run.generatedIssueCount} 条候选`;
+  }
+
+  if (run.status === "failed") {
+    return run.diagnostics?.message
+      ? `生成失败 · ${run.diagnostics.status}`
+      : "审查生成失败";
+  }
+
+  return "等待审查生成";
+}
+
 function getResultSourceLabel(document: LibraryDocument, sessionSnapshot?: ReviewSession) {
   if (sessionSnapshot?.resultAsset) {
     return "会话快照";
@@ -234,6 +265,7 @@ export function DocumentLibraryPage({
         <div className="history-list">
           {recentDocs.map((doc) => {
             const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
+            const generationRunSummary = getGenerationRunSummaryLabel(doc);
 
             return (
               <button
@@ -249,6 +281,9 @@ export function DocumentLibraryPage({
                   <small className="history-lifecycle">
                     {lifecycle.summary.label} · {lifecycle.summary.detail}
                   </small>
+                  {generationRunSummary && (
+                    <small className="history-lifecycle">{generationRunSummary}</small>
+                  )}
                 </span>
                 <GitCompareArrows size={16} />
               </button>
@@ -352,7 +387,9 @@ export function DocumentLibraryPage({
         <div className="document-grid">
           {documents.map((doc) => {
             const lifecycle = getReviewTaskOrchestrationSnapshot(doc);
+            const generationRunSummary = getGenerationRunSummaryLabel(doc);
             const hasResult = Boolean(doc.resultAsset);
+            const canRetryGeneration = lifecycle.phase === "review-failed" && lifecycle.resumable;
 
             return (
               <article key={doc.id} className="document-card">
@@ -373,13 +410,19 @@ export function DocumentLibraryPage({
                 </div>
                 <p className="document-summary">
                   {lifecycle.summary.label} · {lifecycle.summary.detail}
+                  {generationRunSummary ? ` · ${generationRunSummary}` : ""}
                 </p>
                 <div className="dialog-actions">
                   <button type="button" className="secondary" onClick={() => onOpenDocument(doc.id)}>
                     <FileText size={16} />
                     打开工作台
                   </button>
-                  {doc.status === "ready" || doc.status === "reviewing" ? (
+                  {canRetryGeneration ? (
+                    <button type="button" className="primary" onClick={() => onStartReview(doc.id)}>
+                      <Sparkles size={16} />
+                      重新生成
+                    </button>
+                  ) : doc.status === "ready" || doc.status === "reviewing" ? (
                     <button type="button" className="primary" onClick={() => onStartReview(doc.id)}>
                       <Sparkles size={16} />
                       开始审查
