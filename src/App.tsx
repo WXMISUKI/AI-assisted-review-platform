@@ -66,6 +66,8 @@ import {
 } from "./domain/reviewPreparationPackage";
 import {
   createReviewGenerationRun,
+  fetchReviewGenerationRunEvents,
+  fetchReviewGenerationRunStatus,
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
   requestDraftIssueGeneration,
@@ -358,6 +360,9 @@ export function App() {
       ] as const;
       let latestStageIndex = 0;
       let completed = false;
+      let backendRunId = "";
+      let lastBackendEventSequence = 0;
+      const seenBackendEventKeys = new Set<string>();
       const backendEvents: Parameters<typeof normalizeBackendPreparationPackage>[0]["events"] = [];
 
       const buildSnapshotFromEvent = (
@@ -388,93 +393,127 @@ export function App() {
         streamParagraphLabel: event.currentParagraphLabel ?? event.currentSection ?? sourceDocument.streamParagraphLabel,
       });
 
-      const streamHandlers: ReviewStreamSubscriptionHandlers = {
-          onEvent: (event) => {
-            if (cancelled || completed) {
+      const handleBackendEvent = (event: ReviewStreamEvent) => {
+        if (cancelled || completed) {
+          return;
+        }
+
+        const eventKey = event.sequence != null ? `sequence:${event.sequence}` : `${event.type}:${event.stageId}`;
+        if (seenBackendEventKeys.has(eventKey)) {
+          return;
+        }
+        seenBackendEventKeys.add(eventKey);
+        if (event.sequence != null) {
+          lastBackendEventSequence = Math.max(lastBackendEventSequence, event.sequence);
+        }
+
+        backendEvents.push(event);
+        const stageIndex =
+          event.type === "review.complete"
+            ? stageOrder.length - 1
+            : Math.max(0, stageOrder.indexOf(event.stageId as (typeof stageOrder)[number]));
+        latestStageIndex = stageIndex >= 0 ? stageIndex : latestStageIndex;
+        setStreamStageIndex(latestStageIndex);
+
+        const snapshot = buildSnapshotFromEvent(event, latestStageIndex);
+        setDocuments((currentDocs) => {
+          const nextDocuments = updateReviewGenerationRunStage(
+            updateReviewTaskStreamStage(
+              currentDocs,
+              loadingDocId,
+              snapshot,
+            ),
+            loadingDocId,
+            snapshot,
+          );
+          documentsRef.current = nextDocuments;
+          return nextDocuments;
+        });
+
+        if (event.type === "review.complete") {
+          completed = true;
+          window.setTimeout(async () => {
+            if (cancelled) {
               return;
             }
 
-            backendEvents.push(event);
-            const stageIndex =
-              event.type === "review.complete"
-                ? stageOrder.length - 1
-                : Math.max(0, stageOrder.indexOf(event.stageId as (typeof stageOrder)[number]));
-            latestStageIndex = stageIndex >= 0 ? stageIndex : latestStageIndex;
-            setStreamStageIndex(latestStageIndex);
-
-            const snapshot = buildSnapshotFromEvent(event, latestStageIndex);
-            setDocuments((currentDocs) => {
-              const nextDocuments = updateReviewGenerationRunStage(
-                updateReviewTaskStreamStage(
-                  currentDocs,
-                  loadingDocId,
-                  snapshot,
-                ),
-                loadingDocId,
-                snapshot,
-              );
-              documentsRef.current = nextDocuments;
-              return nextDocuments;
+            let nextDocuments = markReviewTaskReady(
+              documentsRef.current,
+              loadingDocId,
+              snapshot,
+            );
+            const preparationPackage = normalizeBackendPreparationPackage({
+              taskId: loadingDocId,
+              recoveredStructure: sourceDocument.recoveredStructure,
+              events: backendEvents,
             });
-
-            if (event.type === "review.complete") {
-              completed = true;
-              window.setTimeout(async () => {
-                if (cancelled) {
-                  return;
-                }
-
-                let nextDocuments = markReviewTaskReady(
-                  documentsRef.current,
-                  loadingDocId,
-                  snapshot,
-                );
-                const preparationPackage = normalizeBackendPreparationPackage({
-                  taskId: loadingDocId,
-                  recoveredStructure: sourceDocument.recoveredStructure,
-                  events: backendEvents,
-                });
-                if (preparationPackage) {
-                  nextDocuments = updateReviewTaskPreparationPackage(
+            if (preparationPackage) {
+              nextDocuments = updateReviewTaskPreparationPackage(
+                nextDocuments,
+                loadingDocId,
+                preparationPackage,
+              );
+              const completionEvent = backendEvents.find((item) => item.type === "review.complete");
+              const backendDraftDocuments = completionEvent?.draftIssueGeneration
+                ? enrichDocumentsWithBackendDraftIssues(
                     nextDocuments,
-                    loadingDocId,
                     preparationPackage,
-                  );
-                  const completionEvent = backendEvents.find((item) => item.type === "review.complete");
-                  const backendDraftDocuments = completionEvent?.draftIssueGeneration
-                    ? enrichDocumentsWithBackendDraftIssues(
-                        nextDocuments,
-                        preparationPackage,
-                        completionEvent.draftIssueGeneration,
-                      )
-                    : null;
-                  nextDocuments =
-                    backendDraftDocuments ??
-                    (await enrichDocumentsWithGeneratedIssues(
-                      nextDocuments,
-                      sourceDocument,
-                      preparationPackage,
-                    ));
-                }
-                finishReady(nextDocuments);
-              }, 650);
+                    completionEvent.draftIssueGeneration,
+                  )
+                : null;
+              nextDocuments =
+                backendDraftDocuments ??
+                (await enrichDocumentsWithGeneratedIssues(
+                  nextDocuments,
+                  sourceDocument,
+                  preparationPackage,
+                ));
             }
-          },
-          onError: () => {
-            if (cancelled || completed) {
-              return;
-            }
+            finishReady(nextDocuments);
+          }, 650);
+        }
+      };
 
-            startReviewPreparation(latestStageIndex, sourceDocument);
-          },
-          onTimeout: () => {
-            if (cancelled || completed) {
-              return;
-            }
+      const recoverBackendRunEvents = async () => {
+        if (!backendRunId || cancelled || completed) {
+          return false;
+        }
 
-            startReviewPreparation(latestStageIndex, sourceDocument);
-          },
-        };
+        try {
+          const [statusResult, eventsResult] = await Promise.all([
+            fetchReviewGenerationRunStatus(backendRunId),
+            fetchReviewGenerationRunEvents(backendRunId, lastBackendEventSequence),
+          ]);
+          if (eventsResult.ok) {
+            eventsResult.events.forEach(handleBackendEvent);
+          }
+
+          return Boolean(completed || statusResult.status === "ready" || statusResult.status === "degraded");
+        } catch {
+          return false;
+        }
+      };
+
+      const fallbackAfterRecoveryAttempt = async () => {
+        if (cancelled || completed) {
+          return;
+        }
+
+        const recovered = await recoverBackendRunEvents();
+        if (!recovered && !completed) {
+          startReviewPreparation(latestStageIndex, sourceDocument);
+        }
+      };
+
+      const streamHandlers: ReviewStreamSubscriptionHandlers = {
+        onEvent: handleBackendEvent,
+        onError: () => {
+          void fallbackAfterRecoveryAttempt();
+        },
+        onTimeout: () => {
+          void fallbackAfterRecoveryAttempt();
+        },
+      };
 
       try {
         const generationRun = await createReviewGenerationRun({
@@ -486,6 +525,7 @@ export function App() {
         });
 
         if (!cancelled && generationRun.ok && generationRun.streamUrl) {
+          backendRunId = generationRun.runId ?? "";
           streamSubscription = subscribeReviewGenerationRunEvents(
             generationRun.streamUrl,
             streamHandlers,

@@ -128,6 +128,7 @@ export interface OcrRecoveredStructureHydrationResult {
 }
 
 export interface ReviewStreamEvent {
+  sequence?: number;
   type: string;
   stageId: string;
   stageType?: string;
@@ -190,9 +191,67 @@ export interface ReviewGenerationRunCreateResult {
   ok: boolean;
   runId?: string;
   status?: string;
+  statusUrl?: string;
+  eventsUrl?: string;
   streamUrl?: string;
+  createdAt?: string;
   expiresAt?: string;
   acceptedParagraphCount?: number;
+  message?: string;
+}
+
+export interface ReviewGenerationRunStatusResult {
+  ok: boolean;
+  schemaVersion?: number;
+  runId?: string;
+  taskId?: string;
+  mode?: ReviewMode;
+  status?: "created" | "running" | "ready" | "degraded" | "failed" | "expired" | "not_found";
+  createdAt?: string;
+  updatedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  expiresAt?: string;
+  progress?: number;
+  activeStage?: {
+    stageId?: string;
+    stageType?: string;
+    title?: string;
+    detail?: string;
+    progress?: number;
+    currentSection?: string;
+    currentParagraphId?: string;
+    currentParagraphIndex?: number;
+    currentParagraphTotal?: number;
+    currentParagraphLabel?: string;
+    agentKey?: string;
+    agentLabel?: string;
+  };
+  structureSummary?: ReviewStreamStructureSummary;
+  acceptedParagraphCount?: number;
+  maxIssues?: number;
+  preparationPackageSummary?: unknown;
+  draftIssueGenerationSummary?: unknown;
+  diagnostics?: {
+    status?: string;
+    message?: string;
+    candidateCount?: number;
+  };
+  lastSequence?: number;
+  statusUrl?: string;
+  eventsUrl?: string;
+  streamUrl?: string;
+  message?: string;
+}
+
+export interface ReviewGenerationRunEventsResult {
+  ok: boolean;
+  schemaVersion?: number;
+  runId?: string;
+  taskId?: string;
+  status?: string;
+  events: ReviewStreamEvent[];
+  lastSequence?: number;
   message?: string;
 }
 
@@ -430,6 +489,23 @@ export async function createReviewGenerationRun(input: {
   });
 
   return readJson<ReviewGenerationRunCreateResult>(response);
+}
+
+export async function fetchReviewGenerationRunStatus(runId: string) {
+  const response = await fetch(`/api/review-agent/generation-runs/${encodeURIComponent(runId)}`);
+  return readJson<ReviewGenerationRunStatusResult>(response);
+}
+
+export async function fetchReviewGenerationRunEvents(runId: string, afterSequence = 0) {
+  const searchParams = new URLSearchParams();
+  if (afterSequence > 0) {
+    searchParams.set("after", String(afterSequence));
+  }
+  const queryString = searchParams.toString();
+  const response = await fetch(
+    `/api/review-agent/generation-runs/${encodeURIComponent(runId)}/events${queryString ? `?${queryString}` : ""}`,
+  );
+  return readJson<ReviewGenerationRunEventsResult>(response);
 }
 
 export function subscribeReviewGenerationRunEvents(

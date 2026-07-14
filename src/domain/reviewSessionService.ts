@@ -874,6 +874,13 @@ export function mergeGeneratedReviewIssues(
     const startedAt = metadata.startedAt ?? completedAt;
     const runId =
       metadata.runId ?? `draft-issues-${taskId}-${Date.now().toString(36)}`;
+    if (
+      metadata.runId &&
+      task.draftIssueGenerationSnapshot?.runId === metadata.runId &&
+      task.reviewGenerationRun?.draftIssueGenerationRunId === metadata.runId
+    ) {
+      return task;
+    }
     const taggedGeneratedIssues = generatedIssues.map((issue) => ({
       ...issue,
       generation: {

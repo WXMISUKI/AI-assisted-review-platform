@@ -13,6 +13,8 @@ import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import {
   createReviewGenerationRun,
+  getReviewGenerationRunEvents,
+  getReviewGenerationRunStatus,
   writeReviewGenerationRunStream,
 } from "./reviewGenerationRunBridge.mjs";
 import {
@@ -152,6 +154,8 @@ const server = createServer(async (request, response) => {
           "GET /api/ocr/jobs/:id",
           "POST /api/ocr/results/hydrate",
           "POST /api/review-agent/generation-runs",
+          "GET /api/review-agent/generation-runs/:runId",
+          "GET /api/review-agent/generation-runs/:runId/events",
           "GET /api/review-agent/generation-runs/:runId/stream",
           "POST /api/review-agent/draft-issues",
           "GET /api/minio/status",
@@ -267,7 +271,7 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && url.pathname === "/api/review-agent/generation-runs") {
       const body = await readJson(request);
-      const result = createReviewGenerationRun(body);
+      const result = await createReviewGenerationRun(body);
       sendJson(response, result.ok ? 200 : 400, result);
       return;
     }
@@ -304,6 +308,21 @@ const server = createServer(async (request, response) => {
       }
     }
 
+    const generationRunMatch = url.pathname.match(/^\/api\/review-agent\/generation-runs\/([^/]+)(?:\/([^/]+))?$/);
+    if (request.method === "GET" && generationRunMatch && generationRunMatch[2] === undefined) {
+      const result = await getReviewGenerationRunStatus(decodeURIComponent(generationRunMatch[1]));
+      sendJson(response, result.ok ? 200 : 404, result);
+      return;
+    }
+
+    if (request.method === "GET" && generationRunMatch && generationRunMatch[2] === "events") {
+      const result = await getReviewGenerationRunEvents(decodeURIComponent(generationRunMatch[1]), {
+        afterSequence: readPositiveIntegerParam(url, "after"),
+      });
+      sendJson(response, result.ok ? 200 : 404, result);
+      return;
+    }
+
     const generationRunStreamMatch = url.pathname.match(
       /^\/api\/review-agent\/generation-runs\/([^/]+)\/stream$/,
     );
@@ -314,7 +333,9 @@ const server = createServer(async (request, response) => {
         Connection: "keep-alive",
         "Access-Control-Allow-Origin": "*",
       });
-      await writeReviewGenerationRunStream(response, decodeURIComponent(generationRunStreamMatch[1]));
+      await writeReviewGenerationRunStream(response, decodeURIComponent(generationRunStreamMatch[1]), {
+        afterSequence: readPositiveIntegerParam(url, "after"),
+      });
       response.end();
       return;
     }

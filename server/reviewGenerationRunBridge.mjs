@@ -3,13 +3,21 @@ import {
   buildPreparationPackagePayload,
   createStructureAwareStages,
 } from "./reviewAgentStream.mjs";
+import {
+  appendGenerationRunEvent,
+  createGenerationRunRecord,
+  getGenerationRunRecord,
+  listGenerationRunEvents,
+  updateGenerationRunRecord,
+} from "./reviewGenerationRunStore.mjs";
 
 const RUN_TTL_MS = 10 * 60 * 1000;
-const MAX_RUNS = 50;
 const MAX_PARAGRAPHS = 12;
 const MAX_PARAGRAPH_TEXT_LENGTH = 1600;
+const STREAM_POLL_INTERVAL_MS = 250;
+const STREAM_IDLE_TIMEOUT_MS = 20_000;
 
-const runs = new Map();
+const activeExecutions = new Set();
 
 function nowIsoString() {
   return new Date().toISOString();
@@ -58,79 +66,12 @@ function normalizeParagraphs(value) {
     }));
 }
 
-function cleanupExpiredRuns() {
-  const now = Date.now();
-  for (const [runId, run] of runs.entries()) {
-    if (run.expiresAt <= now) {
-      runs.delete(runId);
-    }
-  }
-
-  while (runs.size > MAX_RUNS) {
-    const oldestRunId = runs.keys().next().value;
-    if (!oldestRunId) {
-      break;
-    }
-    runs.delete(oldestRunId);
-  }
-}
-
-export function createReviewGenerationRun(input = {}) {
-  cleanupExpiredRuns();
-
-  const taskId = normalizeString(input.taskId, 120);
-  if (!taskId) {
-    return {
-      ok: false,
-      status: "invalid_input",
-      message: "taskId is required.",
-    };
-  }
-
-  const paragraphs = normalizeParagraphs(input.paragraphs);
-  const runId = createRunId(taskId);
-  const createdAt = Date.now();
-  const run = {
-    runId,
-    taskId,
-    createdAt,
-    createdAtIso: new Date(createdAt).toISOString(),
-    expiresAt: createdAt + RUN_TTL_MS,
-    mode: input.mode === "revise" ? "revise" : "review",
-    structureSummary: normalizeStructureSummary(input.structureSummary),
-    paragraphs,
-    maxIssues: normalizePositiveInteger(input.maxIssues, 6, 10) || 6,
-  };
-
-  runs.set(runId, run);
-
-  return {
-    ok: true,
-    runId,
-    status: "created",
-    streamUrl: `/api/review-agent/generation-runs/${encodeURIComponent(runId)}/stream`,
-    expiresAt: new Date(run.expiresAt).toISOString(),
-    acceptedParagraphCount: paragraphs.length,
-  };
-}
-
-function getRun(runId) {
-  cleanupExpiredRuns();
-  const run = runs.get(runId);
-  if (!run) {
-    return null;
-  }
-
-  if (run.expiresAt <= Date.now()) {
-    runs.delete(runId);
-    return null;
-  }
-
-  return run;
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTerminalStatus(status) {
+  return ["ready", "degraded", "failed", "expired"].includes(status);
 }
 
 function normalizeDraftIssueCompletion(result) {
@@ -154,40 +95,74 @@ function normalizeDraftIssueCompletion(result) {
   };
 }
 
-export async function writeReviewGenerationRunStream(response, runId) {
-  const send = (event, data) => {
-    response.write(`event: ${event}\n`);
-    response.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
-
-  const run = getRun(runId);
+function toStatusPayload(run) {
   if (!run) {
-    send("review-event", {
-      type: "review.failed",
-      stageId: "not-found",
-      title: "Review generation run unavailable",
-      detail: "The generation run was not found or has expired.",
-      progress: 100,
-      runId,
-      status: "failed",
-      issueSummaries: [],
-      diagnostics: {
-        status: "not_found",
-        message: "The generation run was not found or has expired.",
-      },
-      completedAt: nowIsoString(),
-    });
+    return {
+      ok: false,
+      status: "not_found",
+      message: "Review generation run not found.",
+    };
+  }
+
+  return {
+    ok: true,
+    schemaVersion: run.schemaVersion,
+    runId: run.runId,
+    taskId: run.taskId,
+    mode: run.mode,
+    status: run.status,
+    createdAt: run.createdAt,
+    updatedAt: run.updatedAt,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
+    expiresAt: run.expiresAt,
+    progress: run.progress,
+    activeStage: run.activeStage,
+    structureSummary: run.structureSummary,
+    acceptedParagraphCount: run.acceptedParagraphCount,
+    maxIssues: run.maxIssues,
+    preparationPackageSummary: run.preparationPackageSummary,
+    draftIssueGenerationSummary: run.draftIssueGenerationSummary,
+    diagnostics: run.safeDiagnostics,
+    lastSequence: run.lastSequence ?? 0,
+    statusUrl: `/api/review-agent/generation-runs/${encodeURIComponent(run.runId)}`,
+    eventsUrl: `/api/review-agent/generation-runs/${encodeURIComponent(run.runId)}/events`,
+    streamUrl: `/api/review-agent/generation-runs/${encodeURIComponent(run.runId)}/stream`,
+  };
+}
+
+async function appendRunEvent(run, event) {
+  return appendGenerationRunEvent(run.runId, {
+    ...event,
+    runId: run.runId,
+    taskId: run.taskId,
+  });
+}
+
+async function executeReviewGenerationRun(runId) {
+  if (activeExecutions.has(runId)) {
     return;
   }
 
+  activeExecutions.add(runId);
   try {
-    send("review-event", {
+    const run = await getGenerationRunRecord(runId);
+    if (!run || isTerminalStatus(run.status)) {
+      return;
+    }
+
+    await updateGenerationRunRecord(runId, {
+      status: "running",
+      startedAt: run.startedAt ?? nowIsoString(),
+      updatedAt: nowIsoString(),
+    });
+
+    await appendRunEvent(run, {
       type: "review.connection",
       stageId: "connect",
       title: "Connected backend generation run",
       detail: "A backend review generation run stream has been established.",
       progress: 5,
-      runId,
       status: "running",
       issueSummaries: [],
       currentSection: run.structureSummary.currentSection,
@@ -195,9 +170,8 @@ export async function writeReviewGenerationRunStream(response, runId) {
 
     const stages = createStructureAwareStages(run.structureSummary);
     for (const stage of stages) {
-      send("review-event", {
+      await appendRunEvent(run, {
         ...stage,
-        runId,
         status: "running",
       });
       await sleep(250);
@@ -205,14 +179,13 @@ export async function writeReviewGenerationRunStream(response, runId) {
 
     const completedAt = nowIsoString();
     const preparationPackage = buildPreparationPackagePayload(run.structureSummary, stages, completedAt);
-    send("review-event", {
+    await appendRunEvent(run, {
       type: "review.stage",
       stageId: "draft-issues",
       stageType: "issue-structuring",
       title: "Generating draft review issues",
       detail: "The backend is generating structured draft issue candidates from the preparation package.",
       progress: 92,
-      runId,
       status: "running",
       agentKey: "construction-review",
       agentLabel: "Construction plan review agent",
@@ -227,7 +200,7 @@ export async function writeReviewGenerationRunStream(response, runId) {
           taskId: run.taskId,
           mode: run.mode,
           preparationPackage,
-          paragraphs: run.paragraphs,
+          paragraphs: run.paragraphs ?? [],
           maxIssues: run.maxIssues,
         }),
       );
@@ -247,7 +220,7 @@ export async function writeReviewGenerationRunStream(response, runId) {
 
     const terminalStatus =
       draftIssueGeneration.status === "ready" && draftIssueGeneration.issues.length > 0 ? "ready" : "degraded";
-    send("review-event", {
+    await appendRunEvent(run, {
       type: "review.complete",
       stageId: "complete",
       title: terminalStatus === "ready" ? "Review generation completed" : "Review generation completed with fallback",
@@ -256,7 +229,6 @@ export async function writeReviewGenerationRunStream(response, runId) {
           ? "The backend generated a preparation package and draft issue candidates."
           : "The backend produced a reviewable preparation package with safe degraded draft issue output.",
       progress: 100,
-      runId,
       status: terminalStatus,
       completedAt,
       issueSummaries: preparationPackage.issueSummaries ?? [],
@@ -268,7 +240,165 @@ export async function writeReviewGenerationRunStream(response, runId) {
         completedAt,
       },
     });
+  } catch (error) {
+    const run = await getGenerationRunRecord(runId);
+    if (run) {
+      const completedAt = nowIsoString();
+      await appendRunEvent(run, {
+        type: "review.failed",
+        stageId: "failed",
+        title: "Review generation failed",
+        detail: "The backend review generation runner failed before completion.",
+        progress: 100,
+        status: "failed",
+        completedAt,
+        issueSummaries: [],
+        diagnostics: {
+          status: "runner_failed",
+          message: error instanceof Error ? error.message.slice(0, 180) : "Review generation runner failed.",
+        },
+      });
+    }
   } finally {
-    runs.delete(runId);
+    activeExecutions.delete(runId);
+  }
+}
+
+export async function createReviewGenerationRun(input = {}) {
+  const taskId = normalizeString(input.taskId, 120);
+  if (!taskId) {
+    return {
+      ok: false,
+      status: "invalid_input",
+      message: "taskId is required.",
+    };
+  }
+
+  const paragraphs = normalizeParagraphs(input.paragraphs);
+  const runId = createRunId(taskId);
+  const createdAt = Date.now();
+  const expiresAt = new Date(createdAt + RUN_TTL_MS).toISOString();
+  const result = await createGenerationRunRecord({
+    runId,
+    taskId,
+    createdAt: new Date(createdAt).toISOString(),
+    expiresAt,
+    mode: input.mode === "revise" ? "revise" : "review",
+    structureSummary: normalizeStructureSummary(input.structureSummary),
+    paragraphs,
+    acceptedParagraphCount: paragraphs.length,
+    maxIssues: normalizePositiveInteger(input.maxIssues, 6, 10) || 6,
+  });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  void executeReviewGenerationRun(runId);
+
+  return {
+    ok: true,
+    runId,
+    status: "created",
+    statusUrl: `/api/review-agent/generation-runs/${encodeURIComponent(runId)}`,
+    eventsUrl: `/api/review-agent/generation-runs/${encodeURIComponent(runId)}/events`,
+    streamUrl: `/api/review-agent/generation-runs/${encodeURIComponent(runId)}/stream`,
+    expiresAt,
+    createdAt: new Date(createdAt).toISOString(),
+    acceptedParagraphCount: paragraphs.length,
+  };
+}
+
+export async function getReviewGenerationRunStatus(runId) {
+  return toStatusPayload(await getGenerationRunRecord(runId));
+}
+
+export async function getReviewGenerationRunEvents(runId, options = {}) {
+  const run = await getGenerationRunRecord(runId);
+  if (!run) {
+    return {
+      ok: false,
+      status: "not_found",
+      message: "Review generation run not found.",
+      events: [],
+    };
+  }
+
+  const events = await listGenerationRunEvents(runId, options);
+  return {
+    ok: true,
+    schemaVersion: run.schemaVersion,
+    runId,
+    taskId: run.taskId,
+    status: run.status,
+    events: events ?? [],
+    lastSequence: run.lastSequence ?? 0,
+  };
+}
+
+function sendSseEvent(response, eventName, data) {
+  response.write(`event: ${eventName}\n`);
+  response.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+export async function writeReviewGenerationRunStream(response, runId, options = {}) {
+  let lastSequence = normalizePositiveInteger(options.afterSequence, 0);
+  let idleStartedAt = Date.now();
+
+  while (true) {
+    const events = await listGenerationRunEvents(runId, { afterSequence: lastSequence });
+    const run = await getGenerationRunRecord(runId);
+
+    if (!run) {
+      sendSseEvent(response, "review-event", {
+        type: "review.failed",
+        stageId: "not-found",
+        title: "Review generation run unavailable",
+        detail: "The generation run was not found or has expired.",
+        progress: 100,
+        runId,
+        status: "failed",
+        issueSummaries: [],
+        diagnostics: {
+          status: "not_found",
+          message: "The generation run was not found or has expired.",
+        },
+        completedAt: nowIsoString(),
+      });
+      return;
+    }
+
+    if (events?.length) {
+      for (const event of events) {
+        sendSseEvent(response, "review-event", event);
+        lastSequence = Math.max(lastSequence, event.sequence ?? lastSequence);
+      }
+      idleStartedAt = Date.now();
+    }
+
+    if (isTerminalStatus(run.status)) {
+      return;
+    }
+
+    if (Date.now() - idleStartedAt > STREAM_IDLE_TIMEOUT_MS) {
+      sendSseEvent(response, "review-event", {
+        type: "review.failed",
+        stageId: "stream-timeout",
+        title: "Review generation stream timed out",
+        detail: "No new persisted generation events were observed before the stream timeout.",
+        progress: run.progress ?? 0,
+        runId,
+        status: "failed",
+        issueSummaries: [],
+        diagnostics: {
+          status: "stream_timeout",
+          message: "No new generation events were observed before the stream timeout.",
+        },
+        completedAt: nowIsoString(),
+      });
+      return;
+    }
+
+    await sleep(STREAM_POLL_INTERVAL_MS);
   }
 }
