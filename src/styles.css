@@ -2115,6 +2115,7 @@ h4 {
 
 .severity,
 .source,
+.issue-provenance,
 .issue-id {
   white-space: nowrap;
   font-size: 12px;
@@ -2148,6 +2149,26 @@ h4 {
 
 .source {
   color: #617284;
+}
+
+.issue-provenance {
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
+.issue-provenance.generated {
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f645e;
+}
+
+.issue-provenance.fallback {
+  background: rgba(180, 83, 9, 0.12);
+  color: #92400e;
+}
+
+.issue-provenance.manual {
+  background: rgba(79, 70, 229, 0.1);
+  color: #4338ca;
 }
 
 .source.current-flag {
@@ -3177,6 +3198,21 @@ body {
 :root[data-theme="dark"] .issue-current-anchor {
   background: rgba(49, 214, 199, 0.12);
   color: #bff9f4;
+}
+
+:root[data-theme="dark"] .issue-provenance.generated {
+  background: rgba(49, 214, 199, 0.12);
+  color: #bff9f4;
+}
+
+:root[data-theme="dark"] .issue-provenance.fallback {
+  background: rgba(251, 191, 36, 0.16);
+  color: #fde68a;
+}
+
+:root[data-theme="dark"] .issue-provenance.manual {
+  background: rgba(129, 140, 248, 0.16);
+  color: #c7d2fe;
 }
 
 :root[data-theme="dark"] .platform-shell,

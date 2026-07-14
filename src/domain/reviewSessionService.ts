@@ -20,6 +20,9 @@ import type {
   IssueStatus,
   ReviewAgentKey,
   ReviewCompletionPayload,
+  ReviewDraftIssueGenerationDiagnostics,
+  ReviewDraftIssueGenerationSource,
+  ReviewDraftIssueGenerationStatus,
   ReviewIssue,
   ReviewMode,
   ReviewSession,
@@ -448,6 +451,7 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
     pipelineSnapshot,
     reviewViewContext: task.reviewViewContext,
     preparationPackage: task.preparationPackage,
+    draftIssueGenerationSnapshot: task.draftIssueGenerationSnapshot,
     resultAsset: task.resultAsset,
     lifecycle,
   };
@@ -491,21 +495,59 @@ function mergeReviewIssues(existingIssues: ReviewIssue[], generatedIssues: Revie
   return Array.from(deduped.values());
 }
 
+export interface MergeGeneratedReviewIssuesMetadata {
+  source: ReviewDraftIssueGenerationSource;
+  status: ReviewDraftIssueGenerationStatus;
+  diagnostics?: ReviewDraftIssueGenerationDiagnostics;
+  preparationPackageId?: string;
+  startedAt?: string;
+  completedAt?: string;
+  runId?: string;
+}
+
 export function mergeGeneratedReviewIssues(
   tasks: ReviewTask[],
   taskId: string,
   generatedIssues: ReviewIssue[],
+  metadata: MergeGeneratedReviewIssuesMetadata,
 ): ReviewTask[] {
-  if (generatedIssues.length === 0) {
-    return tasks;
-  }
-
   return updateTask(tasks, taskId, (task) => {
-    const issues = mergeReviewIssues(task.issues, generatedIssues);
+    const completedAt = metadata.completedAt ?? new Date().toISOString();
+    const startedAt = metadata.startedAt ?? completedAt;
+    const runId =
+      metadata.runId ?? `draft-issues-${taskId}-${Date.now().toString(36)}`;
+    const taggedGeneratedIssues = generatedIssues.map((issue) => ({
+      ...issue,
+      generation: {
+        generationRunId: runId,
+        generationSource: metadata.source,
+        generatedAt: completedAt,
+      },
+    }));
+    const issues = mergeReviewIssues(task.issues, taggedGeneratedIssues);
+    const acceptedIssueIds = new Set(
+      issues
+        .filter((issue) => issue.generation?.generationRunId === runId)
+        .map((issue) => issue.id),
+    );
+
     return {
       ...task,
       issues,
       issueCount: getIssueCounts(issues).total,
+      draftIssueGenerationSnapshot: {
+        runId,
+        source: metadata.source,
+        status: metadata.status,
+        startedAt,
+        completedAt,
+        issueIds: taggedGeneratedIssues
+          .filter((issue) => acceptedIssueIds.has(issue.id))
+          .map((issue) => issue.id),
+        candidateCount: metadata.diagnostics?.candidateCount ?? generatedIssues.length,
+        diagnostics: metadata.diagnostics,
+        preparationPackageId: metadata.preparationPackageId,
+      },
       updatedAt: nowString(),
     };
   });

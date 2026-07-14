@@ -143,6 +143,22 @@ export interface ReviewResolution {
   resolvedAt: string | null;
 }
 
+export type ReviewDraftIssueGenerationSource = "llm" | "deterministic-fallback";
+
+export type ReviewDraftIssueGenerationStatus = "ready" | "fallback" | "failed";
+
+export interface ReviewDraftIssueGenerationDiagnostics {
+  status: string;
+  message: string;
+  candidateCount?: number;
+}
+
+export interface ReviewIssueGenerationProvenance {
+  generationRunId: string;
+  generationSource: ReviewDraftIssueGenerationSource;
+  generatedAt: string;
+}
+
 export interface ReviewIssue {
   id: string;
   source: IssueSource;
@@ -152,6 +168,7 @@ export interface ReviewIssue {
   finding: ReviewFinding;
   resolution: ReviewResolution;
   kernel?: ReviewKernelMetadata;
+  generation?: ReviewIssueGenerationProvenance;
 }
 
 export interface IssueCounts {
@@ -276,22 +293,24 @@ export interface ReviewPreparationPackage {
   message?: string;
 }
 
-export type ReviewDraftIssueGenerationSource = "llm" | "deterministic-fallback";
-
-export type ReviewDraftIssueGenerationStatus = "ready" | "fallback" | "failed";
-
-export interface ReviewDraftIssueGenerationDiagnostics {
-  status: string;
-  message: string;
-  candidateCount?: number;
-}
-
 export interface ReviewDraftIssueGenerationResult {
   ok: boolean;
   source: ReviewDraftIssueGenerationSource;
   status: ReviewDraftIssueGenerationStatus;
   issues: ReviewIssue[];
   diagnostics?: ReviewDraftIssueGenerationDiagnostics;
+}
+
+export interface ReviewDraftIssueGenerationSnapshot {
+  runId: string;
+  source: ReviewDraftIssueGenerationSource;
+  status: ReviewDraftIssueGenerationStatus;
+  startedAt: string;
+  completedAt: string;
+  issueIds: string[];
+  candidateCount: number;
+  diagnostics?: ReviewDraftIssueGenerationDiagnostics;
+  preparationPackageId?: string;
 }
 
 export interface ReviewTaskSourceObject {
@@ -365,6 +384,7 @@ export interface ReviewTask {
   pipelineSnapshot?: ReviewPipelineSnapshot;
   reviewViewContext?: ReviewViewContext;
   preparationPackage?: ReviewPreparationPackage;
+  draftIssueGenerationSnapshot?: ReviewDraftIssueGenerationSnapshot;
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
@@ -380,6 +400,7 @@ export interface ReviewSession {
   pipelineSnapshot?: ReviewPipelineSnapshot;
   reviewViewContext?: ReviewViewContext;
   preparationPackage?: ReviewPreparationPackage;
+  draftIssueGenerationSnapshot?: ReviewDraftIssueGenerationSnapshot;
   resultAsset?: ReviewResultAsset;
   lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }

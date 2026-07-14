@@ -191,6 +191,7 @@ export function App() {
       }
 
       try {
+        const startedAt = new Date().toISOString();
         const result = await requestDraftIssueGeneration({
           taskId: loadingDocId,
           preparationPackage,
@@ -198,12 +199,16 @@ export function App() {
           mode: sourceDocument.mode,
           maxIssues: 6,
         });
+        const completedAt = new Date().toISOString();
 
-        if (!result.ok || result.issues.length === 0) {
-          return nextDocuments;
-        }
-
-        return mergeGeneratedReviewIssues(nextDocuments, loadingDocId, result.issues);
+        return mergeGeneratedReviewIssues(nextDocuments, loadingDocId, result.issues, {
+          source: result.source,
+          status: result.status,
+          diagnostics: result.diagnostics,
+          preparationPackageId: preparationPackage.packageId,
+          startedAt,
+          completedAt,
+        });
       } catch {
         return nextDocuments;
       }

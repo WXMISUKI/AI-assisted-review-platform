@@ -141,6 +141,32 @@ const priorityLabels = {
   "project-overrides": "项目承诺优先",
 } as const;
 
+function getIssueProvenanceLabel(issue: ReviewIssue) {
+  if (issue.source === "manual") {
+    return "人工标注";
+  }
+
+  if (issue.generation?.generationSource === "llm") {
+    return "LLM 生成";
+  }
+
+  if (issue.generation?.generationSource === "deterministic-fallback") {
+    return "规则兜底";
+  }
+
+  return "AI 标注";
+}
+
+function getIssueProvenanceClass(issue: ReviewIssue) {
+  if (issue.source === "manual") {
+    return "issue-provenance manual";
+  }
+
+  return issue.generation?.generationSource === "deterministic-fallback"
+    ? "issue-provenance fallback"
+    : "issue-provenance generated";
+}
+
 const POPOVER_WIDTH = 430;
 const POPOVER_ESTIMATED_HEIGHT = 500;
 const POPOVER_MARGIN = 16;
@@ -1413,7 +1439,7 @@ function IssueCard({
           {severityLabels[issue.severity]}
         </span>
         <span className="issue-id">{issue.id}</span>
-        <span className="source">{issue.source === "ai" ? "AI 标注" : "人工标注"}</span>
+        <span className={getIssueProvenanceClass(issue)}>{getIssueProvenanceLabel(issue)}</span>
         <span className="source">{sectionLabel}</span>
         {isCurrentParagraph && <span className="source current-flag">当前段</span>}
       </button>
