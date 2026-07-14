@@ -1,10 +1,11 @@
-import { mutateReviewTask } from "./reviewTaskStore.mjs";
+import { getReviewTask, mutateReviewTask } from "./reviewTaskStore.mjs";
 
 const MAX_TEXT_LENGTH = 4000;
 const MAX_TITLE_LENGTH = 240;
 const MAX_BASIS_LENGTH = 2000;
 const MAX_REASON_LENGTH = 2000;
 const MAX_ISSUES = 1000;
+const MAX_DECISION_ACTIVITIES = 200;
 
 function nowIsoString() {
   return new Date().toISOString();
@@ -23,6 +24,14 @@ function isPlainObject(value) {
 
 function normalizeString(value, fallback = "", maxLength = MAX_TEXT_LENGTH) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : fallback;
+}
+
+function sanitizeActivityMessage(message) {
+  const value = normalizeString(message, "", 240);
+  if (!value || /https?:\/\/|api[_-]?key|token|secret|password|authorization|credential/i.test(value)) {
+    return undefined;
+  }
+  return value;
 }
 
 function normalizeNumber(value, fallback = 0) {
@@ -61,6 +70,41 @@ function invalidInputResult(message) {
     ok: false,
     status: "invalid_input",
     message,
+  };
+}
+
+function createDecisionActivityId(type) {
+  return `review-decision-${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function normalizeActor(value) {
+  const actor = isPlainObject(value) ? value : {};
+  return {
+    id: normalizeString(actor.id, "system-reviewer", 120),
+    label: normalizeString(actor.label, "System reviewer", 120),
+    role: normalizeString(actor.role, "", 80) || undefined,
+  };
+}
+
+function appendDecisionActivity(task, input) {
+  const activity = {
+    id: createDecisionActivityId(input.type),
+    type: input.type,
+    occurredAt: nowIsoString(),
+    actor: normalizeActor(input.actor),
+    issueId: normalizeString(input.issueId, "", 160) || undefined,
+    issueTitle: normalizeString(input.issueTitle, "", MAX_TITLE_LENGTH) || undefined,
+    decision: input.decision === "accepted" || input.decision === "rejected" ? input.decision : undefined,
+    mode: input.mode === "review" || input.mode === "revise" ? input.mode : undefined,
+    resultAssetId: normalizeString(input.resultAssetId, "", 180) || undefined,
+    message: sanitizeActivityMessage(input.message),
+  };
+
+  return {
+    ...task,
+    reviewDecisionActivities: [...(task.reviewDecisionActivities ?? []), activity].slice(
+      -MAX_DECISION_ACTIVITIES,
+    ),
   };
 }
 
@@ -251,11 +295,18 @@ export async function resolveReviewTaskIssue(taskId, issueId, input = {}) {
     }
 
     resolvedIssue = resolveIssue(issue, status, input.editedText);
-    return {
+    return appendDecisionActivity({
       ...task,
       issues: task.issues.map((item) => (item.id === issueId ? resolvedIssue : item)),
       updatedAt: nowDisplayString(),
-    };
+    }, {
+      type: "issue-resolved",
+      actor: input.actor,
+      issueId,
+      issueTitle: issue.finding?.title,
+      decision: status,
+      message: status === "accepted" ? "Issue accepted by reviewer." : "Issue rejected by reviewer.",
+    });
   });
 
   if (!result.ok || !resolvedIssue) {
@@ -290,11 +341,17 @@ export async function updateReviewTaskIssueDraft(taskId, issueId, input = {}) {
       },
     };
 
-    return {
+    return appendDecisionActivity({
       ...task,
       issues: task.issues.map((item) => (item.id === issueId ? updatedIssue : item)),
       updatedAt: nowDisplayString(),
-    };
+    }, {
+      type: "issue-draft-updated",
+      actor: input.actor,
+      issueId,
+      issueTitle: issue.finding?.title,
+      message: "Issue suggestion draft updated.",
+    });
   });
 
   if (!result.ok || !updatedIssue) {
@@ -316,12 +373,18 @@ export async function addManualReviewTaskIssue(taskId, input = {}) {
 
   const result = await mutateReviewTask(taskId, (task) => {
     const issues = [...(Array.isArray(task.issues) ? task.issues : []), manualIssue].slice(0, MAX_ISSUES);
-    return {
+    return appendDecisionActivity({
       ...task,
       issues,
       issueCount: getIssueCounts(issues).total,
       updatedAt: nowDisplayString(),
-    };
+    }, {
+      type: "manual-issue-added",
+      actor: input.actor,
+      issueId: manualIssue.id,
+      issueTitle: manualIssue.finding?.title,
+      message: "Manual review issue added.",
+    });
   });
 
   if (!result.ok) {
@@ -351,12 +414,18 @@ export async function deleteManualReviewTaskIssue(taskId, issueId) {
 
     deletedIssue = issue;
     const issues = task.issues.filter((item) => item.id !== issueId);
-    return {
+    return appendDecisionActivity({
       ...task,
       issues,
       issueCount: getIssueCounts(issues).total,
       updatedAt: nowDisplayString(),
-    };
+    }, {
+      type: "manual-issue-deleted",
+      actor: undefined,
+      issueId,
+      issueTitle: issue.finding?.title,
+      message: "Manual review issue deleted.",
+    });
   });
 
   if (!result.ok) {
@@ -398,14 +467,20 @@ export async function completeReviewTaskDecision(taskId, input = {}) {
     const mode = input.mode === "review" || input.mode === "revise" ? input.mode : task.mode === "revise" ? "revise" : "review";
     resultAsset = createReviewResultAsset(task, mode);
 
-    return {
+    return appendDecisionActivity({
       ...task,
       status: "completed",
       mode,
       issueCount: resultAsset.issueStats.total,
       resultAsset,
       updatedAt: nowDisplayString(),
-    };
+    }, {
+      type: "review-completed",
+      actor: input.actor,
+      mode,
+      resultAssetId: resultAsset.id,
+      message: "Review task completed.",
+    });
   });
 
   if (!result.ok) {
@@ -427,5 +502,27 @@ export async function completeReviewTaskDecision(taskId, input = {}) {
     ok: true,
     task: result.task,
     resultAsset,
+  };
+}
+
+export async function getReviewTaskDecisionActivities(taskId, options = {}) {
+  const task = await getReviewTask(taskId);
+  if (!task) {
+    return {
+      ok: false,
+      status: "not_found",
+      message: "Review task not found.",
+    };
+  }
+
+  const limit = Math.min(Math.max(normalizeNumber(options.limit, 50), 1), MAX_DECISION_ACTIVITIES);
+  const activities = Array.isArray(task.reviewDecisionActivities)
+    ? task.reviewDecisionActivities.slice(-limit)
+    : [];
+
+  return {
+    ok: true,
+    taskId,
+    activities,
   };
 }

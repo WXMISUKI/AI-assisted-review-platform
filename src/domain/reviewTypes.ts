@@ -368,6 +368,30 @@ export interface ReviewGenerationActivity {
   issueCount?: number;
 }
 
+export type ReviewDecisionActivityType =
+  | "issue-resolved"
+  | "issue-draft-updated"
+  | "manual-issue-added"
+  | "manual-issue-deleted"
+  | "review-completed";
+
+export interface ReviewDecisionActivity {
+  id: string;
+  type: ReviewDecisionActivityType;
+  occurredAt: string;
+  actor: {
+    id: string;
+    label: string;
+    role?: string;
+  };
+  issueId?: string;
+  issueTitle?: string;
+  decision?: Extract<IssueStatus, "accepted" | "rejected">;
+  mode?: ReviewMode;
+  resultAssetId?: string;
+  message?: string;
+}
+
 export interface ReviewTaskSourceObject {
   bucket: string;
   key: string;
@@ -442,6 +466,7 @@ export interface ReviewTask {
   draftIssueGenerationSnapshot?: ReviewDraftIssueGenerationSnapshot;
   reviewGenerationRun?: ReviewGenerationRunSnapshot;
   reviewGenerationActivities?: ReviewGenerationActivity[];
+  reviewDecisionActivities?: ReviewDecisionActivity[];
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
@@ -460,6 +485,7 @@ export interface ReviewSession {
   draftIssueGenerationSnapshot?: ReviewDraftIssueGenerationSnapshot;
   reviewGenerationRun?: ReviewGenerationRunSnapshot;
   reviewGenerationActivities?: ReviewGenerationActivity[];
+  reviewDecisionActivities?: ReviewDecisionActivity[];
   resultAsset?: ReviewResultAsset;
   lifecycle?: import("./reviewTaskOrchestration").ReviewTaskOrchestrationSnapshot;
 }

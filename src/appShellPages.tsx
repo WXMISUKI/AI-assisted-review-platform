@@ -33,6 +33,7 @@ import type {
   ReviewResultAsset,
   ReviewSession,
   ReviewTask,
+  ReviewDecisionActivity,
   ReviewGenerationActivity,
   ReviewTaskOcrJob,
 } from "./domain/reviewTypes";
@@ -155,6 +156,44 @@ function getLatestReviewGenerationActivityLabel(document: LibraryDocument) {
 
 function getRecentReviewGenerationActivities(document: LibraryDocument | undefined, limit = 4) {
   const activities = document?.reviewGenerationActivities ?? [];
+  return activities.slice(Math.max(0, activities.length - limit)).reverse();
+}
+
+function getReviewDecisionActivityLabel(activity: ReviewDecisionActivity) {
+  const issueLabel = activity.issueId
+    ? `${activity.issueId}${activity.issueTitle ? ` · ${activity.issueTitle}` : ""}`
+    : null;
+
+  if (activity.type === "issue-resolved") {
+    const decisionLabel = activity.decision === "rejected" ? "已拒绝" : "已接受";
+    return issueLabel ? `${decisionLabel} · ${issueLabel}` : decisionLabel;
+  }
+
+  if (activity.type === "issue-draft-updated") {
+    return issueLabel ? `建议已编辑 · ${issueLabel}` : "建议已编辑";
+  }
+
+  if (activity.type === "manual-issue-added") {
+    return issueLabel ? `人工标注已新增 · ${issueLabel}` : "人工标注已新增";
+  }
+
+  if (activity.type === "manual-issue-deleted") {
+    return issueLabel ? `人工标注已删除 · ${issueLabel}` : "人工标注已删除";
+  }
+
+  if (activity.type === "review-completed") {
+    return activity.mode ? `审查已完成 · ${modeName(activity.mode)}` : "审查已完成";
+  }
+
+  return "审查活动已记录";
+}
+
+function getRecentReviewDecisionActivities(
+  document: LibraryDocument,
+  sessionSnapshot?: ReviewSession,
+  limit = 5,
+) {
+  const activities = sessionSnapshot?.reviewDecisionActivities ?? document.reviewDecisionActivities ?? [];
   return activities.slice(Math.max(0, activities.length - limit)).reverse();
 }
 
@@ -590,6 +629,7 @@ export function ResultPreviewPage({
   const asset = sessionSnapshot?.resultAsset ?? document.resultAsset;
   const sourceLabel = getResultSourceLabel(document, sessionSnapshot);
   const sourceDetail = getResultSourceDetail(document, sessionSnapshot);
+  const recentDecisionActivities = getRecentReviewDecisionActivities(document, sessionSnapshot);
 
   return (
     <main className="result-page">
@@ -667,6 +707,25 @@ export function ResultPreviewPage({
         </section>
       ) : (
         <section className="result-layout">{renderResultAsset(asset)}</section>
+      )}
+
+      {recentDecisionActivities.length > 0 && (
+        <section className="result-layout">
+          <article className="result-card result-card-wide">
+            <span className="eyebrow">审查记录</span>
+            <h2>最近处理活动</h2>
+            <ul className="result-list">
+              {recentDecisionActivities.map((activity) => (
+                <li key={activity.id}>
+                  <strong>{getReviewDecisionActivityLabel(activity)}</strong>
+                  <span>
+                    {activity.actor.label} · {formatResultTime(activity.occurredAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </article>
+        </section>
       )}
     </main>
   );

@@ -116,3 +116,15 @@ This layer makes the current MVP closer to mature review platforms:
 - audit logs, permissions, tenant scoping, report export, and Python report agents can later build on the same stable task action contract.
 
 This should be prioritized before deeper workflow-engine work because durable human decisions are the bridge between generated issues and production review records.
+
+## Review Decision Activity Trail Decision
+
+After backend-owned reviewer decisions and completion, the next production-critical layer is a safe reviewer activity trail. Mature review platforms need users and later auditors to understand which issue was accepted, rejected, edited, manually added, deleted, or used to complete a result asset.
+
+This slice intentionally stops short of an immutable audit ledger. It records bounded, safe activity summaries on the review task aggregate and exposes task-scoped activity reads. That is enough to support result provenance, later audit UI, role-aware accountability, and report export preparation without forcing a premature authentication, tenancy, or database migration.
+
+The activity trail must remain safe:
+
+- store action type, time, actor placeholder, issue/result references, decision, mode, and short messages;
+- exclude prompts, provider traces, secrets, tokens, private URLs, and unbounded document text;
+- keep the Node BFF as the current task API boundary while leaving room for a future durable audit store.

@@ -3,6 +3,7 @@ import type {
   IssueStatus,
   RecoveredDocumentSection,
   RecoveredDocumentStructure,
+  ReviewDecisionActivity,
   ReviewDraftIssueGenerationResult,
   ReviewIssue,
   ReviewMode,
@@ -337,6 +338,14 @@ export interface ReviewTaskMutationResult {
   message?: string;
 }
 
+export interface ReviewTaskActivitiesResult {
+  ok: boolean;
+  status?: string;
+  taskId?: string;
+  activities?: ReviewDecisionActivity[];
+  message?: string;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
@@ -462,6 +471,18 @@ export async function completePersistedReviewTask(input: {
     }),
   });
   return readJson<ReviewTaskMutationResult>(response);
+}
+
+export async function fetchReviewTaskDecisionActivities(taskId: string, limit = 50) {
+  const searchParams = new URLSearchParams();
+  if (limit > 0) {
+    searchParams.set("limit", String(limit));
+  }
+  const queryString = searchParams.toString();
+  const response = await fetch(
+    `/api/review-tasks/${encodeURIComponent(taskId)}/activities${queryString ? `?${queryString}` : ""}`,
+  );
+  return readJson<ReviewTaskActivitiesResult>(response);
 }
 
 export async function fetchOcrJobStatus(jobId: string): Promise<OcrJobStatusResult> {

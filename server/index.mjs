@@ -16,6 +16,7 @@ import {
   addManualReviewTaskIssue,
   completeReviewTaskDecision,
   deleteManualReviewTaskIssue,
+  getReviewTaskDecisionActivities,
   resolveReviewTaskIssue,
   updateReviewTaskIssueDraft,
 } from "./reviewTaskDecisionService.mjs";
@@ -167,6 +168,7 @@ const server = createServer(async (request, response) => {
           "POST /api/review-tasks/:taskId/issues/manual",
           "DELETE /api/review-tasks/:taskId/issues/:issueId",
           "POST /api/review-tasks/:taskId/complete",
+          "GET /api/review-tasks/:taskId/activities",
           "POST /api/ocr/jobs/url",
           "POST /api/ocr/jobs/object",
           "GET /api/ocr/jobs/:id",
@@ -432,6 +434,15 @@ const server = createServer(async (request, response) => {
         result.ok ? 200 : result.status === "not_found" ? 404 : result.status === "incomplete_review" ? 409 : 400,
         result,
       );
+      return;
+    }
+
+    const reviewTaskActivitiesMatch = url.pathname.match(/^\/api\/review-tasks\/([^/]+)\/activities$/);
+    if (request.method === "GET" && reviewTaskActivitiesMatch) {
+      const result = await getReviewTaskDecisionActivities(decodeURIComponent(reviewTaskActivitiesMatch[1]), {
+        limit: readPositiveIntegerParam(url, "limit") || 50,
+      });
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
     }
 

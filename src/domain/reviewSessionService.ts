@@ -782,6 +782,7 @@ export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewS
     draftIssueGenerationSnapshot: task.draftIssueGenerationSnapshot,
     reviewGenerationRun: task.reviewGenerationRun,
     reviewGenerationActivities: task.reviewGenerationActivities ?? [],
+    reviewDecisionActivities: task.reviewDecisionActivities ?? [],
     resultAsset: task.resultAsset,
     lifecycle,
   };
