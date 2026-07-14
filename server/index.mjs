@@ -13,6 +13,13 @@ import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
 import {
+  addManualReviewTaskIssue,
+  completeReviewTaskDecision,
+  deleteManualReviewTaskIssue,
+  resolveReviewTaskIssue,
+  updateReviewTaskIssueDraft,
+} from "./reviewTaskDecisionService.mjs";
+import {
   createReviewGenerationRun,
   getReviewGenerationRunEvents,
   getReviewGenerationRunStatus,
@@ -135,7 +142,7 @@ const server = createServer(async (request, response) => {
     response.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     });
     response.end();
     return;
@@ -155,6 +162,11 @@ const server = createServer(async (request, response) => {
           "GET /api/review-tasks/:taskId",
           "PUT /api/review-tasks/:taskId",
           "POST /api/review-tasks/bulk",
+          "POST /api/review-tasks/:taskId/issues/:issueId/resolve",
+          "PATCH /api/review-tasks/:taskId/issues/:issueId/draft",
+          "POST /api/review-tasks/:taskId/issues/manual",
+          "DELETE /api/review-tasks/:taskId/issues/:issueId",
+          "POST /api/review-tasks/:taskId/complete",
           "POST /api/ocr/jobs/url",
           "POST /api/ocr/jobs/object",
           "GET /api/ocr/jobs/:id",
@@ -352,6 +364,75 @@ const server = createServer(async (request, response) => {
         sendJson(response, result.ok ? 200 : 400, result);
         return;
       }
+    }
+
+    const reviewTaskIssueResolveMatch = url.pathname.match(
+      /^\/api\/review-tasks\/([^/]+)\/issues\/([^/]+)\/resolve$/,
+    );
+    if (request.method === "POST" && reviewTaskIssueResolveMatch) {
+      const body = await readJson(request);
+      const result = await resolveReviewTaskIssue(
+        decodeURIComponent(reviewTaskIssueResolveMatch[1]),
+        decodeURIComponent(reviewTaskIssueResolveMatch[2]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const reviewTaskIssueDraftMatch = url.pathname.match(
+      /^\/api\/review-tasks\/([^/]+)\/issues\/([^/]+)\/draft$/,
+    );
+    if (request.method === "PATCH" && reviewTaskIssueDraftMatch) {
+      const body = await readJson(request);
+      const result = await updateReviewTaskIssueDraft(
+        decodeURIComponent(reviewTaskIssueDraftMatch[1]),
+        decodeURIComponent(reviewTaskIssueDraftMatch[2]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const reviewTaskManualIssueMatch = url.pathname.match(
+      /^\/api\/review-tasks\/([^/]+)\/issues\/manual$/,
+    );
+    if (request.method === "POST" && reviewTaskManualIssueMatch) {
+      const body = await readJson(request);
+      const result = await addManualReviewTaskIssue(
+        decodeURIComponent(reviewTaskManualIssueMatch[1]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const reviewTaskIssueDeleteMatch = url.pathname.match(
+      /^\/api\/review-tasks\/([^/]+)\/issues\/([^/]+)$/,
+    );
+    if (request.method === "DELETE" && reviewTaskIssueDeleteMatch) {
+      const result = await deleteManualReviewTaskIssue(
+        decodeURIComponent(reviewTaskIssueDeleteMatch[1]),
+        decodeURIComponent(reviewTaskIssueDeleteMatch[2]),
+      );
+      sendJson(
+        response,
+        result.ok ? 200 : result.status === "not_found" ? 404 : result.status === "not_allowed" ? 403 : 400,
+        result,
+      );
+      return;
+    }
+
+    const reviewTaskCompleteMatch = url.pathname.match(/^\/api\/review-tasks\/([^/]+)\/complete$/);
+    if (request.method === "POST" && reviewTaskCompleteMatch) {
+      const body = await readJson(request);
+      const result = await completeReviewTaskDecision(decodeURIComponent(reviewTaskCompleteMatch[1]), body);
+      sendJson(
+        response,
+        result.ok ? 200 : result.status === "not_found" ? 404 : result.status === "incomplete_review" ? 409 : 400,
+        result,
+      );
+      return;
     }
 
     const generationRunMatch = url.pathname.match(/^\/api\/review-agent\/generation-runs\/([^/]+)(?:\/([^/]+))?$/);

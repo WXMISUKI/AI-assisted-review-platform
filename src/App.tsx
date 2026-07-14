@@ -65,15 +65,20 @@ import {
   normalizeBackendPreparationPackage,
 } from "./domain/reviewPreparationPackage";
 import {
+  addPersistedManualReviewTaskIssue,
+  completePersistedReviewTask,
   createReviewGenerationRun,
+  deletePersistedManualReviewTaskIssue,
   fetchReviewGenerationRunEvents,
   fetchReviewGenerationRunStatus,
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
   requestDraftIssueGeneration,
+  resolvePersistedReviewTaskIssue,
   subscribeReviewGenerationRunEvents,
   subscribeReviewStreamEvents,
   submitStoredObjectOcrJob,
+  updatePersistedReviewTaskIssueDraft,
   uploadMinioDocument,
 } from "./domain/backendConnectivity";
 
@@ -97,6 +102,17 @@ export function App() {
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
   const deleteTargetDocument = documents.find((doc) => doc.id === deleteTargetId) ?? null;
   const allowedModes: ReviewMode[] = session ? roleModes[session.role] : ["review", "revise"];
+
+  function replaceDocumentFromBackend(task: LibraryDocument | undefined) {
+    if (!task) {
+      return;
+    }
+
+    setDocuments((currentDocs) =>
+      currentDocs.map((document) => (document.id === task.id ? task : document)),
+    );
+  }
+
   const selectedDocumentSession = useMemo(
     () => (selectedDocument ? createReviewSession(selectedDocument, selectedDocument.mode) : null),
     [selectedDocument],
@@ -837,7 +853,7 @@ export function App() {
     setActivePage("review-result");
   }
 
-  function completeReview(payload: ReviewCompletionPayload) {
+  async function completeReview(payload: ReviewCompletionPayload) {
     if (!selectedDocument) {
       return;
     }
@@ -847,9 +863,21 @@ export function App() {
     setDocuments(tasks);
     setSelectedDocId(selectedDocument.id);
     setActivePage("review-result");
+
+    try {
+      const result = await completePersistedReviewTask({
+        taskId: selectedDocument.id,
+        mode: payload.mode,
+      });
+      if (result.ok && result.task) {
+        replaceDocumentFromBackend(result.task);
+      }
+    } catch {
+      // Keep the existing local completion fallback when the backend is unavailable.
+    }
   }
 
-  function updateSelectedIssueResolution(
+  async function updateSelectedIssueResolution(
     issueId: string,
     status: "accepted" | "rejected",
     editedText: string,
@@ -861,9 +889,23 @@ export function App() {
     setDocuments((currentDocs) =>
       resolveTaskIssue(currentDocs, selectedDocument.id, issueId, status, editedText),
     );
+
+    try {
+      const result = await resolvePersistedReviewTaskIssue({
+        taskId: selectedDocument.id,
+        issueId,
+        status,
+        editedText,
+      });
+      if (result.ok && result.task) {
+        replaceDocumentFromBackend(result.task);
+      }
+    } catch {
+      // Local issue resolution remains the MVP fallback path.
+    }
   }
 
-  function updateSelectedIssueDraft(issueId: string, suggestion: string) {
+  async function updateSelectedIssueDraft(issueId: string, suggestion: string) {
     if (!selectedDocument) {
       return;
     }
@@ -871,17 +913,42 @@ export function App() {
     setDocuments((currentDocs) =>
       updateTaskIssueDraft(currentDocs, selectedDocument.id, issueId, suggestion),
     );
+
+    try {
+      const result = await updatePersistedReviewTaskIssueDraft({
+        taskId: selectedDocument.id,
+        issueId,
+        suggestion,
+      });
+      if (result.ok && result.task) {
+        replaceDocumentFromBackend(result.task);
+      }
+    } catch {
+      // Draft edits stay local when the backend is not reachable.
+    }
   }
 
-  function addSelectedManualIssue(issue: Parameters<typeof addManualTaskIssue>[2]) {
+  async function addSelectedManualIssue(issue: Parameters<typeof addManualTaskIssue>[2]) {
     if (!selectedDocument) {
       return;
     }
 
     setDocuments((currentDocs) => addManualTaskIssue(currentDocs, selectedDocument.id, issue));
+
+    try {
+      const result = await addPersistedManualReviewTaskIssue({
+        taskId: selectedDocument.id,
+        issue,
+      });
+      if (result.ok && result.task) {
+        replaceDocumentFromBackend(result.task);
+      }
+    } catch {
+      // Manual issue creation keeps the local fallback path.
+    }
   }
 
-  function deleteSelectedManualIssue(issueId: string) {
+  async function deleteSelectedManualIssue(issueId: string) {
     if (!selectedDocument) {
       return;
     }
@@ -889,6 +956,18 @@ export function App() {
     setDocuments((currentDocs) =>
       deleteManualTaskIssue(currentDocs, selectedDocument.id, issueId),
     );
+
+    try {
+      const result = await deletePersistedManualReviewTaskIssue({
+        taskId: selectedDocument.id,
+        issueId,
+      });
+      if (result.ok && result.task) {
+        replaceDocumentFromBackend(result.task);
+      }
+    } catch {
+      // Deletion remains local when backend persistence is unavailable.
+    }
   }
 
   function updateSelectedViewContext(context: {

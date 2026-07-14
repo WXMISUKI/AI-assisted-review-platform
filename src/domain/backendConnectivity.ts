@@ -1,10 +1,13 @@
 import type {
   DocumentParagraph,
+  IssueStatus,
   RecoveredDocumentSection,
   RecoveredDocumentStructure,
   ReviewDraftIssueGenerationResult,
+  ReviewIssue,
   ReviewMode,
   ReviewPreparationPackage,
+  ReviewResultAsset,
   ReviewStorageSnapshot,
   ReviewTask,
 } from "./reviewTypes";
@@ -325,6 +328,15 @@ export interface ReviewTasksBulkSyncResult {
   message?: string;
 }
 
+export interface ReviewTaskMutationResult {
+  ok: boolean;
+  status?: string;
+  task?: ReviewTask;
+  issue?: ReviewIssue;
+  resultAsset?: ReviewResultAsset;
+  message?: string;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
@@ -363,6 +375,93 @@ export async function syncPersistedReviewTasks(tasks: ReviewTask[]) {
     body: JSON.stringify({ tasks }),
   });
   return readJson<ReviewTasksBulkSyncResult>(response);
+}
+
+export async function resolvePersistedReviewTaskIssue(input: {
+  taskId: string;
+  issueId: string;
+  status: Extract<IssueStatus, "accepted" | "rejected">;
+  editedText?: string;
+}) {
+  const response = await fetch(
+    `/api/review-tasks/${encodeURIComponent(input.taskId)}/issues/${encodeURIComponent(input.issueId)}/resolve`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        status: input.status,
+        editedText: input.editedText,
+      }),
+    },
+  );
+  return readJson<ReviewTaskMutationResult>(response);
+}
+
+export async function updatePersistedReviewTaskIssueDraft(input: {
+  taskId: string;
+  issueId: string;
+  suggestion: string;
+}) {
+  const response = await fetch(
+    `/api/review-tasks/${encodeURIComponent(input.taskId)}/issues/${encodeURIComponent(input.issueId)}/draft`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        suggestion: input.suggestion,
+      }),
+    },
+  );
+  return readJson<ReviewTaskMutationResult>(response);
+}
+
+export async function addPersistedManualReviewTaskIssue(input: {
+  taskId: string;
+  issue: ReviewIssue;
+}) {
+  const response = await fetch(`/api/review-tasks/${encodeURIComponent(input.taskId)}/issues/manual`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      issue: input.issue,
+    }),
+  });
+  return readJson<ReviewTaskMutationResult>(response);
+}
+
+export async function deletePersistedManualReviewTaskIssue(input: {
+  taskId: string;
+  issueId: string;
+}) {
+  const response = await fetch(
+    `/api/review-tasks/${encodeURIComponent(input.taskId)}/issues/${encodeURIComponent(input.issueId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  return readJson<ReviewTaskMutationResult>(response);
+}
+
+export async function completePersistedReviewTask(input: {
+  taskId: string;
+  mode: ReviewMode;
+}) {
+  const response = await fetch(`/api/review-tasks/${encodeURIComponent(input.taskId)}/complete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      mode: input.mode,
+    }),
+  });
+  return readJson<ReviewTaskMutationResult>(response);
 }
 
 export async function fetchOcrJobStatus(jobId: string): Promise<OcrJobStatusResult> {

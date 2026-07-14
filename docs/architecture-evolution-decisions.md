@@ -102,3 +102,17 @@ The bridge introduces the runtime shape future Python services must honor:
 - keep run status, run events, replayable SSE, and worker queue ownership as the frontend-facing source of truth.
 
 This keeps the current Node BFF valuable as the API gateway and review-loading contract while making the long-running intelligent-agent execution layer replaceable.
+
+## Review Decision Completion Decision
+
+After backend generation run materialization, the next production-critical layer is backend-owned reviewer decisions and completion. OCR and AI generation only create value after a human reviewer can accept, reject, edit, add manual findings, and complete the task through a durable backend contract.
+
+This layer makes the current MVP closer to mature review platforms:
+
+- AI-generated and manual issues become actionable business records, not only frontend-local state;
+- review-mode completion can persist a supervisor report asset;
+- review-revise mode can persist a revised-plan snapshot generated from accepted issue resolutions;
+- the frontend may still use local fallback for MVP resilience, but backend task snapshots become the preferred source after successful reviewer actions;
+- audit logs, permissions, tenant scoping, report export, and Python report agents can later build on the same stable task action contract.
+
+This should be prioritized before deeper workflow-engine work because durable human decisions are the bridge between generated issues and production review records.
