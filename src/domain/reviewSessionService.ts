@@ -480,6 +480,37 @@ export function updateReviewTaskPreparationPackage(
   }));
 }
 
+function mergeReviewIssues(existingIssues: ReviewIssue[], generatedIssues: ReviewIssue[]) {
+  const deduped = new Map<string, ReviewIssue>();
+  [...existingIssues, ...generatedIssues].forEach((issue) => {
+    const key = `${issue.finding.title}|${issue.anchor.paragraphId}|${issue.anchor.text}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, issue);
+    }
+  });
+  return Array.from(deduped.values());
+}
+
+export function mergeGeneratedReviewIssues(
+  tasks: ReviewTask[],
+  taskId: string,
+  generatedIssues: ReviewIssue[],
+): ReviewTask[] {
+  if (generatedIssues.length === 0) {
+    return tasks;
+  }
+
+  return updateTask(tasks, taskId, (task) => {
+    const issues = mergeReviewIssues(task.issues, generatedIssues);
+    return {
+      ...task,
+      issues,
+      issueCount: getIssueCounts(issues).total,
+      updatedAt: nowString(),
+    };
+  });
+}
+
 export function resolveTaskIssue(
   tasks: ReviewTask[],
   taskId: string,

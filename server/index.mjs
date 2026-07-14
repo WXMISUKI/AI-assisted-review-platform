@@ -9,6 +9,7 @@ import {
 } from "./minioClient.mjs";
 import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs";
 import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
+import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 
 function sendJson(response, statusCode, payload) {
@@ -135,6 +136,7 @@ const server = createServer(async (request, response) => {
           "POST /api/ocr/jobs/object",
           "GET /api/ocr/jobs/:id",
           "POST /api/ocr/results/hydrate",
+          "POST /api/review-agent/draft-issues",
           "GET /api/minio/status",
           "POST /api/minio/upload",
           "POST /api/minio/presign",
@@ -221,6 +223,12 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/ocr/results/hydrate") {
       const body = await readJson(request);
       sendJson(response, 200, await hydrateOcrResultStructure(body));
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/review-agent/draft-issues") {
+      const body = await readJson(request);
+      sendJson(response, 200, await generateDraftIssues(body));
       return;
     }
 

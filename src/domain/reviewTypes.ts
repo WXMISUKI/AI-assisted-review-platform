@@ -276,6 +276,24 @@ export interface ReviewPreparationPackage {
   message?: string;
 }
 
+export type ReviewDraftIssueGenerationSource = "llm" | "deterministic-fallback";
+
+export type ReviewDraftIssueGenerationStatus = "ready" | "fallback" | "failed";
+
+export interface ReviewDraftIssueGenerationDiagnostics {
+  status: string;
+  message: string;
+  candidateCount?: number;
+}
+
+export interface ReviewDraftIssueGenerationResult {
+  ok: boolean;
+  source: ReviewDraftIssueGenerationSource;
+  status: ReviewDraftIssueGenerationStatus;
+  issues: ReviewIssue[];
+  diagnostics?: ReviewDraftIssueGenerationDiagnostics;
+}
+
 export interface ReviewTaskSourceObject {
   bucket: string;
   key: string;

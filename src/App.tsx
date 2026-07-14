@@ -43,6 +43,7 @@ import {
   deleteManualTaskIssue,
   listReviewTasks,
   markReviewTaskReady,
+  mergeGeneratedReviewIssues,
   resolveTaskIssue,
   startReviewTask,
   syncDocumentTaskOcrStatus,
@@ -61,6 +62,7 @@ import {
 import {
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
+  requestDraftIssueGeneration,
   subscribeReviewStreamEvents,
   submitStoredObjectOcrJob,
   uploadMinioDocument,
@@ -179,6 +181,34 @@ export function App() {
     const buildStructureSummary = (document: LibraryDocument | undefined) =>
       createPreparationStructureSummary(document?.recoveredStructure);
 
+    const enrichDocumentsWithGeneratedIssues = async (
+      nextDocuments: LibraryDocument[],
+      sourceDocument: LibraryDocument,
+      preparationPackage: NonNullable<LibraryDocument["preparationPackage"]>,
+    ) => {
+      if (!sourceDocument.recoveredStructure?.paragraphs.length) {
+        return nextDocuments;
+      }
+
+      try {
+        const result = await requestDraftIssueGeneration({
+          taskId: loadingDocId,
+          preparationPackage,
+          paragraphs: sourceDocument.recoveredStructure.paragraphs,
+          mode: sourceDocument.mode,
+          maxIssues: 6,
+        });
+
+        if (!result.ok || result.issues.length === 0) {
+          return nextDocuments;
+        }
+
+        return mergeGeneratedReviewIssues(nextDocuments, loadingDocId, result.issues);
+      } catch {
+        return nextDocuments;
+      }
+    };
+
     const startReviewPreparation = (startIndex: number, sourceDocument = currentDocument) => {
       stopActiveStreams();
       const preparationStages = buildPreparationStages(sourceDocument);
@@ -210,7 +240,7 @@ export function App() {
             timerId = null;
           }
 
-          window.setTimeout(() => {
+          window.setTimeout(async () => {
             if (cancelled) {
               return;
             }
@@ -229,6 +259,11 @@ export function App() {
               nextDocuments = updateReviewTaskPreparationPackage(
                 nextDocuments,
                 loadingDocId,
+                preparationPackage,
+              );
+              nextDocuments = await enrichDocumentsWithGeneratedIssues(
+                nextDocuments,
+                sourceDocument,
                 preparationPackage,
               );
             }
@@ -317,7 +352,7 @@ export function App() {
 
             if (event.type === "review.complete") {
               completed = true;
-              window.setTimeout(() => {
+              window.setTimeout(async () => {
                 if (cancelled) {
                   return;
                 }
@@ -336,6 +371,11 @@ export function App() {
                   nextDocuments = updateReviewTaskPreparationPackage(
                     nextDocuments,
                     loadingDocId,
+                    preparationPackage,
+                  );
+                  nextDocuments = await enrichDocumentsWithGeneratedIssues(
+                    nextDocuments,
+                    sourceDocument,
                     preparationPackage,
                   );
                 }

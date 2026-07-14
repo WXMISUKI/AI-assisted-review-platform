@@ -2,6 +2,8 @@ import type {
   DocumentParagraph,
   RecoveredDocumentSection,
   RecoveredDocumentStructure,
+  ReviewDraftIssueGenerationResult,
+  ReviewMode,
   ReviewPreparationPackage,
 } from "./reviewTypes";
 
@@ -347,4 +349,32 @@ export function runReviewStreamConnectivityCheck(
       timeoutMs,
     );
   });
+}
+
+export async function requestDraftIssueGeneration(input: {
+  taskId: string;
+  preparationPackage: ReviewPreparationPackage;
+  paragraphs: DocumentParagraph[];
+  mode: ReviewMode;
+  maxIssues?: number;
+}) {
+  const response = await fetch("/api/review-agent/draft-issues", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      taskId: input.taskId,
+      preparationPackage: input.preparationPackage,
+      paragraphs: input.paragraphs.slice(0, 12).map((paragraph) => ({
+        id: paragraph.id,
+        section: paragraph.section,
+        text: paragraph.text.slice(0, 1600),
+      })),
+      mode: input.mode,
+      maxIssues: input.maxIssues ?? 6,
+    }),
+  });
+
+  return readJson<ReviewDraftIssueGenerationResult>(response);
 }
