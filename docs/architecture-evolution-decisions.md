@@ -55,6 +55,8 @@ The next architectural priority is backend-owned durable review task state. Once
    - retry and terminal states
    - event replay for loading pages
    - worker-safe idempotency
+   - local file-backed queue adapter as a development bridge
+   - explicit lease, heartbeat, retry, and dead-letter semantics before production queue adoption
 
 3. Python agent service bridge
    - OCR/layout/RAG/review/report execution
@@ -72,3 +74,16 @@ The next architectural priority is backend-owned durable review task state. Once
 Moving straight to a Python agent runtime would still leave the system without durable review state. Mature review platforms need persistence, recovery, traceability, permissions, and audit trails before a complex worker layer can safely carry production work.
 
 The current run snapshot, activity trail, preparation package, draft issue provenance, and backend generation run bridge are already shaped to support this migration. The next step is to make that state backend-owned.
+
+## Queue Foundation Decision
+
+After backend-owned task snapshots and replayable run events, the next implementation layer is a local worker queue adapter behind the Node BFF. This is still not the final production worker runtime. It is a development bridge that introduces the contracts a production queue and Python worker must later honor:
+
+- enqueue review-generation work when a run is created;
+- claim jobs through a worker lease instead of executing directly in the request path;
+- heartbeat active work so interrupted jobs can be retried;
+- mark jobs succeeded, retryable failed, dead-lettered, skipped, or canceled;
+- keep run status and event replay as the frontend-facing source of truth;
+- persist only safe job summaries and diagnostics.
+
+This keeps the Node BFF as the frontend-facing API seam while making execution ownership replaceable. Redis, PostgreSQL-backed queues, Temporal, Celery, BullMQ, or Python workers can later replace the local adapter without changing the review-loading UI contract.

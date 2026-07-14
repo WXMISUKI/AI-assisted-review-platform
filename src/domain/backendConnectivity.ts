@@ -40,6 +40,28 @@ export interface BackendHealthResult {
       overall: "ready" | "degraded" | "unconfigured";
     };
   };
+  queue?: ReviewQueueStatusResult;
+  message?: string;
+}
+
+export interface ReviewQueueStatusResult {
+  ok: boolean;
+  schemaVersion?: number;
+  adapter?: string;
+  ready?: boolean;
+  counts?: Record<string, number>;
+  total?: number;
+  activeWorkerIds?: string[];
+  activeJobCount?: number;
+  oldestQueuedAgeMs?: number;
+  maxJobs?: number;
+  worker?: {
+    started: boolean;
+    workerId: string;
+    busy: boolean;
+    pollIntervalMs: number;
+    leaseMs: number;
+  };
   message?: string;
 }
 
@@ -190,6 +212,8 @@ export interface ReviewStreamSubscriptionHandlers {
 export interface ReviewGenerationRunCreateResult {
   ok: boolean;
   runId?: string;
+  jobId?: string;
+  queueStatus?: ReviewQueueStatusResult;
   status?: string;
   statusUrl?: string;
   eventsUrl?: string;
@@ -290,6 +314,11 @@ export async function fetchOcrStatus() {
 export async function fetchPersistedReviewTasks() {
   const response = await fetch("/api/review-tasks");
   return readJson<ReviewTasksListResult>(response);
+}
+
+export async function fetchReviewQueueStatus() {
+  const response = await fetch("/api/review-agent/queue/status");
+  return readJson<ReviewQueueStatusResult>(response);
 }
 
 export async function syncPersistedReviewTasks(tasks: ReviewTask[]) {

@@ -60,6 +60,7 @@ import {
   fetchBackendHealth,
   fetchMinioStatus,
   fetchOcrStatus,
+  fetchReviewQueueStatus,
   runLlmConnectivityCheck,
   runReviewStreamConnectivityCheck,
   uploadMinioDocument,
@@ -696,6 +697,7 @@ export function DataAssetsPage({
   const [llmResult, setLlmResult] = useState<ProviderCheckResult | null>(null);
   const [ocrResult, setOcrResult] = useState<OcrStatusResult | null>(null);
   const [minioResult, setMinioResult] = useState<MinioStatusResult | null>(null);
+  const [queueResult, setQueueResult] = useState<BackendHealthResult["queue"] | null>(null);
   const [minioUploadResult, setMinioUploadResult] = useState<MinioUploadResult | null>(null);
   const [uploadingToMinio, setUploadingToMinio] = useState(false);
   const [streamEvents, setStreamEvents] = useState<ReviewStreamEvent[]>([]);
@@ -716,6 +718,9 @@ export function DataAssetsPage({
 
       const minio = await fetchMinioStatus();
       setMinioResult(minio);
+
+      const queue = await fetchReviewQueueStatus();
+      setQueueResult(queue);
 
       const llm = await runLlmConnectivityCheck();
       setLlmResult(llm);
@@ -751,6 +756,9 @@ export function DataAssetsPage({
   }
 
   const healthSummary = healthResult?.providers?.summary?.overall ?? "unconfigured";
+  const queueSummary = queueResult
+    ? `${queueResult.adapter ?? "queue"} | queued ${queueResult.counts?.queued ?? 0} | active ${queueResult.activeJobCount ?? 0}`
+    : "waiting";
 
   return (
     <div className="assets-grid">
@@ -837,6 +845,11 @@ export function DataAssetsPage({
             title="MinIO"
             status={minioResult?.ok ? "ready" : "pending"}
             detail={minioResult?.summary ?? "等待检查"}
+          />
+          <ConnectivityStatus
+            title="Worker Queue"
+            status={queueResult?.ok && queueResult.ready ? "ready" : "pending"}
+            detail={queueSummary}
           />
         </div>
 

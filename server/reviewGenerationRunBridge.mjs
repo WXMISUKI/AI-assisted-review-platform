@@ -10,14 +10,16 @@ import {
   listGenerationRunEvents,
   updateGenerationRunRecord,
 } from "./reviewGenerationRunStore.mjs";
+import {
+  enqueueReviewGenerationJob,
+  getQueueStatus,
+} from "./reviewWorkerQueue.mjs";
 
 const RUN_TTL_MS = 10 * 60 * 1000;
 const MAX_PARAGRAPHS = 12;
 const MAX_PARAGRAPH_TEXT_LENGTH = 1600;
 const STREAM_POLL_INTERVAL_MS = 250;
 const STREAM_IDLE_TIMEOUT_MS = 20_000;
-
-const activeExecutions = new Set();
 
 function nowIsoString() {
   return new Date().toISOString();
@@ -139,129 +141,140 @@ async function appendRunEvent(run, event) {
   });
 }
 
-async function executeReviewGenerationRun(runId) {
-  if (activeExecutions.has(runId)) {
+export async function executeReviewGenerationRunJob(job) {
+  const runId = job.runId;
+  const run = await getGenerationRunRecord(runId);
+  if (!run) {
+    return {
+      skipped: true,
+      status: "not_found",
+    };
+  }
+
+  if (isTerminalStatus(run.status)) {
+    return {
+      skipped: true,
+      status: run.status,
+    };
+  }
+
+  await updateGenerationRunRecord(runId, {
+    status: "running",
+    startedAt: run.startedAt ?? nowIsoString(),
+    updatedAt: nowIsoString(),
+  });
+
+  await appendRunEvent(run, {
+    type: "review.connection",
+    stageId: "connect",
+    title: "Connected backend generation run",
+    detail: "A backend review generation run worker has started processing this run.",
+    progress: 5,
+    status: "running",
+    issueSummaries: [],
+    currentSection: run.structureSummary.currentSection,
+  });
+
+  const stages = createStructureAwareStages(run.structureSummary);
+  for (const stage of stages) {
+    await appendRunEvent(run, {
+      ...stage,
+      status: "running",
+    });
+    await sleep(250);
+  }
+
+  const completedAt = nowIsoString();
+  const preparationPackage = buildPreparationPackagePayload(run.structureSummary, stages, completedAt);
+  await appendRunEvent(run, {
+    type: "review.stage",
+    stageId: "draft-issues",
+    stageType: "issue-structuring",
+    title: "Generating draft review issues",
+    detail: "The backend is generating structured draft issue candidates from the preparation package.",
+    progress: 92,
+    status: "running",
+    agentKey: "construction-review",
+    agentLabel: "Construction plan review agent",
+    issueSummaries: preparationPackage.issueSummaries ?? [],
+    currentSection: run.structureSummary.currentSection,
+  });
+
+  let draftIssueGeneration;
+  try {
+    draftIssueGeneration = normalizeDraftIssueCompletion(
+      await generateDraftIssues({
+        taskId: run.taskId,
+        mode: run.mode,
+        preparationPackage,
+        paragraphs: run.paragraphs ?? [],
+        maxIssues: run.maxIssues,
+      }),
+    );
+  } catch (error) {
+    draftIssueGeneration = {
+      ok: true,
+      source: "deterministic-fallback",
+      status: "fallback",
+      issues: [],
+      diagnostics: {
+        status: "request_failed",
+        message: error instanceof Error ? error.message.slice(0, 180) : "Draft issue generation failed.",
+        candidateCount: 0,
+      },
+    };
+  }
+
+  const terminalStatus =
+    draftIssueGeneration.status === "ready" && draftIssueGeneration.issues.length > 0 ? "ready" : "degraded";
+  await appendRunEvent(run, {
+    type: "review.complete",
+    stageId: "complete",
+    title: terminalStatus === "ready" ? "Review generation completed" : "Review generation completed with fallback",
+    detail:
+      terminalStatus === "ready"
+        ? "The backend generated a preparation package and draft issue candidates."
+        : "The backend produced a reviewable preparation package with safe degraded draft issue output.",
+    progress: 100,
+    status: terminalStatus,
+    completedAt,
+    issueSummaries: preparationPackage.issueSummaries ?? [],
+    preparationPackage,
+    draftIssueGeneration: {
+      ...draftIssueGeneration,
+      runId: `draft-issues-${runId}`,
+      startedAt: completedAt,
+      completedAt,
+    },
+  });
+
+  return {
+    skipped: false,
+    status: terminalStatus,
+  };
+}
+
+export async function failReviewGenerationRunFromWorker(runId, error) {
+  const run = await getGenerationRunRecord(runId);
+  if (!run || isTerminalStatus(run.status)) {
     return;
   }
 
-  activeExecutions.add(runId);
-  try {
-    const run = await getGenerationRunRecord(runId);
-    if (!run || isTerminalStatus(run.status)) {
-      return;
-    }
-
-    await updateGenerationRunRecord(runId, {
-      status: "running",
-      startedAt: run.startedAt ?? nowIsoString(),
-      updatedAt: nowIsoString(),
-    });
-
-    await appendRunEvent(run, {
-      type: "review.connection",
-      stageId: "connect",
-      title: "Connected backend generation run",
-      detail: "A backend review generation run stream has been established.",
-      progress: 5,
-      status: "running",
-      issueSummaries: [],
-      currentSection: run.structureSummary.currentSection,
-    });
-
-    const stages = createStructureAwareStages(run.structureSummary);
-    for (const stage of stages) {
-      await appendRunEvent(run, {
-        ...stage,
-        status: "running",
-      });
-      await sleep(250);
-    }
-
-    const completedAt = nowIsoString();
-    const preparationPackage = buildPreparationPackagePayload(run.structureSummary, stages, completedAt);
-    await appendRunEvent(run, {
-      type: "review.stage",
-      stageId: "draft-issues",
-      stageType: "issue-structuring",
-      title: "Generating draft review issues",
-      detail: "The backend is generating structured draft issue candidates from the preparation package.",
-      progress: 92,
-      status: "running",
-      agentKey: "construction-review",
-      agentLabel: "Construction plan review agent",
-      issueSummaries: preparationPackage.issueSummaries ?? [],
-      currentSection: run.structureSummary.currentSection,
-    });
-
-    let draftIssueGeneration;
-    try {
-      draftIssueGeneration = normalizeDraftIssueCompletion(
-        await generateDraftIssues({
-          taskId: run.taskId,
-          mode: run.mode,
-          preparationPackage,
-          paragraphs: run.paragraphs ?? [],
-          maxIssues: run.maxIssues,
-        }),
-      );
-    } catch (error) {
-      draftIssueGeneration = {
-        ok: true,
-        source: "deterministic-fallback",
-        status: "fallback",
-        issues: [],
-        diagnostics: {
-          status: "request_failed",
-          message: error instanceof Error ? error.message.slice(0, 180) : "Draft issue generation failed.",
-          candidateCount: 0,
-        },
-      };
-    }
-
-    const terminalStatus =
-      draftIssueGeneration.status === "ready" && draftIssueGeneration.issues.length > 0 ? "ready" : "degraded";
-    await appendRunEvent(run, {
-      type: "review.complete",
-      stageId: "complete",
-      title: terminalStatus === "ready" ? "Review generation completed" : "Review generation completed with fallback",
-      detail:
-        terminalStatus === "ready"
-          ? "The backend generated a preparation package and draft issue candidates."
-          : "The backend produced a reviewable preparation package with safe degraded draft issue output.",
-      progress: 100,
-      status: terminalStatus,
-      completedAt,
-      issueSummaries: preparationPackage.issueSummaries ?? [],
-      preparationPackage,
-      draftIssueGeneration: {
-        ...draftIssueGeneration,
-        runId: `draft-issues-${runId}`,
-        startedAt: completedAt,
-        completedAt,
-      },
-    });
-  } catch (error) {
-    const run = await getGenerationRunRecord(runId);
-    if (run) {
-      const completedAt = nowIsoString();
-      await appendRunEvent(run, {
-        type: "review.failed",
-        stageId: "failed",
-        title: "Review generation failed",
-        detail: "The backend review generation runner failed before completion.",
-        progress: 100,
-        status: "failed",
-        completedAt,
-        issueSummaries: [],
-        diagnostics: {
-          status: "runner_failed",
-          message: error instanceof Error ? error.message.slice(0, 180) : "Review generation runner failed.",
-        },
-      });
-    }
-  } finally {
-    activeExecutions.delete(runId);
-  }
+  const completedAt = nowIsoString();
+  await appendRunEvent(run, {
+    type: "review.failed",
+    stageId: "failed",
+    title: "Review generation failed",
+    detail: "The backend review generation worker exhausted retry attempts.",
+    progress: 100,
+    status: "failed",
+    completedAt,
+    issueSummaries: [],
+    diagnostics: {
+      status: "worker_failed",
+      message: error instanceof Error ? error.message.slice(0, 180) : "Review generation worker failed.",
+    },
+  });
 }
 
 export async function createReviewGenerationRun(input = {}) {
@@ -294,11 +307,21 @@ export async function createReviewGenerationRun(input = {}) {
     return result;
   }
 
-  void executeReviewGenerationRun(runId);
+  const queued = await enqueueReviewGenerationJob({
+    runId,
+    taskId,
+    priority: 0,
+  });
+  if (!queued.ok) {
+    return queued;
+  }
+  const queueStatus = await getQueueStatus();
 
   return {
     ok: true,
     runId,
+    jobId: queued.job.jobId,
+    queueStatus,
     status: "created",
     statusUrl: `/api/review-agent/generation-runs/${encodeURIComponent(runId)}`,
     eventsUrl: `/api/review-agent/generation-runs/${encodeURIComponent(runId)}/events`,

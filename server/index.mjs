@@ -24,6 +24,11 @@ import {
   replaceReviewTasks,
   upsertReviewTask,
 } from "./reviewTaskStore.mjs";
+import { getQueueJob, getQueueStatus } from "./reviewWorkerQueue.mjs";
+import {
+  getReviewWorkerLoopInfo,
+  startReviewWorkerLoop,
+} from "./reviewWorkerLoop.mjs";
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -157,6 +162,8 @@ const server = createServer(async (request, response) => {
           "GET /api/review-agent/generation-runs/:runId",
           "GET /api/review-agent/generation-runs/:runId/events",
           "GET /api/review-agent/generation-runs/:runId/stream",
+          "GET /api/review-agent/queue/status",
+          "GET /api/review-agent/queue/jobs/:jobId",
           "POST /api/review-agent/draft-issues",
           "GET /api/minio/status",
           "POST /api/minio/upload",
@@ -173,6 +180,10 @@ const server = createServer(async (request, response) => {
         service: "ai-assisted-review-backend",
         timestamp: new Date().toISOString(),
         providers: getSafeProviderStatus(),
+        queue: {
+          ...(await getQueueStatus()),
+          worker: getReviewWorkerLoopInfo(),
+        },
       });
       return;
     }
@@ -276,6 +287,30 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/review-agent/queue/status") {
+      sendJson(response, 200, {
+        ...(await getQueueStatus()),
+        worker: getReviewWorkerLoopInfo(),
+      });
+      return;
+    }
+
+    const queueJobMatch = url.pathname.match(/^\/api\/review-agent\/queue\/jobs\/([^/]+)$/);
+    if (request.method === "GET" && queueJobMatch) {
+      const job = await getQueueJob(decodeURIComponent(queueJobMatch[1]));
+      sendJson(response, job ? 200 : 404, job
+        ? {
+            ok: true,
+            job,
+          }
+        : {
+            ok: false,
+            status: "not_found",
+            message: "Review queue job not found.",
+          });
+      return;
+    }
+
     const ocrJobMatch = url.pathname.match(/^\/api\/ocr\/jobs\/([^/]+)$/);
     if (request.method === "GET" && ocrJobMatch) {
       sendJson(response, 200, await getOcrJobStatus(ocrJobMatch[1]));
@@ -369,6 +404,8 @@ const server = createServer(async (request, response) => {
     });
   }
 });
+
+startReviewWorkerLoop();
 
 server.listen(config.port, "127.0.0.1", () => {
   console.log(`AI-assisted review backend listening on http://127.0.0.1:${config.port}`);
