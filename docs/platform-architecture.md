@@ -194,6 +194,17 @@ flowchart TD
 - 对复杂 human-in-the-loop 流程接入 LangGraph。
 - 审查任务、人工决策、报告生成形成可恢复状态图。
 
+### 开工条件核查工作流桥接
+
+开工条件核查短期采用“Dify 编排 + 平台记录”的混合架构：
+
+- Dify 负责资料包解压、OCR/LLM 抽取、核查表解析、Human Input 人工复核节点和报告草稿生成。
+- Node BFF/平台领域层负责判定依据版本、项目主数据、核查项结果、证据链、安全摘要和活动记录。
+- 前端负责展示依据确认、主数据初始化、规则/语义结果、待复核队列和辅助报告。
+- 后续数据库落地时，应把 basis_version、project_master_data、opening_condition_packet、check_item_result、evidence、human_review_decision 作为独立持久化对象。
+
+这个边界避免 Dify 工作流成为事实数据库，也避免平台过早自研完整工作流引擎。
+
 ## 8. 技术选型建议
 
 ### 文档渲染
@@ -265,3 +276,12 @@ flowchart TD
 - 所有问题处理后启用提交。
 - 审查模式生成 mock 报告。
 - 审查修改模式生成修改后方案快照。
+
+### Task Group F: Opening Condition Review
+
+- 开工条件核查入口。
+- 判定依据确认状态。
+- 人员、设备、证照、制度资料主数据初始化状态。
+- 资料核查项规则结果、语义说明和证据链。
+- Dify Human Input 待复核队列。
+- 内部辅助报告摘要。

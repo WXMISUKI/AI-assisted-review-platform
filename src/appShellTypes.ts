@@ -8,6 +8,7 @@ export type Role = "super_admin" | "supervisor" | "contractor";
 
 export type ShellPage =
   | "documents"
+  | "opening-condition-review"
   | "knowledge-base"
   | "data-assets"
   | "review-loading"

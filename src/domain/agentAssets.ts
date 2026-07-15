@@ -68,6 +68,24 @@ export const agentAssetCatalog: AgentAssetProfile[] = [
     ],
   },
   {
+    key: "opening-condition-review",
+    name: "开工条件核查智能体",
+    schemaVersion: "opening-condition-0.1-contest",
+    promptAsset: "开工条件资料核查 Prompt v0.1",
+    stageHint: "Dify 编排、人审节点与平台规则结果桥接",
+    summary: "负责把开工条件核查表、体系资料包、人员设备证照和签章资料转为可复核的辅助审查结论。",
+    engines: ["Dify Workflow", "主数据比对", "规则核查", "LLM 语义辅助", "Human Input 复核"],
+    checkDomains: ["判定依据确认", "人员设备证照", "审批签章", "方案制度", "资料完整性"],
+    outputScenarios: ["施工单位自查", "监理辅助审核", "参赛演示闭环"],
+    basisCategories: ["开工条件核查表", "项目体系建设资料", "人员设备证照", "专项规范与项目制度"],
+    knowledgeBindings: [
+      { name: "Dify 开工条件核查工作流", status: "已验证原型" },
+      { name: "项目人员设备证照主数据", status: "本轮建模" },
+      { name: "Human Input 人工复核节点", status: "桥接设计" },
+      { name: "辅助报告模板", status: "待接入" },
+    ],
+  },
+  {
     key: "report-generation",
     name: "审查报告生成智能体",
     schemaVersion: "report-gen-1.0-mock",
@@ -106,5 +124,12 @@ export const promptAssetRegistry: PromptAssetEntry[] = [
     owner: "报告内核",
     status: "待绑定",
     description: "用于将接受/拒绝结果整理为专属监理报告。",
+  },
+  {
+    name: "开工条件资料核查 Prompt v0.1",
+    version: "v0.1",
+    owner: "参赛核查工作流",
+    status: "草稿",
+    description: "用于从核查表与资料包中抽取核查项、证据、主数据候选和复核原因。",
   },
 ];

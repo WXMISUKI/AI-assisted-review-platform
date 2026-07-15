@@ -22,6 +22,7 @@ import { roleLabels, roleModes } from "./appShellTypes";
 
 export const pageLabels = {
   documents: "文档库",
+  "opening-condition-review": "开工条件核查",
   "knowledge-base": "知识库",
   "data-assets": "数据资产",
 } as const;
@@ -39,6 +40,7 @@ export const statusLabels: Record<DocumentStatus, string> = {
 export const agentKeyLabels: Record<ReviewAgentKey, string> = {
   "structure-restoration": "文档结构恢复智能体",
   "construction-review": "施工方案审查智能体",
+  "opening-condition-review": "开工条件核查智能体",
   "report-generation": "审查报告生成智能体",
 };
 

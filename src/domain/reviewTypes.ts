@@ -17,7 +17,11 @@ export type ReviewPipelineStageType =
   | "issue-structuring"
   | "result-packaging";
 
-export type ReviewAgentKey = "structure-restoration" | "construction-review" | "report-generation";
+export type ReviewAgentKey =
+  | "structure-restoration"
+  | "construction-review"
+  | "opening-condition-review"
+  | "report-generation";
 
 export type DocumentStatus =
   | "uploading"

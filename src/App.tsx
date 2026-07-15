@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  ClipboardCheck,
   Database,
   GitCompareArrows,
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
   DocumentLibraryPage,
   KnowledgeBasePage,
   LoginPage,
+  OpeningConditionReviewPage,
   ResultPreviewPage,
   ReviewLoadingPage,
 } from "./appShellPages";
@@ -1047,6 +1049,12 @@ export function App() {
             onClick={() => setActivePage("documents")}
           />
           <NavButton
+            icon={ClipboardCheck}
+            label={pageLabels["opening-condition-review"]}
+            active={activePage === "opening-condition-review"}
+            onClick={() => setActivePage("opening-condition-review")}
+          />
+          <NavButton
             icon={BookOpen}
             label={pageLabels["knowledge-base"]}
             active={activePage === "knowledge-base"}
@@ -1123,6 +1131,10 @@ export function App() {
               onOpenResult={openResult}
               onDeleteDocument={requestDeleteDocument}
             />
+          )}
+
+          {activePage === "opening-condition-review" && (
+            <OpeningConditionReviewPage roleLabel={roleLabels[session.role]} />
           )}
 
           {activePage === "knowledge-base" && <KnowledgeBasePage />}

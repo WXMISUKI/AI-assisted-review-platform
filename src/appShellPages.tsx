@@ -29,6 +29,16 @@ import type {
 } from "./domain/backendConnectivity";
 import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
+import {
+  getOpeningConditionHumanReviewItems,
+  getOpeningConditionRiskSummary,
+  getOpeningConditionVerdictSummary,
+  openingConditionReviewPacket,
+  openingConditionRiskLabels,
+  openingConditionStageLabels,
+  openingConditionVerdictLabels,
+  type OpeningConditionCheckItem,
+} from "./domain/openingConditionReview";
 import type {
   ReviewResultAsset,
   ReviewSession,
@@ -738,6 +748,180 @@ export function KnowledgeBasePage() {
         <span className="eyebrow">知识库</span>
         <h2>审查依据与智能体绑定</h2>
         <p>这里保留知识资产目录的骨架，后续可以继续挂接真实依据、提示词和版本状态。</p>
+      </section>
+    </div>
+  );
+}
+
+function OpeningConditionCheckItemRow({ item }: { item: OpeningConditionCheckItem }) {
+  return (
+    <article className={`opening-check-row verdict-${item.verdict}`}>
+      <div>
+        <span className="eyebrow">
+          {item.category} / {item.subCategory}
+        </span>
+        <h3>
+          {item.mandatory ? "★ " : ""}
+          {item.content}
+        </h3>
+        <p>{item.ruleExplanation}</p>
+        {item.semanticNote && <small>{item.semanticNote}</small>}
+      </div>
+      <div className="opening-check-meta">
+        <span>{openingConditionVerdictLabels[item.verdict]}</span>
+        <small>{openingConditionRiskLabels[item.riskLevel]}风险</small>
+      </div>
+    </article>
+  );
+}
+
+export function OpeningConditionReviewPage({ roleLabel }: { roleLabel: string }) {
+  const packet = openingConditionReviewPacket;
+  const verdictSummary = getOpeningConditionVerdictSummary(packet);
+  const riskSummary = getOpeningConditionRiskSummary(packet);
+  const humanReviewItems = getOpeningConditionHumanReviewItems(packet);
+  const confirmedBasisCount = packet.basisVersions.filter((item) => item.status === "confirmed").length;
+  const confirmedMasterDataCount = packet.masterData.filter((item) => item.status === "confirmed").length;
+
+  return (
+    <div className="opening-condition-page">
+      <section className="opening-condition-hero">
+        <div>
+          <span className="eyebrow">参赛业务切片 · {roleLabel}</span>
+          <h2>{packet.projectName}</h2>
+          <p>
+            {packet.reviewTarget}以“判定依据确认、项目主数据初始化、规则比对、Dify 人工复核、辅助报告”为主线，
+            用平台记录承接 Dify 工作流结果。
+          </p>
+          <div className="opening-condition-meta">
+            <span>{openingConditionStageLabels[packet.stage]}</span>
+            <span>{packet.difyWorkflowName}</span>
+            <span>内部辅助意见</span>
+          </div>
+        </div>
+        <div className="opening-condition-verdict">
+          <strong>{verdictSummary.needsHumanReview}</strong>
+          <span>项待人工复核</span>
+        </div>
+      </section>
+
+      <section className="opening-metric-grid">
+        <MetricBlock label="核查项" value={verdictSummary.total} />
+        <MetricBlock label="符合" value={verdictSummary.passed} tone="success" />
+        <MetricBlock label="不符合" value={verdictSummary.failed} tone={verdictSummary.failed > 0 ? "danger" : "neutral"} />
+        <MetricBlock label="待复核" value={verdictSummary.needsHumanReview} tone="danger" />
+        <MetricBlock label="依据确认" value={`${confirmedBasisCount}/${packet.basisVersions.length}`} />
+        <MetricBlock label="主数据确认" value={`${confirmedMasterDataCount}/${packet.masterData.length}`} />
+      </section>
+
+      <section className="opening-condition-grid">
+        <article className="opening-panel opening-panel-wide">
+          <span className="eyebrow">推荐任务组</span>
+          <h2>从 Dify 工作流升级为平台能力</h2>
+          <div className="opening-task-lane">
+            {[
+              "依据版本确认",
+              "人员设备证照入库",
+              "开工资料规则核查",
+              "Dify Human Input 复核",
+              "报告与审计归档",
+            ].map((item, index) => (
+              <div key={item} className={index <= 2 ? "opening-task-step done" : "opening-task-step"}>
+                <strong>{String(index + 1).padStart(2, "0")}</strong>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">风险分布</span>
+          <h2>规则结论先行</h2>
+          <div className="opening-risk-list">
+            {(["critical", "high", "medium", "low"] as const).map((risk) => (
+              <div key={risk}>
+                <span>{openingConditionRiskLabels[risk]}</span>
+                <strong>{riskSummary[risk]}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">判定依据</span>
+          <h2>先确认，再核查</h2>
+          <div className="opening-record-list">
+            {packet.basisVersions.map((basis) => (
+              <div key={basis.id}>
+                <strong>{basis.title}</strong>
+                <span>{basis.status} · {basis.confidence}</span>
+                <p>{basis.applicability}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">项目主数据</span>
+          <h2>人员设备证照先入库</h2>
+          <div className="opening-record-list">
+            {packet.masterData.map((record) => (
+              <div key={record.id}>
+                <strong>{record.label}</strong>
+                <span>{record.type} · {record.status}</span>
+                <p>{record.validity}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">Dify Human Input</span>
+          <h2>关键不确定项复核</h2>
+          <div className="opening-record-list">
+            {humanReviewItems.map((item) => (
+              <div key={item.id}>
+                <strong>{item.targetLabel}</strong>
+                <span>{item.difyNode}</span>
+                <p>{item.reason}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="opening-panel opening-panel-wide">
+        <span className="eyebrow">资料核查项</span>
+        <h2>规则、语义和证据分层展示</h2>
+        <div className="opening-check-list">
+          {packet.checkItems.map((item) => (
+            <OpeningConditionCheckItemRow key={item.id} item={item} />
+          ))}
+        </div>
+      </section>
+
+      <section className="opening-condition-grid">
+        <article className="opening-panel">
+          <span className="eyebrow">证据链</span>
+          <h2>结论可追溯到资料</h2>
+          <div className="opening-record-list">
+            {packet.evidence.map((evidence) => (
+              <div key={evidence.id}>
+                <strong>{evidence.fileName}</strong>
+                <span>{evidence.locator} · {evidence.confidence}</span>
+                <p>{evidence.extractedValue}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="opening-panel opening-panel-report">
+          <span className="eyebrow">辅助报告</span>
+          <h2>{packet.reportSummary.title}</h2>
+          <p>{packet.reportSummary.conclusion}</p>
+          <strong>{packet.reportSummary.nextAction}</strong>
+          <small>{packet.reportSummary.disclaimer}</small>
+        </article>
       </section>
     </div>
   );

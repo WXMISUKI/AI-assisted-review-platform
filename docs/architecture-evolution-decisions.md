@@ -128,3 +128,18 @@ The activity trail must remain safe:
 - store action type, time, actor placeholder, issue/result references, decision, mode, and short messages;
 - exclude prompts, provider traces, secrets, tokens, private URLs, and unbounded document text;
 - keep the Node BFF as the current task API boundary while leaving room for a future durable audit store.
+
+## Opening Condition Review Direction Decision
+
+Opening-condition review should be developed as a sibling business capability of construction plan review, not as a separate throwaway contest demo. It reuses the same platform principles: human-in-the-loop, traceable evidence, recoverable task state, safe provider summaries, and report assets.
+
+The near-term implementation uses a typed platform-owned review packet and mock data to demonstrate the workflow. Dify remains valuable for workflow orchestration, OCR/LLM extraction, Human Input review nodes, and report drafting. However, durable business records must belong to the platform:
+
+- basis versions and applicability confirmation;
+- project personnel, equipment, certificate, company, and system-document master data;
+- check item rule verdicts and semantic notes;
+- evidence references and confidence summaries;
+- human review triggers and decisions;
+- auxiliary report summaries and audit records.
+
+This direction supports rapid contest delivery while preserving the future migration path to backend persistence and Python/Dify agent service bridges. It also prevents local prompt optimization from becoming the architecture.
