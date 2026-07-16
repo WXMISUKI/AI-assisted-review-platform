@@ -1,0 +1,52 @@
+## ADDED Requirements
+
+### Requirement: Provisional master-data extraction
+The opening-condition portal SHALL extract personnel, equipment, certificates, company records, and system documents as provisional master-data records before publication.
+
+#### Scenario: Material is parsed
+- **WHEN** OCR or AI parses uploaded foundational materials
+- **THEN** the system creates provisional master-data records with extracted fields, source files, confidence labels, and evidence summaries
+
+#### Scenario: Duplicate candidate appears
+- **WHEN** extraction produces records that appear to describe the same person, equipment item, certificate, company, or document
+- **THEN** the system marks them for merge or human review rather than publishing duplicates automatically
+
+### Requirement: Human master-data confirmation
+Master-data records SHALL require human confirmation before they become published records used by formal checks.
+
+#### Scenario: Reviewer confirms record
+- **WHEN** a reviewer confirms or corrects a provisional master-data record
+- **THEN** the system records confirmed fields, reviewer identity placeholder, confirmation time, evidence, and optional quality score
+
+#### Scenario: Reviewer rejects record
+- **WHEN** a reviewer rejects a provisional master-data record
+- **THEN** the system excludes that record from published master data and preserves a safe rejection reason
+
+### Requirement: Published master-data catalog
+The opening-condition portal SHALL maintain a published master-data catalog scoped to the selected workspace.
+
+#### Scenario: Record is published
+- **WHEN** a confirmed master-data record is published
+- **THEN** it becomes available to opening-condition check items in the same workspace
+
+#### Scenario: User opens catalog
+- **WHEN** a user opens the master-data page
+- **THEN** the system displays published and provisional records separately
+
+### Requirement: Validity and evidence tracking
+Published master-data records SHALL preserve validity status and evidence references.
+
+#### Scenario: Certificate validity is confirmed
+- **WHEN** a certificate record is published
+- **THEN** the system records its validity dates, status, source file, and evidence locator where available
+
+#### Scenario: Check item uses master data
+- **WHEN** a check item relies on a published master-data record
+- **THEN** the check item references the master-data id and evidence summary
+
+### Requirement: Master data revision lifecycle
+The system SHALL create a new revision when published master data is corrected after publication.
+
+#### Scenario: Published record is edited
+- **WHEN** a user corrects a published master-data record
+- **THEN** the system creates a revised record version and preserves the prior version for tasks that already referenced it

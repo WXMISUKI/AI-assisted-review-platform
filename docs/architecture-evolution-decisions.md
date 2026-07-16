@@ -131,7 +131,18 @@ The activity trail must remain safe:
 
 ## Opening Condition Review Direction Decision
 
-Opening-condition review should be developed as a sibling business capability of construction plan review, not as a separate throwaway contest demo. It reuses the same platform principles: human-in-the-loop, traceable evidence, recoverable task state, safe provider summaries, and report assets.
+Opening-condition review should be developed as an independent business portal beside construction plan review, not as a direct menu item inside the construction-plan review shell and not as a separate throwaway contest demo. It reuses the same platform principles: human-in-the-loop, traceable evidence, recoverable task state, safe provider summaries, and report assets.
+
+The product topology is:
+
+```text
+Unified login
+  -> Product launcher
+      -> Construction Plan Review portal
+      -> Opening Condition Review portal
+```
+
+Each portal owns its route namespace, sidebar, landing page, business context, and state machine. The shared platform layer owns identity, provider summaries, object storage, OCR, task status, Dify/agent gateways, report assets, and safe diagnostics.
 
 The near-term implementation uses a typed platform-owned review packet and mock data to demonstrate the workflow. Dify remains valuable for workflow orchestration, OCR/LLM extraction, Human Input review nodes, and report drafting. However, durable business records must belong to the platform:
 
@@ -143,3 +154,14 @@ The near-term implementation uses a typed platform-owned review packet and mock 
 - auxiliary report summaries and audit records.
 
 This direction supports rapid contest delivery while preserving the future migration path to backend persistence and Python/Dify agent service bridges. It also prevents local prompt optimization from becoming the architecture.
+
+## Opening Condition Storage Decision
+
+Opening-condition review requires structured records before deeper workflow automation becomes production-safe. The storage direction is:
+
+- PostgreSQL or an equivalent relational store is the target source of truth for tenants, projects, contract packages, participating organizations, workspaces, basis-set versions, master data, review packets, check items, evidence references, human decisions, and audit events.
+- MinIO or compatible object storage holds uploaded archives, contracts, OCR outputs, source evidence, report files, and exported ledgers.
+- A vector index can support semantic retrieval and similarity matching, but it must not be the authoritative store for contracts, basis versions, pass/fail decisions, or reviewer approvals.
+- SQLite is acceptable only for local prototype state, development snapshots, or automated tests.
+
+This keeps Dify workflow output and embedding search useful without letting either become the compliance record.

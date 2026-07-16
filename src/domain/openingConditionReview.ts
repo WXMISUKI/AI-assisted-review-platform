@@ -5,7 +5,26 @@ export type OpeningConditionPacketStage =
   | "human-review"
   | "report-ready";
 
-export type OpeningConditionRecordStatus = "confirmed" | "pending-human-review" | "invalid" | "expired";
+export type OpeningConditionRecordStatus =
+  | "provisional"
+  | "confirmed"
+  | "published"
+  | "pending-human-review"
+  | "rejected"
+  | "invalid"
+  | "expired";
+
+export type OpeningConditionWorkspaceRole =
+  | "construction-unit-self-check"
+  | "supervisor-assisted-review";
+
+export type OpeningConditionBasisComponentType =
+  | "contract"
+  | "supplemental-agreement"
+  | "checklist-template"
+  | "regulation"
+  | "project-rule"
+  | "project-specific-requirement";
 
 export type OpeningConditionMasterDataType =
   | "personnel"
@@ -25,14 +44,31 @@ export type OpeningConditionReviewTrigger =
   | "master-data-missing"
   | "rule-semantic-conflict";
 
+export interface OpeningConditionWorkspace {
+  id: string;
+  tenantName: string;
+  projectName: string;
+  contractPackage: string;
+  participatingOrganization: string;
+  organizationRole: "construction-unit" | "general-contractor" | "subcontractor" | "supervisor" | "owner";
+  purpose: string;
+  roleContext: OpeningConditionWorkspaceRole;
+  activeBasisSetVersionId?: string;
+}
+
 export interface OpeningConditionBasisVersion {
   id: string;
+  workspaceId: string;
   title: string;
+  componentType: OpeningConditionBasisComponentType;
   source: string;
   version: string;
   status: OpeningConditionRecordStatus;
   confirmedBy?: string;
   confirmedAt?: string;
+  publishedAt?: string;
+  correctionNote?: string;
+  score?: number;
   applicability: string;
   confidence: "high" | "medium" | "low";
 }
@@ -48,6 +84,7 @@ export interface OpeningConditionEvidence {
 
 export interface OpeningConditionMasterDataRecord {
   id: string;
+  workspaceId: string;
   type: OpeningConditionMasterDataType;
   label: string;
   normalizedValue: string;
@@ -55,6 +92,12 @@ export interface OpeningConditionMasterDataRecord {
   evidenceId: string;
   validity: string;
   confidence: "high" | "medium" | "low";
+  confirmedBy?: string;
+  confirmedAt?: string;
+  publishedAt?: string;
+  correctionNote?: string;
+  score?: number;
+  reviewNeededReason?: string;
 }
 
 export interface OpeningConditionHumanReviewItem {
@@ -64,6 +107,56 @@ export interface OpeningConditionHumanReviewItem {
   trigger: OpeningConditionReviewTrigger;
   reason: string;
   difyNode: string;
+}
+
+export interface OpeningConditionDifyWorkflowRunSummary {
+  runId: string;
+  workflowName: string;
+  status: "queued" | "running" | "human-input-required" | "draft-ready" | "failed";
+  startedAt: string;
+  completedAt?: string;
+  safeMessage: string;
+}
+
+export interface OpeningConditionDifyBridgeInput {
+  workspaceId: string;
+  packetId: string;
+  basisSetVersionId?: string;
+  sourceObjectKeys: string[];
+  checklistObjectKey?: string;
+}
+
+export interface OpeningConditionDifyBridgeOutput {
+  run: OpeningConditionDifyWorkflowRunSummary;
+  basisCandidates?: OpeningConditionBasisVersion[];
+  masterDataCandidates?: OpeningConditionMasterDataRecord[];
+  checkItems?: OpeningConditionCheckItem[];
+  humanInputItems?: OpeningConditionHumanReviewItem[];
+  reportDraft?: {
+    title: string;
+    markdown: string;
+    status: "draft";
+  };
+  diagnostics?: Record<string, unknown>;
+  unsafe?: Record<string, unknown>;
+}
+
+export interface OpeningConditionDifyNormalizedOutput {
+  run: OpeningConditionDifyWorkflowRunSummary;
+  basisCandidates: OpeningConditionBasisVersion[];
+  masterDataCandidates: OpeningConditionMasterDataRecord[];
+  checkItems: OpeningConditionCheckItem[];
+  humanReviewQueue: OpeningConditionHumanReviewItem[];
+  reportDraft?: {
+    title: string;
+    markdown: string;
+    status: "draft";
+  };
+  safeDiagnostics: {
+    status: string;
+    message: string;
+    redactedFields: string[];
+  };
 }
 
 export interface OpeningConditionCheckItem {
@@ -77,8 +170,10 @@ export interface OpeningConditionCheckItem {
   ruleExplanation: string;
   semanticNote?: string;
   basisVersionId: string;
+  masterDataIds: string[];
   evidenceIds: string[];
   humanReviewIds: string[];
+  blockedReason?: string;
   rectification: string;
 }
 
@@ -91,6 +186,9 @@ export interface OpeningConditionReportSummary {
 
 export interface OpeningConditionReviewPacket {
   id: string;
+  workspaceId: string;
+  workspaceContext: OpeningConditionWorkspace;
+  boundBasisSetVersionId?: string;
   projectName: string;
   reviewTarget: string;
   serviceScenario: "contractor-self-check" | "supervisor-assisted-review";
@@ -99,6 +197,12 @@ export interface OpeningConditionReviewPacket {
   basisVersions: OpeningConditionBasisVersion[];
   evidence: OpeningConditionEvidence[];
   masterData: OpeningConditionMasterDataRecord[];
+  masterDataReadiness: {
+    published: number;
+    provisional: number;
+    rejected: number;
+    reviewNeeded: number;
+  };
   humanReviewQueue: OpeningConditionHumanReviewItem[];
   checkItems: OpeningConditionCheckItem[];
   reportSummary: OpeningConditionReportSummary;
@@ -142,8 +246,45 @@ export const openingConditionRiskLabels: Record<OpeningConditionRiskLevel, strin
   low: "低",
 };
 
+export const openingConditionRecordStatusLabels: Record<OpeningConditionRecordStatus, string> = {
+  provisional: "待确认",
+  confirmed: "已确认",
+  published: "已发布",
+  "pending-human-review": "待人工复核",
+  rejected: "已驳回",
+  invalid: "无效",
+  expired: "已过期",
+};
+
+export const openingConditionWorkspaces: OpeningConditionWorkspace[] = [
+  {
+    id: "oc-ws-g15-08-supervisor",
+    tenantName: "华东高速建设管理中心",
+    projectName: "G15嘉金段改扩建工程",
+    contractPackage: "8标主线预制下部结构",
+    participatingOrganization: "嘉金八标项目经理部",
+    organizationRole: "construction-unit",
+    purpose: "承台施工开工条件核查",
+    roleContext: "supervisor-assisted-review",
+    activeBasisSetVersionId: "basis-opening-2026-001",
+  },
+  {
+    id: "oc-ws-g15-08-subcontract",
+    tenantName: "华东高速建设管理中心",
+    projectName: "G15嘉金段改扩建工程",
+    contractPackage: "8标钢筋加工分包",
+    participatingOrganization: "沪通钢筋加工专业分包队",
+    organizationRole: "subcontractor",
+    purpose: "钢筋加工场开工条件自查",
+    roleContext: "construction-unit-self-check",
+  },
+];
+
 export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   id: "ocr-open-cond-demo-001",
+  workspaceId: "oc-ws-g15-08-supervisor",
+  workspaceContext: openingConditionWorkspaces[0],
+  boundBasisSetVersionId: "basis-opening-2026-001",
   projectName: "G15嘉金段改扩建工程8标",
   reviewTarget: "承台施工条件核查",
   serviceScenario: "supervisor-assisted-review",
@@ -152,18 +293,24 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   basisVersions: [
     {
       id: "basis-opening-2026-001",
+      workspaceId: "oc-ws-g15-08-supervisor",
       title: "承台施工条件核查表",
+      componentType: "checklist-template",
       source: "监理上传核查表",
       version: "2026-07 contest draft",
-      status: "confirmed",
+      status: "published",
       confirmedBy: "监理工程师",
       confirmedAt: "2026-07-15 09:20",
+      publishedAt: "2026-07-15 09:35",
+      score: 96,
       applicability: "适用于本次承台开工条件资料核查。",
       confidence: "high",
     },
     {
       id: "basis-jtg-3650-2020",
+      workspaceId: "oc-ws-g15-08-supervisor",
       title: "《公路桥涵施工技术规范》JTG/T 3650-2020",
+      componentType: "regulation",
       source: "项目规范库",
       version: "2020",
       status: "pending-human-review",
@@ -206,26 +353,37 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   masterData: [
     {
       id: "md-person-001",
+      workspaceId: "oc-ws-g15-08-supervisor",
       type: "personnel",
       label: "专职安全员 张工",
       normalizedValue: "张工 / 苏建安C3-2024-0123",
-      status: "confirmed",
+      status: "published",
       evidenceId: "ev-person-001",
       validity: "证书有效，岗位匹配",
       confidence: "high",
+      confirmedBy: "监理工程师",
+      confirmedAt: "2026-07-15 10:00",
+      publishedAt: "2026-07-15 10:10",
+      score: 95,
     },
     {
       id: "md-equipment-001",
+      workspaceId: "oc-ws-g15-08-supervisor",
       type: "equipment",
       label: "25t 汽车吊",
       normalizedValue: "QY25K5-08 / 检验有效期 2026-11-30",
-      status: "confirmed",
+      status: "published",
       evidenceId: "ev-equipment-001",
       validity: "检验有效期覆盖拟开工日期",
       confidence: "high",
+      confirmedBy: "监理工程师",
+      confirmedAt: "2026-07-15 10:05",
+      publishedAt: "2026-07-15 10:12",
+      score: 97,
     },
     {
       id: "md-doc-001",
+      workspaceId: "oc-ws-g15-08-supervisor",
       type: "system-document",
       label: "开工申请审批表",
       normalizedValue: "审批表签章字段待确认",
@@ -233,8 +391,15 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       evidenceId: "ev-stamp-001",
       validity: "签章日期 OCR 低置信度",
       confidence: "low",
+      reviewNeededReason: "签章日期 OCR 低置信度，需人工确认。",
     },
   ],
+  masterDataReadiness: {
+    published: 2,
+    provisional: 0,
+    rejected: 0,
+    reviewNeeded: 1,
+  },
   humanReviewQueue: [
     {
       id: "hr-basis-001",
@@ -273,6 +438,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       ruleExplanation: "专职安全员证书编号已在项目人员主数据中命中，证书状态有效。",
       semanticNote: "人员岗位与承台施工准备阶段匹配。",
       basisVersionId: "basis-opening-2026-001",
+      masterDataIds: ["md-person-001"],
       evidenceIds: ["ev-person-001"],
       humanReviewIds: [],
       rectification: "无需整改。",
@@ -287,6 +453,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       riskLevel: "low",
       ruleExplanation: "设备编号 QY25K5-08 与检验报告一致，有效期覆盖拟开工日期。",
       basisVersionId: "basis-opening-2026-001",
+      masterDataIds: ["md-equipment-001"],
       evidenceIds: ["ev-equipment-001"],
       humanReviewIds: [],
       rectification: "无需整改。",
@@ -302,8 +469,10 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       ruleExplanation: "签章区域存在，但签字日期 OCR 置信度低，无法自动确认审批链完整。",
       semanticNote: "文档上下文显示审批表结构完整，但关键日期不可稳定识别。",
       basisVersionId: "basis-opening-2026-001",
+      masterDataIds: ["md-doc-001"],
       evidenceIds: ["ev-stamp-001"],
       humanReviewIds: ["hr-stamp-001", "hr-item-001"],
+      blockedReason: "依赖的制度资料主数据仍待人工复核，不能自动判定通过。",
       rectification: "人工确认签章单位、签字人和日期；若无法确认，应补充清晰审批表。",
     },
     {
@@ -316,6 +485,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       riskLevel: "medium",
       ruleExplanation: "核查表已覆盖资料核查项，但专项规范适用性仍待确认。",
       basisVersionId: "basis-jtg-3650-2020",
+      masterDataIds: [],
       evidenceIds: ["ev-basis-001"],
       humanReviewIds: ["hr-basis-001"],
       rectification: "由监理确认 JTG/T 3650-2020 等专项依据是否纳入本次辅助核查。",
@@ -323,11 +493,117 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   ],
   reportSummary: {
     title: "开工条件核查内部辅助意见",
-    conclusion: "当前资料基础条件基本具备，但存在 3 项待人工复核内容，签章日期和依据适用性确认前不建议出具最终通过意见。",
+    conclusion: "当前资料基础条件基本具备；本核查包绑定 basis-opening-2026-001 依据集版本，但仍有 3 项待人工复核内容，签章日期和专项依据适用性确认前不建议出具最终通过意见。",
     nextAction: "优先处理 Dify Human Input 队列中的依据确认、签章字段确认和结论复核。",
     disclaimer: "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
   },
 };
+
+export function getOpeningConditionWorkspacePacket(workspaceId: string) {
+  if (workspaceId === openingConditionReviewPacket.workspaceId) {
+    return openingConditionReviewPacket;
+  }
+
+  const workspace =
+    openingConditionWorkspaces.find((item) => item.id === workspaceId) ?? openingConditionWorkspaces[0];
+
+  const basisVersions = openingConditionReviewPacket.basisVersions.map((basis) => ({
+    ...basis,
+    workspaceId: workspace.id,
+    status: workspace.activeBasisSetVersionId ? basis.status : ("provisional" as const),
+  }));
+  const masterData = openingConditionReviewPacket.masterData.map((record) => ({
+    ...record,
+    workspaceId: workspace.id,
+    status: workspace.activeBasisSetVersionId ? record.status : ("provisional" as const),
+  }));
+  const blockedReason = workspace.activeBasisSetVersionId
+    ? undefined
+    : "当前工作区尚未发布依据集版本，正式核查任务只能停留在待确认状态。";
+
+  return {
+    ...openingConditionReviewPacket,
+    id: `ocr-open-cond-${workspace.id}`,
+    workspaceId: workspace.id,
+    workspaceContext: workspace,
+    boundBasisSetVersionId: workspace.activeBasisSetVersionId,
+    projectName: workspace.projectName,
+    reviewTarget: workspace.purpose,
+    serviceScenario:
+      workspace.roleContext === "construction-unit-self-check"
+        ? ("contractor-self-check" as const)
+        : ("supervisor-assisted-review" as const),
+    stage: workspace.activeBasisSetVersionId
+      ? openingConditionReviewPacket.stage
+      : ("basis-confirmation" as const),
+    basisVersions,
+    masterData,
+    masterDataReadiness: getOpeningConditionMasterDataReadiness(masterData),
+    checkItems: openingConditionReviewPacket.checkItems.map((item) =>
+      blockedReason
+        ? {
+            ...item,
+            verdict: "needs-human-review" as const,
+            blockedReason,
+            humanReviewIds: Array.from(new Set([...item.humanReviewIds, "hr-basis-blocked"])),
+          }
+        : item,
+    ),
+  };
+}
+
+export function getOpeningConditionMasterDataReadiness(
+  records: OpeningConditionMasterDataRecord[],
+) {
+  return records.reduce(
+    (summary, record) => {
+      if (record.status === "published") summary.published += 1;
+      if (record.status === "provisional" || record.status === "confirmed") summary.provisional += 1;
+      if (record.status === "rejected") summary.rejected += 1;
+      if (record.status === "pending-human-review") summary.reviewNeeded += 1;
+      return summary;
+    },
+    {
+      published: 0,
+      provisional: 0,
+      rejected: 0,
+      reviewNeeded: 0,
+    },
+  );
+}
+
+export function normalizeOpeningConditionDifyOutput(
+  output: OpeningConditionDifyBridgeOutput,
+): OpeningConditionDifyNormalizedOutput {
+  const unsafeKeys = Object.keys(output.unsafe ?? {});
+  const diagnosticKeys = Object.keys(output.diagnostics ?? {}).filter((key) =>
+    /secret|token|privateUrl|providerTrace|rawText/i.test(key),
+  );
+  const redactedFields = Array.from(new Set([...unsafeKeys, ...diagnosticKeys]));
+
+  return {
+    run: {
+      ...output.run,
+      safeMessage: output.run.safeMessage || "Dify 工作流状态已同步。",
+    },
+    basisCandidates: output.basisCandidates ?? [],
+    masterDataCandidates: output.masterDataCandidates ?? [],
+    checkItems: output.checkItems ?? [],
+    humanReviewQueue: output.humanInputItems ?? [],
+    reportDraft: output.reportDraft
+      ? {
+          title: output.reportDraft.title,
+          markdown: output.reportDraft.markdown,
+          status: "draft",
+        }
+      : undefined,
+    safeDiagnostics: {
+      status: output.run.status,
+      message: output.run.safeMessage,
+      redactedFields,
+    },
+  };
+}
 
 export function getOpeningConditionVerdictSummary(
   packet: OpeningConditionReviewPacket,

@@ -12,6 +12,13 @@
 - AI Orchestration: 初期可自研服务接口，后续接 Dify 或 LangGraph。
 - Vector Store: 预留 Milvus、Qdrant、Chroma 或 pgvector。
 
+存储职责建议明确分层：
+
+- PostgreSQL 或等价关系型数据库作为结构化业务记录的目标事实源，承载用户、产品权限、项目、标段、机构、工作区、依据集、主数据、审查任务、核查项、人工决策和审计记录。
+- MinIO/OSS 作为原始文件、OCR 产物、证据附件、报告文件和导出台账的对象存储。
+- 向量库只承担语义检索和召回辅助，不作为合规事实、依据版本或人工决策的事实源。
+- SQLite 仅用于本地原型、测试或轻量开发快照，不作为生产持久化方案。
+
 ## 2. 前端模块划分
 
 ```text
@@ -40,13 +47,22 @@ src/
 
 ```text
 /login
-/app/documents
-/app/documents/:documentId
-/app/knowledge-base
-/app/data-assets/agents
-/app/data-assets/prompts
-/app/reports/:reportId
+/products
+/construction-plan/documents
+/construction-plan/documents/:documentId
+/construction-plan/knowledge-base
+/construction-plan/data-assets/agents
+/construction-plan/data-assets/prompts
+/construction-plan/reports/:reportId
+/opening-condition/workspaces
+/opening-condition/workspaces/:workspaceId/basis
+/opening-condition/workspaces/:workspaceId/master-data
+/opening-condition/workspaces/:workspaceId/check-tasks
+/opening-condition/workspaces/:workspaceId/human-review
+/opening-condition/workspaces/:workspaceId/reports
 ```
+
+统一登录后进入产品启动器。施工方案审查和开工条件核查分别拥有独立路由命名空间、独立左侧导航和独立业务上下文；二者复用统一身份、对象存储、OCR、智能体网关、SSE/任务状态和安全诊断能力。
 
 ## 4. 核心实体
 
@@ -129,6 +145,45 @@ src/
 - fileUrl
 - createdAt
 
+### ProductPortal
+
+- id: `construction-plan-review | opening-condition-review`
+- name
+- routeNamespace
+- enabled
+- roleScope
+
+### OpeningConditionWorkspace
+
+- id
+- tenantId
+- projectId
+- contractPackageId
+- participatingOrganizationId
+- purpose
+- roleContext
+- activeBasisSetVersionId
+
+### BasisSetVersion
+
+- id
+- workspaceId
+- version
+- status: `draft | pending_confirmation | published | superseded`
+- components
+- confirmedBy
+- publishedAt
+
+### ProjectMasterData
+
+- id
+- workspaceId
+- type: `personnel | equipment | certificate | company | system_document`
+- status: `provisional | confirmed | rejected | published`
+- evidenceRefs
+- validity
+- confidence
+
 ## 5. 审查任务流
 
 ```mermaid
@@ -196,11 +251,11 @@ flowchart TD
 
 ### 开工条件核查工作流桥接
 
-开工条件核查短期采用“Dify 编排 + 平台记录”的混合架构：
+开工条件核查短期采用“独立业务门户 + Dify 编排 + 平台记录”的混合架构：
 
 - Dify 负责资料包解压、OCR/LLM 抽取、核查表解析、Human Input 人工复核节点和报告草稿生成。
-- Node BFF/平台领域层负责判定依据版本、项目主数据、核查项结果、证据链、安全摘要和活动记录。
-- 前端负责展示依据确认、主数据初始化、规则/语义结果、待复核队列和辅助报告。
+- Node BFF/平台领域层负责产品权限、工作区上下文、判定依据版本、项目主数据、核查项结果、证据链、安全摘要和活动记录。
+- 前端开工条件门户负责展示工作区选择、依据确认、主数据初始化、规则/语义结果、待复核队列和辅助报告。
 - 后续数据库落地时，应把 basis_version、project_master_data、opening_condition_packet、check_item_result、evidence、human_review_decision 作为独立持久化对象。
 
 这个边界避免 Dify 工作流成为事实数据库，也避免平台过早自研完整工作流引擎。
@@ -277,9 +332,16 @@ flowchart TD
 - 审查模式生成 mock 报告。
 - 审查修改模式生成修改后方案快照。
 
-### Task Group F: Opening Condition Review
+### Task Group F: Product Portal Boundary
 
-- 开工条件核查入口。
+- 产品启动器。
+- 施工方案审查独立门户。
+- 开工条件核查独立门户。
+- 产品权限和业务上下文隔离。
+
+### Task Group G: Opening Condition Review
+
+- 开工条件核查工作区选择。
 - 判定依据确认状态。
 - 人员、设备、证照、制度资料主数据初始化状态。
 - 资料核查项规则结果、语义说明和证据链。

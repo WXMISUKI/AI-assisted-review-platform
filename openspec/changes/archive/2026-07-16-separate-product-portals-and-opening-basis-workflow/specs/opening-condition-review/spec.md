@@ -1,8 +1,5 @@
-# opening-condition-review Specification
+## MODIFIED Requirements
 
-## Purpose
-Define the opening-condition material review workflow used for construction-unit self-check and supervisor assisted review.
-## Requirements
 ### Requirement: Opening condition review packet
 The system SHALL represent an opening-condition review as a workspace-scoped review packet containing selected context, bound basis-set version, master-data readiness, submitted material status, check item outcomes, evidence summaries, human-review triggers, and report summary.
 
@@ -44,28 +41,6 @@ The opening-condition review workflow SHALL initialize project personnel, equipm
 - **WHEN** required master data remains provisional or unconfirmed
 - **THEN** related check items are marked blocked or requiring human review instead of being silently passed
 
-### Requirement: Rule and semantic outcome separation
-The opening-condition review workflow SHALL separate deterministic rule outcomes from semantic AI assistance.
-
-#### Scenario: Deterministic rule runs
-- **WHEN** a check item depends on file existence, certificate validity, master-data matching, or required-field completeness
-- **THEN** the system records a rule verdict with matched evidence and a non-secret explanation
-
-#### Scenario: Semantic assistance runs
-- **WHEN** a check item depends on construction scope coverage, material relevance, or ambiguous document meaning
-- **THEN** the system records a semantic note without replacing deterministic rule verdict fields
-
-### Requirement: Evidence and human review triggers
-The opening-condition review workflow SHALL preserve evidence and identify items that need Dify Human Input or equivalent human review.
-
-#### Scenario: Evidence is attached
-- **WHEN** a check item is evaluated
-- **THEN** the system records source file names, page or locator summaries, extracted values, confidence labels, and matched master-data ids where available
-
-#### Scenario: Human review is triggered
-- **WHEN** OCR confidence is low, stamp/signature recognition is uncertain, basis applicability is unclear, or AI and rule outcomes conflict
-- **THEN** the system marks the check item or basis/master-data record as requiring human review with a reason
-
 ### Requirement: Auxiliary report summary
 The opening-condition review workflow SHALL produce an internal auxiliary report summary that is traceable to workspace context, basis-set version, check items, evidence, and human-review status.
 
@@ -80,4 +55,3 @@ The opening-condition review workflow SHALL produce an internal auxiliary report
 #### Scenario: Report references basis
 - **WHEN** the report summary is generated for a formal task
 - **THEN** it includes the bound basis-set version and workspace context used for the check
-

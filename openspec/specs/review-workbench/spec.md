@@ -317,6 +317,10 @@ The review workbench SHALL display整改闭环 fields when available.
 ### Requirement: Completion gating
 The review workbench SHALL enable completion only when every issue has an accepted or rejected decision.
 
+#### Scenario: User attempts completion
+- **WHEN** one or more issues have no accepted or rejected decision
+- **THEN** the workbench keeps completion unavailable until every issue has a decision
+
 ### Requirement: Session-backed workbench initialization
 The review workbench SHALL initialize its active section and paragraph context from the review session snapshot when one is available.
 

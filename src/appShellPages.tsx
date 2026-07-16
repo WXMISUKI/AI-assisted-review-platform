@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BookOpen,
+  ClipboardCheck,
   Clock3,
   FileSearch,
   FileText,
@@ -27,17 +28,24 @@ import type {
   ProviderCheckResult,
   ReviewStreamEvent,
 } from "./domain/backendConnectivity";
+import type { ProductLauncherEntry, ProductPortalId } from "./domain/productPortal";
 import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import {
   getOpeningConditionHumanReviewItems,
+  getOpeningConditionMasterDataReadiness,
   getOpeningConditionRiskSummary,
   getOpeningConditionVerdictSummary,
+  openingConditionRecordStatusLabels,
   openingConditionReviewPacket,
   openingConditionRiskLabels,
   openingConditionStageLabels,
   openingConditionVerdictLabels,
+  type OpeningConditionBasisVersion,
   type OpeningConditionCheckItem,
+  type OpeningConditionMasterDataRecord,
+  type OpeningConditionReviewPacket,
+  type OpeningConditionWorkspace,
 } from "./domain/openingConditionReview";
 import type {
   ReviewResultAsset,
@@ -76,6 +84,75 @@ import {
   runReviewStreamConnectivityCheck,
   uploadMinioDocument,
 } from "./domain/backendConnectivity";
+
+export function ProductLauncherPage({
+  entries,
+  roleLabel,
+  username,
+  themeMode,
+  onToggleTheme,
+  onSelectProduct,
+  onLogout,
+}: {
+  entries: ProductLauncherEntry[];
+  roleLabel: string;
+  username: string;
+  themeMode: ThemeMode;
+  onToggleTheme: () => void;
+  onSelectProduct: (productId: ProductPortalId) => void;
+  onLogout: () => void;
+}) {
+  return (
+    <main className="product-launcher-shell">
+      <header className="product-launcher-topbar">
+        <div>
+          <span className="eyebrow">统一身份入口</span>
+          <h1>选择业务门户</h1>
+          <p>同一账号进入不同业务门户，门户之间共享 OCR、对象存储和智能体底座，但业务上下文独立。</p>
+        </div>
+        <div className="shell-topbar-actions">
+          <button type="button" className="theme-toggle" onClick={onToggleTheme}>
+            <SunMoon size={16} />
+            {themeMode === "light" ? "深色主题" : "浅色主题"}
+          </button>
+          <span className="shell-role-pill">
+            <Users size={14} />
+            {roleLabel}
+          </span>
+          <button type="button" className="shell-logout light" onClick={onLogout}>
+            <LogOut size={16} />
+            退出
+          </button>
+        </div>
+      </header>
+
+      <section className="product-launcher-grid">
+        {entries.map((entry) => (
+          <article key={entry.id} className="product-launcher-card">
+            <span className="eyebrow">{entry.eyebrow}</span>
+            <h2>{entry.name}</h2>
+            <p>{entry.summary}</p>
+            <div className="product-route-pill">{entry.routeNamespace}</div>
+            <div className="product-service-list">
+              {entry.sharedServices.map((service) => (
+                <span key={service}>{service}</span>
+              ))}
+            </div>
+            <button type="button" className="primary" onClick={() => onSelectProduct(entry.id)}>
+              {entry.id === "construction-plan-review" ? <FileText size={16} /> : <ClipboardCheck size={16} />}
+              {entry.primaryActionLabel}
+            </button>
+          </article>
+        ))}
+      </section>
+
+      <footer className="product-launcher-footer">
+        <strong>{username}</strong>
+        <span>当前账号身份会保留，进入业务门户后将重新选择该门户的业务上下文。</span>
+      </footer>
+    </main>
+  );
+}
 
 function getFallbackSummaryLabel(document: LibraryDocument) {
   return (
@@ -775,13 +852,238 @@ function OpeningConditionCheckItemRow({ item }: { item: OpeningConditionCheckIte
   );
 }
 
-export function OpeningConditionReviewPage({ roleLabel }: { roleLabel: string }) {
-  const packet = openingConditionReviewPacket;
+export function OpeningConditionWorkspacePage({
+  workspaces,
+  selectedWorkspaceId,
+  onSelectWorkspace,
+}: {
+  workspaces: OpeningConditionWorkspace[];
+  selectedWorkspaceId: string;
+  onSelectWorkspace: (workspaceId: string) => void;
+}) {
+  return (
+    <div className="opening-condition-page">
+      <section className="opening-condition-hero">
+        <div>
+          <span className="eyebrow">工作区上下文</span>
+          <h2>先选择项目、标段和参与机构</h2>
+          <p>开工条件核查不会直接从通用上传开始。正式核查前，需要先确定项目、合同包、参与机构和核查目的。</p>
+        </div>
+        <div className="opening-condition-verdict">
+          <strong>{workspaces.length}</strong>
+          <span>个工作区</span>
+        </div>
+      </section>
+
+      <section className="opening-condition-grid">
+        {workspaces.map((workspace) => (
+          <article
+            key={workspace.id}
+            className={
+              selectedWorkspaceId === workspace.id
+                ? "opening-panel opening-workspace-card active"
+                : "opening-panel opening-workspace-card"
+            }
+          >
+            <span className="eyebrow">{workspace.tenantName}</span>
+            <h2>{workspace.projectName}</h2>
+            <p>{workspace.purpose}</p>
+            <div className="opening-condition-meta">
+              <span>{workspace.contractPackage}</span>
+              <span>{workspace.participatingOrganization}</span>
+              <span>{workspace.roleContext}</span>
+            </div>
+            <button type="button" className="primary" onClick={() => onSelectWorkspace(workspace.id)}>
+              {selectedWorkspaceId === workspace.id ? "当前工作区" : "选择工作区"}
+            </button>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+export function OpeningConditionBasisPage({
+  packet,
+  onConfirmBasis,
+  onPublishBasis,
+}: {
+  packet: OpeningConditionReviewPacket;
+  onConfirmBasis: (basisId: string) => void;
+  onPublishBasis: (basisId: string) => void;
+}) {
+  const publishedBasis = packet.basisVersions.filter((basis) => basis.status === "published");
+  const candidateBasis = packet.basisVersions.filter((basis) => basis.status !== "published");
+
+  function renderBasis(basis: OpeningConditionBasisVersion) {
+    return (
+      <div key={basis.id}>
+        <strong>{basis.title}</strong>
+        <span>
+          {openingConditionRecordStatusLabels[basis.status]} · {basis.componentType} · {basis.confidence}
+        </span>
+        <p>{basis.applicability}</p>
+        <div className="dialog-actions">
+          {basis.status !== "published" && (
+            <button type="button" className="secondary" onClick={() => onConfirmBasis(basis.id)}>
+              人工确认
+            </button>
+          )}
+          {basis.status === "confirmed" && (
+            <button type="button" className="primary" onClick={() => onPublishBasis(basis.id)}>
+              发布依据版本
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="opening-condition-grid">
+      <article className="opening-panel">
+        <span className="eyebrow">已发布依据集</span>
+        <h2>正式核查绑定版本</h2>
+        <div className="opening-record-list">
+          {publishedBasis.length ? publishedBasis.map(renderBasis) : <p>暂无已发布依据版本。</p>}
+        </div>
+      </article>
+
+      <article className="opening-panel">
+        <span className="eyebrow">临时候选</span>
+        <h2>OCR/AI 抽取后待人工确认</h2>
+        <div className="opening-record-list">
+          {candidateBasis.length ? candidateBasis.map(renderBasis) : <p>暂无待确认依据候选。</p>}
+        </div>
+      </article>
+    </div>
+  );
+}
+
+export function OpeningConditionMasterDataPage({
+  packet,
+  onConfirmRecord,
+  onRejectRecord,
+  onPublishRecord,
+}: {
+  packet: OpeningConditionReviewPacket;
+  onConfirmRecord: (recordId: string) => void;
+  onRejectRecord: (recordId: string) => void;
+  onPublishRecord: (recordId: string) => void;
+}) {
+  const readiness = getOpeningConditionMasterDataReadiness(packet.masterData);
+  const publishedRecords = packet.masterData.filter((record) => record.status === "published");
+  const provisionalRecords = packet.masterData.filter((record) => record.status !== "published");
+
+  function renderRecord(record: OpeningConditionMasterDataRecord) {
+    return (
+      <div key={record.id}>
+        <strong>{record.label}</strong>
+        <span>
+          {record.type} · {openingConditionRecordStatusLabels[record.status]} · {record.confidence}
+        </span>
+        <p>{record.validity}</p>
+        {record.reviewNeededReason && <small>{record.reviewNeededReason}</small>}
+        <div className="dialog-actions">
+          {record.status !== "published" && record.status !== "rejected" && (
+            <button type="button" className="secondary" onClick={() => onConfirmRecord(record.id)}>
+              确认字段
+            </button>
+          )}
+          {record.status === "confirmed" && (
+            <button type="button" className="primary" onClick={() => onPublishRecord(record.id)}>
+              发布入库
+            </button>
+          )}
+          {record.status !== "published" && record.status !== "rejected" && (
+            <button type="button" className="danger subtle" onClick={() => onRejectRecord(record.id)}>
+              驳回
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="opening-condition-page">
+      <section className="opening-metric-grid">
+        <MetricBlock label="已发布" value={readiness.published} tone="success" />
+        <MetricBlock label="待发布" value={readiness.provisional} />
+        <MetricBlock label="待复核" value={readiness.reviewNeeded} tone="danger" />
+        <MetricBlock label="已驳回" value={readiness.rejected} />
+      </section>
+      <section className="opening-condition-grid">
+        <article className="opening-panel">
+          <span className="eyebrow">发布目录</span>
+          <h2>正式核查可复用主数据</h2>
+          <div className="opening-record-list">
+            {publishedRecords.length ? publishedRecords.map(renderRecord) : <p>暂无已发布主数据。</p>}
+          </div>
+        </article>
+        <article className="opening-panel">
+          <span className="eyebrow">临时抽取</span>
+          <h2>待人工确认或驳回</h2>
+          <div className="opening-record-list">
+            {provisionalRecords.length ? provisionalRecords.map(renderRecord) : <p>暂无临时抽取记录。</p>}
+          </div>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+export function OpeningConditionHumanReviewPage({ packet }: { packet: OpeningConditionReviewPacket }) {
+  const humanReviewItems = getOpeningConditionHumanReviewItems(packet);
+
+  return (
+    <section className="opening-panel">
+      <span className="eyebrow">Dify Human Input / 平台人工复核</span>
+      <h2>关键不确定项由人工裁定</h2>
+      <div className="opening-record-list">
+        {humanReviewItems.map((item) => (
+          <div key={item.id}>
+            <strong>{item.targetLabel}</strong>
+            <span>{item.difyNode}</span>
+            <p>{item.reason}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function OpeningConditionReportsPage({ packet }: { packet: OpeningConditionReviewPacket }) {
+  const verdictSummary = getOpeningConditionVerdictSummary(packet);
+
+  return (
+    <section className="opening-panel opening-panel-report">
+      <span className="eyebrow">内部辅助报告</span>
+      <h2>{packet.reportSummary.title}</h2>
+      <p>{packet.reportSummary.conclusion}</p>
+      <div className="opening-condition-meta">
+        <span>{packet.workspaceContext.contractPackage}</span>
+        <span>{packet.boundBasisSetVersionId ?? "未绑定依据版本"}</span>
+        <span>{verdictSummary.needsHumanReview} 项待复核</span>
+      </div>
+      <strong>{packet.reportSummary.nextAction}</strong>
+      <small>{packet.reportSummary.disclaimer}</small>
+    </section>
+  );
+}
+
+export function OpeningConditionReviewPage({
+  roleLabel,
+  packet = openingConditionReviewPacket,
+}: {
+  roleLabel: string;
+  packet?: OpeningConditionReviewPacket;
+}) {
   const verdictSummary = getOpeningConditionVerdictSummary(packet);
   const riskSummary = getOpeningConditionRiskSummary(packet);
   const humanReviewItems = getOpeningConditionHumanReviewItems(packet);
-  const confirmedBasisCount = packet.basisVersions.filter((item) => item.status === "confirmed").length;
-  const confirmedMasterDataCount = packet.masterData.filter((item) => item.status === "confirmed").length;
+  const confirmedBasisCount = packet.basisVersions.filter((item) => item.status === "published").length;
+  const confirmedMasterDataCount = packet.masterData.filter((item) => item.status === "published").length;
 
   return (
     <div className="opening-condition-page">

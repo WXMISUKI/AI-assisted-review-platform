@@ -3,8 +3,11 @@ import {
   BookOpen,
   ClipboardCheck,
   Database,
+  FileCheck2,
+  FolderKanban,
   GitCompareArrows,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   SunMoon,
   Users,
@@ -13,8 +16,14 @@ import {
   DataAssetsPage,
   DocumentLibraryPage,
   KnowledgeBasePage,
+  OpeningConditionBasisPage,
+  OpeningConditionHumanReviewPage,
+  OpeningConditionMasterDataPage,
   LoginPage,
   OpeningConditionReviewPage,
+  OpeningConditionReportsPage,
+  OpeningConditionWorkspacePage,
+  ProductLauncherPage,
   ResultPreviewPage,
   ReviewLoadingPage,
 } from "./appShellPages";
@@ -22,13 +31,33 @@ import {
   getInitialTheme,
   getOcrLoadingStageIndex,
   modeName,
+  openingConditionPortalPageLabels,
   pageLabels,
   statusLabels,
   NavButton,
 } from "./appShellDisplay";
 import { roleLabels, roleModes } from "./appShellTypes";
-import type { LibraryDocument, Session, ShellPage, StreamingStage, ThemeMode, UploadDraft } from "./appShellTypes";
+import type {
+  LibraryDocument,
+  OpeningConditionPortalPage,
+  Session,
+  ShellPage,
+  StreamingStage,
+  ThemeMode,
+  UploadDraft,
+} from "./appShellTypes";
 import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
+import {
+  createActiveProductContext,
+  getAccessibleProductPortals,
+  type ProductPortalId,
+} from "./domain/productPortal";
+import {
+  getOpeningConditionMasterDataReadiness,
+  getOpeningConditionWorkspacePacket,
+  openingConditionWorkspaces,
+  type OpeningConditionReviewPacket,
+} from "./domain/openingConditionReview";
 import type {
   ReviewCompletionPayload,
   ReviewMode,
@@ -87,7 +116,14 @@ import {
 export function App() {
   const initialTasks = useMemo(() => listReviewTasks(), []);
   const [session, setSession] = useState<Session | null>(null);
+  const [activeProduct, setActiveProduct] = useState<ProductPortalId | null>(null);
   const [activePage, setActivePage] = useState<ShellPage>("documents");
+  const [openingActivePage, setOpeningActivePage] =
+    useState<OpeningConditionPortalPage>("workspace-context");
+  const [openingWorkspaceId, setOpeningWorkspaceId] = useState(openingConditionWorkspaces[0]?.id ?? "");
+  const [openingPacket, setOpeningPacket] = useState<OpeningConditionReviewPacket>(() =>
+    getOpeningConditionWorkspacePacket(openingConditionWorkspaces[0]?.id ?? ""),
+  );
   const [selectedDocId, setSelectedDocId] = useState(initialTasks[0]?.id ?? "");
   const [documents, setDocuments] = useState<LibraryDocument[]>(initialTasks);
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
@@ -104,6 +140,11 @@ export function App() {
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
   const deleteTargetDocument = documents.find((doc) => doc.id === deleteTargetId) ?? null;
   const allowedModes: ReviewMode[] = session ? roleModes[session.role] : ["review", "revise"];
+  const accessibleProducts = useMemo(
+    () => (session ? getAccessibleProductPortals(session.role) : []),
+    [session],
+  );
+  const activeProductContext = activeProduct ? createActiveProductContext(activeProduct) : null;
 
   function replaceDocumentFromBackend(task: LibraryDocument | undefined) {
     if (!task) {
@@ -670,13 +711,137 @@ export function App() {
 
   function handleSignIn(nextSession: Session) {
     setSession(nextSession);
+    const products = getAccessibleProductPortals(nextSession.role);
+    setActiveProduct(products.length === 1 ? products[0].id : null);
     setSelectedDocId(documents[0]?.id ?? "");
     setActivePage("documents");
+    setOpeningActivePage("workspace-context");
   }
 
   function handleLogout() {
     setSession(null);
+    setActiveProduct(null);
     setActivePage("documents");
+    setOpeningActivePage("workspace-context");
+  }
+
+  function selectProduct(productId: ProductPortalId) {
+    setActiveProduct(productId);
+
+    if (productId === "construction-plan-review") {
+      setActivePage("documents");
+      return;
+    }
+
+    setOpeningActivePage("workspace-context");
+  }
+
+  function selectOpeningWorkspace(workspaceId: string) {
+    setOpeningWorkspaceId(workspaceId);
+    setOpeningPacket(getOpeningConditionWorkspacePacket(workspaceId));
+  }
+
+  function confirmOpeningBasis(basisId: string) {
+    setOpeningPacket((currentPacket) => ({
+      ...currentPacket,
+      basisVersions: currentPacket.basisVersions.map((basis) =>
+        basis.id === basisId
+          ? {
+              ...basis,
+              status: "confirmed",
+              confirmedBy: roleLabels[session?.role ?? "supervisor"],
+              confirmedAt: new Date().toISOString(),
+              correctionNote: "人工确认依据适用于当前工作区。",
+              score: basis.score ?? 90,
+            }
+          : basis,
+      ),
+    }));
+  }
+
+  function publishOpeningBasis(basisId: string) {
+    setOpeningPacket((currentPacket) => ({
+      ...currentPacket,
+      boundBasisSetVersionId: basisId,
+      workspaceContext: {
+        ...currentPacket.workspaceContext,
+        activeBasisSetVersionId: basisId,
+      },
+      basisVersions: currentPacket.basisVersions.map((basis) =>
+        basis.id === basisId
+          ? {
+              ...basis,
+              status: "published",
+              publishedAt: new Date().toISOString(),
+            }
+          : basis,
+      ),
+    }));
+  }
+
+  function confirmOpeningMasterData(recordId: string) {
+    setOpeningPacket((currentPacket) => ({
+      ...currentPacket,
+      masterData: currentPacket.masterData.map((record) =>
+        record.id === recordId
+          ? {
+              ...record,
+              status: "confirmed",
+              confirmedBy: roleLabels[session?.role ?? "supervisor"],
+              confirmedAt: new Date().toISOString(),
+              correctionNote: "人工确认字段与证据匹配。",
+              score: record.score ?? 90,
+            }
+          : record,
+      ),
+    }));
+  }
+
+  function rejectOpeningMasterData(recordId: string) {
+    setOpeningPacket((currentPacket) => {
+      const masterData = currentPacket.masterData.map((record) =>
+        record.id === recordId
+          ? {
+              ...record,
+              status: "rejected" as const,
+              reviewNeededReason: "人工驳回该临时抽取记录，不纳入正式主数据。",
+            }
+          : record,
+      );
+
+      return {
+        ...currentPacket,
+        masterData,
+        masterDataReadiness: getOpeningConditionMasterDataReadiness(masterData),
+      };
+    });
+  }
+
+  function publishOpeningMasterData(recordId: string) {
+    setOpeningPacket((currentPacket) => {
+      const masterData = currentPacket.masterData.map((record) =>
+        record.id === recordId
+          ? {
+              ...record,
+              status: "published" as const,
+              publishedAt: new Date().toISOString(),
+            }
+          : record,
+      );
+
+      return {
+        ...currentPacket,
+        masterData,
+        masterDataReadiness: getOpeningConditionMasterDataReadiness(masterData),
+      };
+    });
+  }
+
+  function returnToProductLauncher() {
+    setActiveProduct(null);
+    setActivePage("documents");
+    setLoadingDocId(null);
+    setOpeningActivePage("workspace-context");
   }
 
   function toggleTheme() {
@@ -990,6 +1155,131 @@ export function App() {
     return <LoginPage onSignIn={handleSignIn} themeMode={themeMode} onToggleTheme={toggleTheme} />;
   }
 
+  if (!activeProduct) {
+    return (
+      <ProductLauncherPage
+        entries={accessibleProducts}
+        roleLabel={roleLabels[session.role]}
+        username={session.username}
+        themeMode={themeMode}
+        onToggleTheme={toggleTheme}
+        onSelectProduct={selectProduct}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (activeProduct === "opening-condition-review") {
+    const openingNavItems: Array<{
+      page: OpeningConditionPortalPage;
+      icon: typeof LayoutDashboard;
+    }> = [
+      { page: "workspace-context", icon: FolderKanban },
+      { page: "basis-sets", icon: BookOpen },
+      { page: "master-data", icon: Database },
+      { page: "check-tasks", icon: ClipboardCheck },
+      { page: "human-review", icon: ListChecks },
+      { page: "reports", icon: FileCheck2 },
+    ];
+
+    return (
+      <div className="platform-shell opening-portal-shell">
+        <aside className="shell-sidebar">
+          <div className="shell-brand">
+            <div className="shell-brand-mark">OC</div>
+            <div>
+              <strong>开工条件核查</strong>
+              <span>{activeProductContext?.routeNamespace}</span>
+            </div>
+          </div>
+
+          <nav className="shell-nav" aria-label="开工条件核查导航">
+            {openingNavItems.map((item) => (
+              <NavButton
+                key={item.page}
+                icon={item.icon}
+                label={openingConditionPortalPageLabels[item.page]}
+                active={openingActivePage === item.page}
+                onClick={() => setOpeningActivePage(item.page)}
+              />
+            ))}
+          </nav>
+
+          <div className="shell-sidebar-foot">
+            <div className="shell-role-card">
+              <span className="eyebrow">当前门户</span>
+              <strong>{roleLabels[session.role]}</strong>
+              <p>{session.username}</p>
+            </div>
+            <button type="button" className="shell-logout" onClick={returnToProductLauncher}>
+              <GitCompareArrows size={16} />
+              返回产品入口
+            </button>
+            <button type="button" className="shell-logout" onClick={handleLogout}>
+              <LogOut size={16} />
+              退出登录
+            </button>
+          </div>
+        </aside>
+
+        <section className="shell-main">
+          <header className="shell-topbar">
+            <div>
+              <span className="eyebrow">开工条件核查门户</span>
+              <h1>{openingConditionPortalPageLabels[openingActivePage]}</h1>
+            </div>
+            <div className="shell-topbar-actions">
+              <button type="button" className="theme-toggle" onClick={toggleTheme}>
+                <SunMoon size={16} />
+                {themeMode === "light" ? "深色主题" : "浅色主题"}
+              </button>
+              <span className="shell-role-pill">
+                <Users size={14} />
+                {roleLabels[session.role]}
+              </span>
+              <span className="shell-role-pill muted">
+                <GitCompareArrows size={14} />
+                独立业务上下文
+              </span>
+            </div>
+          </header>
+
+          <div className="shell-content">
+            {openingActivePage === "workspace-context" && (
+              <OpeningConditionWorkspacePage
+                workspaces={openingConditionWorkspaces}
+                selectedWorkspaceId={openingWorkspaceId}
+                onSelectWorkspace={selectOpeningWorkspace}
+              />
+            )}
+            {openingActivePage === "basis-sets" && (
+              <OpeningConditionBasisPage
+                packet={openingPacket}
+                onConfirmBasis={confirmOpeningBasis}
+                onPublishBasis={publishOpeningBasis}
+              />
+            )}
+            {openingActivePage === "master-data" && (
+              <OpeningConditionMasterDataPage
+                packet={openingPacket}
+                onConfirmRecord={confirmOpeningMasterData}
+                onRejectRecord={rejectOpeningMasterData}
+                onPublishRecord={publishOpeningMasterData}
+              />
+            )}
+            {openingActivePage === "check-tasks" && (
+              <OpeningConditionReviewPage roleLabel={roleLabels[session.role]} packet={openingPacket} />
+            )}
+            {openingActivePage === "human-review" && (
+              <OpeningConditionHumanReviewPage packet={openingPacket} />
+            )}
+            {openingActivePage === "reports" && <OpeningConditionReportsPage packet={openingPacket} />}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (activePage === "review-detail" && selectedDocument) {
     return (
       <ReviewWorkbenchPage
@@ -1037,7 +1327,7 @@ export function App() {
           <div className="shell-brand-mark">AI</div>
           <div>
             <strong>施工审查平台</strong>
-            <span>企业审查工作台</span>
+            <span>{activeProductContext?.routeNamespace}</span>
           </div>
         </div>
 
@@ -1047,12 +1337,6 @@ export function App() {
             label={pageLabels.documents}
             active={activePage === "documents"}
             onClick={() => setActivePage("documents")}
-          />
-          <NavButton
-            icon={ClipboardCheck}
-            label={pageLabels["opening-condition-review"]}
-            active={activePage === "opening-condition-review"}
-            onClick={() => setActivePage("opening-condition-review")}
           />
           <NavButton
             icon={BookOpen}
@@ -1077,6 +1361,10 @@ export function App() {
           <button type="button" className="shell-logout" onClick={handleLogout}>
             <LogOut size={16} />
             退出登录
+          </button>
+          <button type="button" className="shell-logout" onClick={returnToProductLauncher}>
+            <GitCompareArrows size={16} />
+            返回产品入口
           </button>
         </div>
       </aside>
@@ -1131,10 +1419,6 @@ export function App() {
               onOpenResult={openResult}
               onDeleteDocument={requestDeleteDocument}
             />
-          )}
-
-          {activePage === "opening-condition-review" && (
-            <OpeningConditionReviewPage roleLabel={roleLabels[session.role]} />
           )}
 
           {activePage === "knowledge-base" && <KnowledgeBasePage />}

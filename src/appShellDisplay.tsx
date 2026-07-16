@@ -22,9 +22,17 @@ import { roleLabels, roleModes } from "./appShellTypes";
 
 export const pageLabels = {
   documents: "文档库",
-  "opening-condition-review": "开工条件核查",
   "knowledge-base": "知识库",
   "data-assets": "数据资产",
+} as const;
+
+export const openingConditionPortalPageLabels = {
+  "workspace-context": "工作区",
+  "basis-sets": "依据集",
+  "master-data": "主数据",
+  "check-tasks": "核查任务",
+  "human-review": "人工复核",
+  reports: "辅助报告",
 } as const;
 
 export const statusLabels: Record<DocumentStatus, string> = {
