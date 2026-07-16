@@ -44,6 +44,40 @@ export type OpeningConditionReviewTrigger =
   | "master-data-missing"
   | "rule-semantic-conflict";
 
+export type OpeningConditionScopeStatus = "in-scope" | "out-of-scope";
+
+export type OpeningConditionDocumentPresence = "present" | "missing" | "ambiguous" | "not-required";
+
+export type OpeningConditionRelevanceStatus =
+  | "matched"
+  | "wrong-subject"
+  | "wrong-project"
+  | "unconfirmed"
+  | "not-applicable";
+
+export type OpeningConditionContentCompliance =
+  | "compliant"
+  | "non-compliant"
+  | "partially-compliant"
+  | "not-evaluated";
+
+export type OpeningConditionFinalDisposition =
+  | "pass"
+  | "fail"
+  | "needs-human-review"
+  | "blocked"
+  | "not-applicable";
+
+export interface OpeningConditionVisualAssertion {
+  type: "stamp" | "signature" | "checkbox" | "handwritten-date" | "seal" | "other";
+  status: "detected" | "missing" | "uncertain" | "confirmed" | "rejected" | "not-required";
+  confidence: "high" | "medium" | "low";
+  locator: string;
+  evidenceIds: string[];
+  requiresHumanReview: boolean;
+  note: string;
+}
+
 export interface OpeningConditionWorkspace {
   id: string;
   tenantName: string;
@@ -175,6 +209,12 @@ export interface OpeningConditionCheckItem {
   humanReviewIds: string[];
   blockedReason?: string;
   rectification: string;
+  scopeStatus?: OpeningConditionScopeStatus;
+  documentPresence?: OpeningConditionDocumentPresence;
+  relevanceStatus?: OpeningConditionRelevanceStatus;
+  contentCompliance?: OpeningConditionContentCompliance;
+  visualAssertions?: OpeningConditionVisualAssertion[];
+  finalDisposition?: OpeningConditionFinalDisposition;
 }
 
 export interface OpeningConditionReportSummary {
@@ -291,6 +331,21 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   stage: "human-review",
   difyWorkflowName: "平台内可控工作流",
   basisVersions: [
+    {
+      id: "basis-contract-g15-08",
+      workspaceId: "oc-ws-g15-08-supervisor",
+      title: "8标承台施工分包合同与工作范围",
+      componentType: "contract",
+      source: "施工单位上传分包合同",
+      version: "2026-07 contract boundary",
+      status: "published",
+      confirmedBy: "监理工程师",
+      confirmedAt: "2026-07-15 09:05",
+      publishedAt: "2026-07-15 09:18",
+      score: 94,
+      applicability: "确认嘉金八标项目经理部参与机构、承台施工范围和资料归属边界，不作为完整人员设备清单。",
+      confidence: "high",
+    },
     {
       id: "basis-opening-2026-001",
       workspaceId: "oc-ws-g15-08-supervisor",
@@ -442,6 +497,12 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       evidenceIds: ["ev-person-001"],
       humanReviewIds: [],
       rectification: "无需整改。",
+      scopeStatus: "in-scope",
+      documentPresence: "present",
+      relevanceStatus: "matched",
+      contentCompliance: "compliant",
+      visualAssertions: [],
+      finalDisposition: "pass",
     },
     {
       id: "oc-check-002",
@@ -457,6 +518,12 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       evidenceIds: ["ev-equipment-001"],
       humanReviewIds: [],
       rectification: "无需整改。",
+      scopeStatus: "in-scope",
+      documentPresence: "present",
+      relevanceStatus: "matched",
+      contentCompliance: "compliant",
+      visualAssertions: [],
+      finalDisposition: "pass",
     },
     {
       id: "oc-check-003",
@@ -474,6 +541,22 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       humanReviewIds: ["hr-stamp-001", "hr-item-001"],
       blockedReason: "依赖的制度资料主数据仍待人工复核，不能自动判定通过。",
       rectification: "人工确认签章单位、签字人和日期；若无法确认，应补充清晰审批表。",
+      scopeStatus: "in-scope",
+      documentPresence: "present",
+      relevanceStatus: "matched",
+      contentCompliance: "not-evaluated",
+      visualAssertions: [
+        {
+          type: "stamp",
+          status: "uncertain",
+          confidence: "low",
+          locator: "第3页 / 签章区域",
+          evidenceIds: ["ev-stamp-001"],
+          requiresHumanReview: true,
+          note: "检测到疑似施工单位盖章，但日期和签字清晰度不足；只能确认待复核存在性，不证明实体签章真实有效。",
+        },
+      ],
+      finalDisposition: "needs-human-review",
     },
     {
       id: "oc-check-004",
@@ -489,12 +572,40 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       evidenceIds: ["ev-basis-001"],
       humanReviewIds: ["hr-basis-001"],
       rectification: "由监理确认 JTG/T 3650-2020 等专项依据是否纳入本次辅助核查。",
+      scopeStatus: "in-scope",
+      documentPresence: "present",
+      relevanceStatus: "unconfirmed",
+      contentCompliance: "partially-compliant",
+      visualAssertions: [],
+      finalDisposition: "needs-human-review",
+    },
+    {
+      id: "oc-check-005",
+      category: "现场核查",
+      subCategory: "现场条件",
+      content: "现场临边防护、排水和应急物资布设情况。",
+      mandatory: false,
+      verdict: "warning",
+      riskLevel: "medium",
+      ruleExplanation: "该项属于现场核查范围，当前资料核查试点不依据资料包判定现场真实状态。",
+      semanticNote: "已标记为本轮不适用，不计入资料缺失。",
+      basisVersionId: "basis-opening-2026-001",
+      masterDataIds: [],
+      evidenceIds: [],
+      humanReviewIds: [],
+      rectification: "后续若接入现场照片、巡检记录或移动端核验，再进入现场核查流程。",
+      scopeStatus: "out-of-scope",
+      documentPresence: "not-required",
+      relevanceStatus: "not-applicable",
+      contentCompliance: "not-evaluated",
+      visualAssertions: [],
+      finalDisposition: "not-applicable",
     },
   ],
   reportSummary: {
     title: "开工条件核查内部辅助意见",
-    conclusion: "当前资料基础条件基本具备；本核查包绑定 basis-opening-2026-001 依据集版本，但仍有 3 项待人工复核内容，签章日期和专项依据适用性确认前不建议出具最终通过意见。",
-    nextAction: "优先处理平台人工复核队列中的依据确认、签章字段确认和结论复核。",
+    conclusion: "当前资料基础条件基本具备；本核查包绑定合同边界 basis-contract-g15-08 与 basis-opening-2026-001 依据集版本。人员、设备已通过项目主数据确认，签章日期和专项依据适用性确认前不建议出具最终通过意见。",
+    nextAction: "优先处理平台人工复核队列中的依据确认、签章字段确认和结论复核；现场核查项已标记为本轮不适用。",
     disclaimer: "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
   },
 };

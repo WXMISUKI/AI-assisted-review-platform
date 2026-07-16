@@ -44,6 +44,14 @@ const allowedTransitions = {
   canceled: new Set([]),
 };
 
+const scopeStatusValues = new Set(["in_scope", "out_of_scope"]);
+const documentPresenceValues = new Set(["present", "missing", "ambiguous", "not_required"]);
+const relevanceStatusValues = new Set(["matched", "wrong_subject", "wrong_project", "unconfirmed", "not_applicable"]);
+const contentComplianceValues = new Set(["compliant", "non_compliant", "partially_compliant", "not_evaluated"]);
+const finalDispositionValues = new Set(["pass", "fail", "needs_human_review", "blocked", "not_applicable"]);
+const visualAssertionTypes = new Set(["stamp", "signature", "checkbox", "handwritten_date", "seal", "other"]);
+const visualAssertionStatuses = new Set(["detected", "missing", "uncertain", "confirmed", "rejected", "not_required"]);
+
 let writeQueue = Promise.resolve();
 
 function isPlainObject(value) {
@@ -257,6 +265,29 @@ function normalizeMasterDataRecord(value, workspaceId = "") {
   });
 }
 
+function normalizeVisualAssertion(value, fallbackEvidenceIds = []) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const type = visualAssertionTypes.has(value.type) ? value.type : "other";
+  const status = visualAssertionStatuses.has(value.status) ? value.status : "uncertain";
+  const confidence = ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "low";
+  const evidenceIds = Array.isArray(value.evidenceIds)
+    ? value.evidenceIds.map((item) => normalizeString(item, "", 180)).filter(Boolean).slice(0, 50)
+    : fallbackEvidenceIds;
+
+  return sanitizeOpeningConditionPilotValue({
+    type,
+    status,
+    confidence,
+    locator: normalizeString(value.locator, "", 240) || undefined,
+    evidenceIds,
+    requiresHumanReview: value.requiresHumanReview !== false && status !== "detected" && status !== "confirmed",
+    note: normalizeString(value.note, "", 500) || undefined,
+  });
+}
+
 function normalizePacket(value, taskId, workspaceId) {
   if (!isPlainObject(value)) {
     return undefined;
@@ -358,12 +389,17 @@ function normalizeChecklistItem(value, index = 0) {
   return {
     id: normalizeString(source.id, `check-${index + 1}`, 180),
     category: normalizeString(source.category, "资料核查", 160),
+    subCategory: normalizeString(source.subCategory, "", 120),
     name,
     required: source.required !== false && source.mandatory !== false,
     expectedEvidenceHints: hints.length > 0 ? hints : [name],
     basisVersionId: normalizeString(source.basisVersionId, "", 180),
     masterDataIds: Array.isArray(source.masterDataIds)
       ? source.masterDataIds.map((item) => normalizeString(item, "", 180)).filter(Boolean).slice(0, 50)
+      : [],
+    scopeStatus: scopeStatusValues.has(source.scopeStatus) ? source.scopeStatus : undefined,
+    visualAssertions: Array.isArray(source.visualAssertions)
+      ? source.visualAssertions.map((item) => normalizeVisualAssertion(item)).filter(Boolean).slice(0, 20)
       : [],
   };
 }
@@ -399,6 +435,14 @@ function normalizeCheckItem(value, taskId) {
     humanReviewIds: Array.isArray(value.humanReviewIds)
       ? value.humanReviewIds.map((item) => normalizeString(item, "", 180)).filter(Boolean).slice(0, 50)
       : [],
+    scopeStatus: scopeStatusValues.has(value.scopeStatus) ? value.scopeStatus : undefined,
+    documentPresence: documentPresenceValues.has(value.documentPresence) ? value.documentPresence : undefined,
+    relevanceStatus: relevanceStatusValues.has(value.relevanceStatus) ? value.relevanceStatus : undefined,
+    contentCompliance: contentComplianceValues.has(value.contentCompliance) ? value.contentCompliance : undefined,
+    visualAssertions: Array.isArray(value.visualAssertions)
+      ? value.visualAssertions.map((item) => normalizeVisualAssertion(item, value.evidenceIds ?? [])).filter(Boolean)
+      : [],
+    finalDisposition: finalDispositionValues.has(value.finalDisposition) ? value.finalDisposition : undefined,
   });
 }
 
@@ -427,6 +471,90 @@ function getMatchScore(checklistItem, objectRef) {
     const partial = hint.length >= 2 && fileText.includes(hint.slice(0, Math.min(4, hint.length))) ? 1 : 0;
     return score + partial;
   }, 0);
+}
+
+function getChecklistReviewText(checklistItem) {
+  return normalizeMatchText(
+    [
+      checklistItem.category,
+      checklistItem.subCategory,
+      checklistItem.name,
+      ...(checklistItem.expectedEvidenceHints ?? []),
+    ].join(" "),
+  );
+}
+
+function isOutOfScopeChecklistItem(checklistItem) {
+  if (checklistItem.scopeStatus === "out_of_scope") {
+    return true;
+  }
+
+  const text = getChecklistReviewText(checklistItem);
+  return /现场核查|现场检查|现场确认|应急响应|应急演练|应急处置|现场观测/.test(text);
+}
+
+function isResourceChecklistItem(checklistItem) {
+  const text = getChecklistReviewText(checklistItem);
+  return /人员|安全员|特种作业|作业人员|管理人员|设备|机械|起重|汽车吊|泵车|仪器/.test(text);
+}
+
+function getAuthorizedMasterDataIds(task, checklistItem) {
+  const authorizedIds = new Set(task.requiredMasterData.map((record) => record.id));
+  return checklistItem.masterDataIds.filter((masterDataId) => authorizedIds.has(masterDataId));
+}
+
+function getVisualAssertionType(checklistItem) {
+  const text = getChecklistReviewText(checklistItem);
+  if (/盖章|公章|印章|章/.test(text)) return "stamp";
+  if (/签字|签名/.test(text)) return "signature";
+  if (/勾选|打勾|勾|复选/.test(text)) return "checkbox";
+  if (/手写日期|日期/.test(text)) return "handwritten_date";
+  if (/签章|盖印/.test(text)) return "seal";
+  return "";
+}
+
+function buildVisualAssertions(checklistItem, matches, evidenceIds) {
+  if (Array.isArray(checklistItem.visualAssertions) && checklistItem.visualAssertions.length > 0) {
+    return checklistItem.visualAssertions.map((assertion) =>
+      normalizeVisualAssertion(
+        {
+          ...assertion,
+          evidenceIds: assertion.evidenceIds?.length ? assertion.evidenceIds : evidenceIds,
+        },
+        evidenceIds,
+      ),
+    );
+  }
+
+  const type = getVisualAssertionType(checklistItem);
+  if (!type) {
+    return [];
+  }
+
+  const evidenceText = matches.map((match) => `${match.objectRef.fileName} ${match.objectRef.summary ?? ""}`).join(" ");
+  const normalizedEvidenceText = normalizeMatchText(evidenceText);
+  const stable = /清晰|完整|已确认|签章完整|盖章完整|签字完整|勾选完整/.test(normalizedEvidenceText);
+  const uncertain = matches.length === 0 || /疑似|不清晰|模糊|低置信|无法确认|待确认/.test(normalizedEvidenceText);
+  const status = stable && !uncertain ? "detected" : matches.length === 0 ? "missing" : "uncertain";
+  const confidence = status === "detected" ? "high" : matches.length > 0 ? "low" : "low";
+
+  return [
+    normalizeVisualAssertion(
+      {
+        type,
+        status,
+        confidence,
+        locator: matches.length > 0 ? "资料包文件清单 / 视觉要素摘要" : "未命中稳定视觉要素资料",
+        evidenceIds,
+        requiresHumanReview: status !== "detected",
+        note:
+          status === "detected"
+            ? "检测到较稳定的视觉要素存在性，仍不代表实体签章或签名真实有效。"
+            : "视觉要素存在性或清晰度不足，需要人工确认。",
+      },
+      evidenceIds,
+    ),
+  ];
 }
 
 function buildSemanticNote(checklistItem, matches, verdict) {
@@ -1105,6 +1233,29 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
     const evidence = [];
     const humanReviewQueue = [];
     const checkItems = checklistItems.map((item, itemIndex) => {
+      if (isOutOfScopeChecklistItem(item)) {
+        return {
+          id: item.id,
+          taskId,
+          category: item.category,
+          name: item.name,
+          required: false,
+          verdict: "warning",
+          ruleExplanation: "该核查项属于当前试点不处理的现场、应急或非资料核查范围，未计入资料缺失。",
+          semanticNote: "当前开工条件试点只处理可由资料包和已发布主数据支撑的资料核查项。",
+          basisVersionId: item.basisVersionId || basisVersionId,
+          evidenceIds: [],
+          masterDataIds: item.masterDataIds,
+          humanReviewIds: [],
+          scopeStatus: "out_of_scope",
+          documentPresence: "not_required",
+          relevanceStatus: "not_applicable",
+          contentCompliance: "not_evaluated",
+          visualAssertions: [],
+          finalDisposition: "not_applicable",
+        };
+      }
+
       const scoredMatches = sourceObjects
         .map((objectRef) => ({
           objectRef,
@@ -1116,15 +1267,12 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
       const topMatches = scoredMatches.filter((match) => match.score === bestScore).slice(0, 5);
       const ambiguous = topMatches.length > 1;
       const missing = topMatches.length === 0;
-      const masterDataMissing = item.masterDataIds.some(
-        (masterDataId) => !existingTask.requiredMasterData.some((record) => record.id === masterDataId),
-      );
-      const needsHumanReview = ambiguous || missing || masterDataMissing;
-      const verdict = needsHumanReview
-        ? missing && item.required
-          ? "fail"
-          : "needs_human_review"
-        : "pass";
+      const isResourceItem = isResourceChecklistItem(item);
+      const authorizedMasterDataIds = getAuthorizedMasterDataIds(existingTask, item);
+      const masterDataMissing = item.masterDataIds.some((masterDataId) => !authorizedMasterDataIds.includes(masterDataId));
+      const masterDataAuthorizationMissing = isResourceItem
+        ? item.masterDataIds.length === 0 || masterDataMissing
+        : masterDataMissing;
       const itemEvidence = topMatches.map((match, matchIndex) => {
         const evidenceId = `ev-${item.id}-${matchIndex + 1}`;
         const evidenceRecord = {
@@ -1140,6 +1288,31 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         evidence.push(evidenceRecord);
         return evidenceId;
       });
+      const visualAssertions = buildVisualAssertions(item, topMatches, itemEvidence);
+      const visualReviewRequired = visualAssertions.some((assertion) => assertion?.requiresHumanReview);
+      const needsHumanReview = ambiguous || missing || masterDataAuthorizationMissing || visualReviewRequired;
+      const documentPresence = missing ? "missing" : ambiguous ? "ambiguous" : "present";
+      const relevanceStatus = missing ? "unconfirmed" : ambiguous ? "unconfirmed" : "matched";
+      const contentCompliance = needsHumanReview
+        ? masterDataAuthorizationMissing || visualReviewRequired || ambiguous
+          ? "not_evaluated"
+          : "non_compliant"
+        : "compliant";
+      const finalDisposition = needsHumanReview
+        ? missing && item.required && !visualReviewRequired
+          ? "fail"
+          : masterDataAuthorizationMissing
+            ? "blocked"
+            : "needs_human_review"
+        : "pass";
+      const verdict =
+        finalDisposition === "pass"
+          ? "pass"
+          : finalDisposition === "fail"
+            ? "fail"
+            : finalDisposition === "blocked"
+              ? "blocked"
+              : "needs_human_review";
       const humanReviewIds = [];
       if (needsHumanReview) {
         const reviewId = `hr-${item.id}`;
@@ -1150,9 +1323,13 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           targetId: item.id,
           reason: missing
             ? "资料包中未找到稳定匹配文件。"
-            : masterDataMissing
-              ? "核查项引用的主数据尚未发布或未绑定。"
-              : "存在多个候选资料，需人工确认。",
+            : masterDataAuthorizationMissing
+              ? isResourceItem
+                ? "人员或设备资料已命中候选文件，但缺少合同边界下已发布或人工批准的项目主数据授权。"
+                : "核查项引用的主数据尚未发布、人工批准或未绑定。"
+              : visualReviewRequired
+                ? "签名、盖章、勾选或日期等视觉要素存在性或清晰度不足，需要人工确认。"
+                : "存在多个候选资料，需人工确认。",
           status: "open",
           evidenceIds: itemEvidence,
         });
@@ -1174,6 +1351,12 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         evidenceIds: itemEvidence,
         masterDataIds: item.masterDataIds,
         humanReviewIds,
+        scopeStatus: "in_scope",
+        documentPresence,
+        relevanceStatus,
+        contentCompliance,
+        visualAssertions,
+        finalDisposition,
       };
     });
     const finalState = humanReviewQueue.length > 0 ? "awaiting_human_review" : "report_ready";

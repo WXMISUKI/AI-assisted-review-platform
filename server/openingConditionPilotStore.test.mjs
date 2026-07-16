@@ -315,10 +315,108 @@ test("matches checklist items against packet inventory and opens human review fo
     assert.equal(result.ok, true);
     assert.equal(result.task.state, "awaiting_human_review");
     assert.equal(result.checkItems.find((item) => item.id === "item-person").verdict, "pass");
-    assert.equal(result.checkItems.find((item) => item.id === "item-equipment").verdict, "needs_human_review");
-    assert.equal(result.checkItems.find((item) => item.id === "item-stamp").verdict, "fail");
+    assert.equal(result.checkItems.find((item) => item.id === "item-equipment").verdict, "blocked");
+    assert.equal(result.checkItems.find((item) => item.id === "item-equipment").finalDisposition, "blocked");
+    assert.equal(result.checkItems.find((item) => item.id === "item-stamp").verdict, "needs_human_review");
+    assert.equal(result.checkItems.find((item) => item.id === "item-stamp").visualAssertions[0].requiresHumanReview, true);
     assert.equal(result.humanReviewQueue.length, 3);
     assert.equal(result.evidence.some((item) => item.objectRef.fileName === "专职安全员证书.pdf"), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps out-of-scope checklist items from missing-material failures", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-scope-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-1", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-1",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.xlsx",
+        },
+        sourceObjects: [],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch(
+      "task-1",
+      {
+        checklistItems: [
+          {
+            id: "item-site",
+            category: "现场核查",
+            name: "现场临边防护和应急响应",
+            expectedEvidenceHints: ["现场核查"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const item = result.checkItems[0];
+    assert.equal(result.ok, true);
+    assert.equal(result.task.state, "report_ready");
+    assert.equal(item.scopeStatus, "out_of_scope");
+    assert.equal(item.finalDisposition, "not_applicable");
+    assert.equal(result.humanReviewQueue.length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("routes uncertain visual assertions to human review", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-visual-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-1", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-1",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "开工申请审批表.pdf",
+            summary: "审批表签章疑似完整，签字日期不清晰。",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch(
+      "task-1",
+      {
+        checklistItems: [
+          {
+            id: "item-visual",
+            name: "开工申请审批表签章和签字日期",
+            expectedEvidenceHints: ["审批表", "签章", "日期"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const item = result.checkItems[0];
+    assert.equal(result.ok, true);
+    assert.equal(result.task.state, "awaiting_human_review");
+    assert.equal(item.verdict, "needs_human_review");
+    assert.equal(item.visualAssertions[0].status, "uncertain");
+    assert.equal(result.humanReviewQueue[0].reason.includes("视觉要素"), true);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -356,6 +454,7 @@ test("records human-review decisions and gates report readiness", async () => {
             id: "item-a",
             name: "安全员证书",
             expectedEvidenceHints: ["安全员"],
+            masterDataIds: ["md-1"],
           },
           {
             id: "item-b",
@@ -425,6 +524,7 @@ test("generates and archives auxiliary report assets after human review is clear
             id: "item-a",
             name: "安全员证书",
             expectedEvidenceHints: ["安全员"],
+            masterDataIds: ["md-1"],
           },
         ],
       },

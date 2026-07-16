@@ -835,6 +835,17 @@ export function KnowledgeBasePage() {
 }
 
 function OpeningConditionCheckItemRow({ item }: { item: OpeningConditionCheckItem }) {
+  const layeredLabels = [
+    item.scopeStatus && `范围 ${item.scopeStatus}`,
+    item.documentPresence && `资料 ${item.documentPresence}`,
+    item.relevanceStatus && `相关性 ${item.relevanceStatus}`,
+    item.contentCompliance && `内容 ${item.contentCompliance}`,
+    item.finalDisposition && `处置 ${item.finalDisposition}`,
+  ].filter(Boolean);
+  const visualAssertionSummary = item.visualAssertions
+    ?.map((assertion) => `${assertion.type}:${assertion.status}/${assertion.confidence}`)
+    .join(" · ");
+
   return (
     <article className={`opening-check-row verdict-${item.verdict}`}>
       <div>
@@ -847,6 +858,8 @@ function OpeningConditionCheckItemRow({ item }: { item: OpeningConditionCheckIte
         </h3>
         <p>{item.ruleExplanation}</p>
         {item.semanticNote && <small>{item.semanticNote}</small>}
+        {layeredLabels.length > 0 && <small>{layeredLabels.join(" · ")}</small>}
+        {visualAssertionSummary && <small>视觉断言：{visualAssertionSummary}</small>}
       </div>
       <div className="opening-check-meta">
         <span>{openingConditionVerdictLabels[item.verdict]}</span>

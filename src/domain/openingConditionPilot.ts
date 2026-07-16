@@ -90,6 +90,40 @@ export interface OpeningConditionPilotEvidence {
   masterDataIds: string[];
 }
 
+export type OpeningConditionPilotScopeStatus = "in_scope" | "out_of_scope";
+
+export type OpeningConditionPilotDocumentPresence = "present" | "missing" | "ambiguous" | "not_required";
+
+export type OpeningConditionPilotRelevanceStatus =
+  | "matched"
+  | "wrong_subject"
+  | "wrong_project"
+  | "unconfirmed"
+  | "not_applicable";
+
+export type OpeningConditionPilotContentCompliance =
+  | "compliant"
+  | "non_compliant"
+  | "partially_compliant"
+  | "not_evaluated";
+
+export type OpeningConditionPilotFinalDisposition =
+  | "pass"
+  | "fail"
+  | "needs_human_review"
+  | "blocked"
+  | "not_applicable";
+
+export interface OpeningConditionPilotVisualAssertion {
+  type: "stamp" | "signature" | "checkbox" | "handwritten_date" | "seal" | "other";
+  status: "detected" | "missing" | "uncertain" | "confirmed" | "rejected" | "not_required";
+  confidence: "high" | "medium" | "low";
+  locator?: string;
+  evidenceIds: string[];
+  requiresHumanReview: boolean;
+  note?: string;
+}
+
 export interface OpeningConditionPilotCheckItem {
   id: string;
   taskId: string;
@@ -103,6 +137,12 @@ export interface OpeningConditionPilotCheckItem {
   evidenceIds: string[];
   masterDataIds: string[];
   humanReviewIds: string[];
+  scopeStatus?: OpeningConditionPilotScopeStatus;
+  documentPresence?: OpeningConditionPilotDocumentPresence;
+  relevanceStatus?: OpeningConditionPilotRelevanceStatus;
+  contentCompliance?: OpeningConditionPilotContentCompliance;
+  visualAssertions?: OpeningConditionPilotVisualAssertion[];
+  finalDisposition?: OpeningConditionPilotFinalDisposition;
 }
 
 export interface OpeningConditionPilotHumanReviewItem {
@@ -177,4 +217,3 @@ export const openingConditionPilotStateLabels: Record<OpeningConditionPilotTaskS
   failed: "失败",
   canceled: "已取消",
 };
-
