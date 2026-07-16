@@ -228,7 +228,7 @@ export const openingConditionStageLabels: Record<OpeningConditionPacketStage, st
   "basis-confirmation": "判定依据确认",
   "master-data-initialization": "项目主数据初始化",
   "material-review": "开工条件资料核查",
-  "human-review": "Dify 人工复核",
+  "human-review": "平台人工复核",
   "report-ready": "辅助报告归档",
 };
 
@@ -289,7 +289,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   reviewTarget: "承台施工条件核查",
   serviceScenario: "supervisor-assisted-review",
   stage: "human-review",
-  difyWorkflowName: "开工条件核查",
+  difyWorkflowName: "平台内可控工作流",
   basisVersions: [
     {
       id: "basis-opening-2026-001",
@@ -407,7 +407,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       targetId: "basis-jtg-3650-2020",
       trigger: "basis-unconfirmed",
       reason: "专项规范适用范围由 OCR/LLM 识别，需监理确认是否纳入本次核查依据。",
-      difyNode: "依据确认 Human Input",
+      difyNode: "依据确认人工复核",
     },
     {
       id: "hr-stamp-001",
@@ -415,7 +415,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       targetId: "md-doc-001",
       trigger: "stamp-signature-uncertain",
       reason: "开工申请审批表签章区域识别置信度低，需要人工确认盖章单位与日期。",
-      difyNode: "主数据字段修正 Human Input",
+      difyNode: "主数据字段修正人工复核",
     },
     {
       id: "hr-item-001",
@@ -423,7 +423,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
       targetId: "oc-check-003",
       trigger: "rule-semantic-conflict",
       reason: "规则判断缺少清晰签章日期，但语义节点认为审批链基本完整，需要人工裁定。",
-      difyNode: "审查结论复核 Human Input",
+      difyNode: "审查结论复核人工复核",
     },
   ],
   checkItems: [
@@ -494,7 +494,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   reportSummary: {
     title: "开工条件核查内部辅助意见",
     conclusion: "当前资料基础条件基本具备；本核查包绑定 basis-opening-2026-001 依据集版本，但仍有 3 项待人工复核内容，签章日期和专项依据适用性确认前不建议出具最终通过意见。",
-    nextAction: "优先处理 Dify Human Input 队列中的依据确认、签章字段确认和结论复核。",
+    nextAction: "优先处理平台人工复核队列中的依据确认、签章字段确认和结论复核。",
     disclaimer: "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
   },
 };
@@ -584,7 +584,7 @@ export function normalizeOpeningConditionDifyOutput(
   return {
     run: {
       ...output.run,
-      safeMessage: output.run.safeMessage || "Dify 工作流状态已同步。",
+      safeMessage: output.run.safeMessage || "外部工作流状态已同步。",
     },
     basisCandidates: output.basisCandidates ?? [],
     masterDataCandidates: output.masterDataCandidates ?? [],

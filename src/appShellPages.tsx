@@ -48,6 +48,10 @@ import {
   type OpeningConditionWorkspace,
 } from "./domain/openingConditionReview";
 import type {
+  OpeningConditionPilotTask,
+  OpeningConditionPilotHumanReviewItem,
+} from "./domain/openingConditionPilot";
+import type {
   ReviewResultAsset,
   ReviewSession,
   ReviewTask,
@@ -1033,41 +1037,111 @@ export function OpeningConditionMasterDataPage({
   );
 }
 
-export function OpeningConditionHumanReviewPage({ packet }: { packet: OpeningConditionReviewPacket }) {
+export function OpeningConditionHumanReviewPage({
+  packet,
+  pilotTask,
+  onReviewDecision,
+}: {
+  packet: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
+  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
+}) {
   const humanReviewItems = getOpeningConditionHumanReviewItems(packet);
+  const pilotReviewItems = pilotTask?.humanReviewQueue ?? [];
+
+  function renderPilotItem(item: OpeningConditionPilotHumanReviewItem) {
+    return (
+      <div key={item.id}>
+        <strong>{item.targetId}</strong>
+        <span>
+          {item.targetType} · {item.status}
+        </span>
+        <p>{item.reason}</p>
+        {item.safeNote && <small>{item.safeNote}</small>}
+        {onReviewDecision && (item.status === "open" || item.status === "deferred") && (
+          <div className="dialog-actions">
+            <button type="button" className="primary" onClick={() => onReviewDecision(item.id, "confirm")}>
+              确认
+            </button>
+            <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "correct")}>
+              修正
+            </button>
+            <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "defer")}>
+              延期
+            </button>
+            <button type="button" className="danger subtle" onClick={() => onReviewDecision(item.id, "reject")}>
+              驳回
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <section className="opening-panel">
-      <span className="eyebrow">Dify Human Input / 平台人工复核</span>
+      <span className="eyebrow">平台人工复核</span>
       <h2>关键不确定项由人工裁定</h2>
       <div className="opening-record-list">
-        {humanReviewItems.map((item) => (
-          <div key={item.id}>
-            <strong>{item.targetLabel}</strong>
-            <span>{item.difyNode}</span>
-            <p>{item.reason}</p>
-          </div>
-        ))}
+        {pilotReviewItems.length
+          ? pilotReviewItems.map(renderPilotItem)
+          : humanReviewItems.map((item) => (
+              <div key={item.id}>
+                <strong>{item.targetLabel}</strong>
+                <span>{item.difyNode}</span>
+                <p>{item.reason}</p>
+              </div>
+            ))}
       </div>
     </section>
   );
 }
 
-export function OpeningConditionReportsPage({ packet }: { packet: OpeningConditionReviewPacket }) {
+export function OpeningConditionReportsPage({
+  packet,
+  pilotTask,
+  onGenerateReport,
+  onArchive,
+}: {
+  packet: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
+  onGenerateReport?: () => void;
+  onArchive?: () => void;
+}) {
   const verdictSummary = getOpeningConditionVerdictSummary(packet);
+  const reportAsset = pilotTask?.reportAsset;
 
   return (
     <section className="opening-panel opening-panel-report">
       <span className="eyebrow">内部辅助报告</span>
-      <h2>{packet.reportSummary.title}</h2>
-      <p>{packet.reportSummary.conclusion}</p>
+      <h2>{reportAsset?.title ?? packet.reportSummary.title}</h2>
+      <p>
+        {reportAsset
+          ? `平台报告资产已生成：共 ${reportAsset.summary.total} 项，符合 ${reportAsset.summary.passed} 项，不符合 ${reportAsset.summary.failed} 项，待复核 ${reportAsset.summary.humanReview} 项。`
+          : packet.reportSummary.conclusion}
+      </p>
       <div className="opening-condition-meta">
         <span>{packet.workspaceContext.contractPackage}</span>
         <span>{packet.boundBasisSetVersionId ?? "未绑定依据版本"}</span>
-        <span>{verdictSummary.needsHumanReview} 项待复核</span>
+        <span>{reportAsset ? reportAsset.status : `${verdictSummary.needsHumanReview} 项待复核`}</span>
+        {pilotTask && <span>{pilotTask.state}</span>}
       </div>
-      <strong>{packet.reportSummary.nextAction}</strong>
-      <small>{packet.reportSummary.disclaimer}</small>
+      <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
+      <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
+      {(onGenerateReport || onArchive) && (
+        <div className="dialog-actions">
+          {onGenerateReport && (
+            <button type="button" className="primary" onClick={onGenerateReport}>
+              生成报告摘要
+            </button>
+          )}
+          {onArchive && reportAsset?.status === "ready" && (
+            <button type="button" className="secondary" onClick={onArchive}>
+              归档任务
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -1092,8 +1166,8 @@ export function OpeningConditionReviewPage({
           <span className="eyebrow">参赛业务切片 · {roleLabel}</span>
           <h2>{packet.projectName}</h2>
           <p>
-            {packet.reviewTarget}以“判定依据确认、项目主数据初始化、规则比对、Dify 人工复核、辅助报告”为主线，
-            用平台记录承接 Dify 工作流结果。
+            {packet.reviewTarget}以“判定依据确认、项目主数据初始化、规则比对、平台人工复核、辅助报告”为主线，
+            用平台记录承接可选外部工作流结果。
           </p>
           <div className="opening-condition-meta">
             <span>{openingConditionStageLabels[packet.stage]}</span>
@@ -1119,13 +1193,13 @@ export function OpeningConditionReviewPage({
       <section className="opening-condition-grid">
         <article className="opening-panel opening-panel-wide">
           <span className="eyebrow">推荐任务组</span>
-          <h2>从 Dify 工作流升级为平台能力</h2>
+          <h2>从外部流程原型升级为平台能力</h2>
           <div className="opening-task-lane">
             {[
               "依据版本确认",
               "人员设备证照入库",
               "开工资料规则核查",
-              "Dify Human Input 复核",
+              "平台人工复核",
               "报告与审计归档",
             ].map((item, index) => (
               <div key={item} className={index <= 2 ? "opening-task-step done" : "opening-task-step"}>
@@ -1178,7 +1252,7 @@ export function OpeningConditionReviewPage({
         </article>
 
         <article className="opening-panel">
-          <span className="eyebrow">Dify Human Input</span>
+          <span className="eyebrow">平台人工复核</span>
           <h2>关键不确定项复核</h2>
           <div className="opening-record-list">
             {humanReviewItems.map((item) => (

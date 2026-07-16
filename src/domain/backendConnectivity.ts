@@ -1,4 +1,8 @@
 import type {
+  OpeningConditionObjectRef,
+  OpeningConditionPilotTask,
+} from "./openingConditionPilot";
+import type {
   DocumentParagraph,
   IssueStatus,
   RecoveredDocumentSection,
@@ -346,6 +350,91 @@ export interface ReviewTaskActivitiesResult {
   message?: string;
 }
 
+export interface OpeningConditionPilotTaskResult {
+  ok: boolean;
+  status?: string;
+  task?: OpeningConditionPilotTask;
+  message?: string;
+  errors?: string[];
+}
+
+export interface OpeningConditionPilotTasksResult {
+  ok: boolean;
+  tasks: OpeningConditionPilotTask[];
+  message?: string;
+}
+
+export interface OpeningConditionPilotBasisRecord {
+  id: string;
+  workspaceId: string;
+  title: string;
+  componentType: string;
+  version: string;
+  status: "draft" | "pending_confirmation" | "confirmed" | "published" | "superseded" | "rejected";
+  applicability?: string;
+  confidence?: "high" | "medium" | "low";
+  confirmedBy?: string;
+  confirmedAt?: string;
+  publishedBy?: string;
+  publishedAt?: string;
+  safeNote?: string;
+}
+
+export interface OpeningConditionPilotBasisResult {
+  ok: boolean;
+  workspaceId: string;
+  basisVersions: OpeningConditionPilotBasisRecord[];
+  basisVersion?: OpeningConditionPilotBasisRecord;
+  status?: string;
+  message?: string;
+}
+
+export interface OpeningConditionPilotMasterDataRecord {
+  id: string;
+  workspaceId: string;
+  type: string;
+  label: string;
+  normalizedFields?: Record<string, unknown>;
+  status: "provisional" | "confirmed" | "published" | "human_approved" | "rejected" | "expired";
+  validity?: string;
+  confidence?: "high" | "medium" | "low";
+  confirmedBy?: string;
+  confirmedAt?: string;
+  publishedBy?: string;
+  publishedAt?: string;
+  rejectionReason?: string;
+  safeNote?: string;
+}
+
+export interface OpeningConditionPilotMasterDataResult {
+  ok: boolean;
+  workspaceId: string;
+  masterDataRecords: OpeningConditionPilotMasterDataRecord[];
+  masterDataRecord?: OpeningConditionPilotMasterDataRecord;
+  status?: string;
+  message?: string;
+}
+
+export interface OpeningConditionPilotHumanReviewResult {
+  ok: boolean;
+  taskId?: string;
+  workspaceId?: string;
+  humanReviewQueue?: OpeningConditionPilotTask["humanReviewQueue"];
+  humanReviewItem?: OpeningConditionPilotTask["humanReviewQueue"][number];
+  blockingCount?: number;
+  task?: OpeningConditionPilotTask;
+  status?: string;
+  message?: string;
+}
+
+export interface OpeningConditionPilotReportResult {
+  ok: boolean;
+  task?: OpeningConditionPilotTask;
+  reportAsset?: OpeningConditionPilotTask["reportAsset"];
+  status?: string;
+  message?: string;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
@@ -483,6 +572,179 @@ export async function fetchReviewTaskDecisionActivities(taskId: string, limit = 
     `/api/review-tasks/${encodeURIComponent(taskId)}/activities${queryString ? `?${queryString}` : ""}`,
   );
   return readJson<ReviewTaskActivitiesResult>(response);
+}
+
+export async function upsertOpeningConditionPilotTask(taskId: string, task: Partial<OpeningConditionPilotTask>) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ task }),
+  });
+  return readJson<OpeningConditionPilotTaskResult>(response);
+}
+
+export async function fetchOpeningConditionPilotTask(taskId: string) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}`);
+  return readJson<OpeningConditionPilotTaskResult>(response);
+}
+
+export async function intakeOpeningConditionPilotPacket(taskId: string, packet: {
+  checklistObject: OpeningConditionObjectRef;
+  sourceObjects: OpeningConditionObjectRef[];
+  submittedBy?: string;
+}) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/packet`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(packet),
+  });
+  return readJson<OpeningConditionPilotTaskResult>(response);
+}
+
+export async function runOpeningConditionPilotMatch(taskId: string, checklistItems: Array<{
+  id: string;
+  name: string;
+  category?: string;
+  required?: boolean;
+  expectedEvidenceHints?: string[];
+  basisVersionId?: string;
+  masterDataIds?: string[];
+}>) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/match`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ checklistItems }),
+  });
+  return readJson<OpeningConditionPilotTaskResult>(response);
+}
+
+export async function fetchOpeningConditionPilotBasis(workspaceId: string) {
+  const response = await fetch(`/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/basis`);
+  return readJson<OpeningConditionPilotBasisResult>(response);
+}
+
+export async function upsertOpeningConditionPilotBasis(
+  workspaceId: string,
+  basisId: string,
+  basisVersion: Partial<OpeningConditionPilotBasisRecord>,
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/basis/${encodeURIComponent(basisId)}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ basisVersion }),
+    },
+  );
+  return readJson<OpeningConditionPilotBasisResult>(response);
+}
+
+export async function publishOpeningConditionPilotBasis(workspaceId: string, basisId: string, actorId: string) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/basis/${encodeURIComponent(basisId)}/publish`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ actorId }),
+    },
+  );
+  return readJson<OpeningConditionPilotBasisResult>(response);
+}
+
+export async function fetchOpeningConditionPilotMasterData(workspaceId: string) {
+  const response = await fetch(`/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/master-data`);
+  return readJson<OpeningConditionPilotMasterDataResult>(response);
+}
+
+export async function upsertOpeningConditionPilotMasterData(
+  workspaceId: string,
+  recordId: string,
+  masterDataRecord: Partial<OpeningConditionPilotMasterDataRecord>,
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/master-data/${encodeURIComponent(recordId)}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ masterDataRecord }),
+    },
+  );
+  return readJson<OpeningConditionPilotMasterDataResult>(response);
+}
+
+export async function decideOpeningConditionPilotMasterData(
+  workspaceId: string,
+  recordId: string,
+  decision: "publish" | "approve" | "reject",
+  actorId: string,
+  safeNote?: string,
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/master-data/${encodeURIComponent(recordId)}/decision`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ decision, actorId, safeNote }),
+    },
+  );
+  return readJson<OpeningConditionPilotMasterDataResult>(response);
+}
+
+export async function fetchOpeningConditionPilotHumanReview(taskId: string) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/human-review`);
+  return readJson<OpeningConditionPilotHumanReviewResult>(response);
+}
+
+export async function decideOpeningConditionPilotHumanReview(
+  taskId: string,
+  reviewId: string,
+  decision: "confirm" | "correct" | "reject" | "defer",
+  actorId: string,
+  safeNote?: string,
+) {
+  const response = await fetch(
+    `/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/human-review/${encodeURIComponent(reviewId)}/decision`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ decision, actorId, safeNote }),
+    },
+  );
+  return readJson<OpeningConditionPilotHumanReviewResult>(response);
+}
+
+export async function generateOpeningConditionPilotReport(taskId: string, objectRef?: OpeningConditionObjectRef) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/report`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ objectRef }),
+  });
+  return readJson<OpeningConditionPilotReportResult>(response);
+}
+
+export async function archiveOpeningConditionPilotTask(taskId: string) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/archive`, {
+    method: "POST",
+  });
+  return readJson<OpeningConditionPilotReportResult>(response);
 }
 
 export async function fetchOcrJobStatus(jobId: string): Promise<OcrJobStatusResult> {

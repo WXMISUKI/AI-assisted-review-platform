@@ -4,7 +4,11 @@
 TBD - created by archiving change separate-product-portals-and-opening-basis-workflow. Update Purpose after archive.
 ## Requirements
 ### Requirement: Dify workflow execution boundary
-The platform SHALL treat Dify as a workflow execution adapter for opening-condition review rather than the durable owner of business records.
+The platform SHALL treat Dify as an optional workflow execution adapter or reference workflow for opening-condition review rather than the required execution path or durable owner of business records.
+
+#### Scenario: Platform-controlled workflow is used
+- **WHEN** the opening-condition pilot workflow runs without Dify
+- **THEN** the platform still creates task state, events, extraction summaries, matching results, human-review items, and report records through platform-owned contracts
 
 #### Scenario: Workflow is started
 - **WHEN** the platform starts a Dify opening-condition workflow
@@ -13,6 +17,10 @@ The platform SHALL treat Dify as a workflow execution adapter for opening-condit
 #### Scenario: Workflow returns output
 - **WHEN** Dify returns extraction, matching, human-input, or report-draft output
 - **THEN** the platform normalizes the output into platform-owned contracts before displaying it as task state
+
+#### Scenario: Dify is unavailable
+- **WHEN** Dify is disabled, unavailable, or not selected for the pilot workflow
+- **THEN** the platform keeps the pilot task executable through its controlled workflow path or marks unsupported steps with safe diagnostics
 
 ### Requirement: Safe workflow payloads
 Dify bridge payloads SHALL exclude secrets, private object URLs, raw provider traces, and unbounded document text from persisted summaries.

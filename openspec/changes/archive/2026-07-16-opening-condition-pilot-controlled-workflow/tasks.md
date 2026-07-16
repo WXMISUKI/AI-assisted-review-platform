@@ -16,7 +16,7 @@
 - [x] 2.1 Add backend contracts or endpoints to read, create, confirm, and publish pilot basis-set versions in the selected workspace.
 - [x] 2.2 Add backend contracts or endpoints to read, confirm, reject, and publish pilot master-data records.
 - [x] 2.3 Enforce formal task creation gates: no published basis blocks the task, and missing required master data blocks or sends affected items to human review.
-- [ ] 2.4 Update the opening-condition basis and master-data pages to consume backend-owned records with mock fallback only for local demo mode.
+- [x] 2.4 Update the opening-condition basis and master-data pages to consume backend-owned records with mock fallback only for local demo mode.
 
 ## 3. Packet Intake And Controlled Workflow
 
@@ -37,26 +37,26 @@
 
 - [x] 5.1 Add backend contracts or endpoints for listing human-review items by task and workspace.
 - [x] 5.2 Add actions to confirm, correct, reject, or defer human-review items with reviewer placeholder, timestamp, safe note, and resulting target status.
-- [ ] 5.3 Update the opening-condition human-review page to operate on backend-owned queue items and decisions.
+- [x] 5.3 Update the opening-condition human-review page to operate on backend-owned queue items and decisions.
 - [x] 5.4 Gate report readiness on completion of blocking human-review items.
 
 ## 6. Auxiliary Report And Archive
 
 - [x] 6.1 Generate an internal auxiliary report summary from platform-owned task records, check item outcomes, evidence, human decisions, basis version, and workspace context.
 - [x] 6.2 Store report assets and report-ready task events without secrets, private object URLs, raw provider traces, or unbounded source text.
-- [ ] 6.3 Update the opening-condition reports page to display report summaries, counts, basis version, auxiliary-opinion disclaimer, and evidence-linked issue summaries.
+- [x] 6.3 Update the opening-condition reports page to display report summaries, counts, basis version, auxiliary-opinion disclaimer, and evidence-linked issue summaries.
 - [x] 6.4 Add archive transition that preserves the task, report asset, evidence summary, and event trail.
 
 ## 7. Optional Adapter Boundary
 
-- [ ] 7.1 Refactor the current Dify bridge naming or comments so it is clearly an optional adapter/reference workflow, not the required pilot execution path.
-- [ ] 7.2 Add normalization tests or fixtures showing that imported workflow output becomes platform-owned records before display.
-- [ ] 7.3 Ensure adapter payloads use bounded object references and safe summaries instead of credentials, private URLs, raw provider traces, or unbounded document text.
+- [x] 7.1 Refactor the current Dify bridge naming or comments so it is clearly an optional adapter/reference workflow, not the required pilot execution path.
+- [x] 7.2 Add normalization tests or fixtures showing that imported workflow output becomes platform-owned records before display.
+- [x] 7.3 Ensure adapter payloads use bounded object references and safe summaries instead of credentials, private URLs, raw provider traces, or unbounded document text.
 
 ## 8. Verification And Handoff
 
-- [ ] 8.1 Run targeted TypeScript verification for changed frontend/domain files.
-- [ ] 8.2 Run `node --check` or equivalent syntax checks for changed backend `.mjs` files.
-- [ ] 8.3 Validate OpenSpec with `openspec validate --all --strict`.
-- [ ] 8.4 Update relevant docs if implementation changes API contracts, state names, persistence boundaries, or security guidance.
-- [ ] 8.5 Archive the OpenSpec change only after implementation and verification are complete.
+- [x] 8.1 Run targeted TypeScript verification for changed frontend/domain files.
+- [x] 8.2 Run `node --check` or equivalent syntax checks for changed backend `.mjs` files.
+- [x] 8.3 Validate OpenSpec with `openspec validate --all --strict`.
+- [x] 8.4 Update relevant docs if implementation changes API contracts, state names, persistence boundaries, or security guidance.
+- [x] 8.5 Archive the OpenSpec change only after implementation and verification are complete.

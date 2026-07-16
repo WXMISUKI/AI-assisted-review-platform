@@ -40,7 +40,7 @@ export const productLauncherEntries: ProductLauncherEntry[] = [
     summary: "面向项目、标段、机构和资料包的依据确认、主数据发布、资料完整性与有效性辅助核查。",
     routeNamespace: "/opening-condition",
     primaryActionLabel: "进入开工条件核查",
-    sharedServices: ["统一登录", "OCR/对象存储", "Dify 工作流桥接", "人工复核", "审计留痕"],
+    sharedServices: ["统一登录", "OCR/对象存储", "可选外部工作流适配", "人工复核", "审计留痕"],
   },
 ];
 

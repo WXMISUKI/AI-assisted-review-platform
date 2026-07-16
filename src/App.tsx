@@ -96,22 +96,37 @@ import {
   normalizeBackendPreparationPackage,
 } from "./domain/reviewPreparationPackage";
 import {
+  archiveOpeningConditionPilotTask,
   addPersistedManualReviewTaskIssue,
   completePersistedReviewTask,
   createReviewGenerationRun,
+  decideOpeningConditionPilotHumanReview,
+  decideOpeningConditionPilotMasterData,
   deletePersistedManualReviewTaskIssue,
+  fetchOpeningConditionPilotBasis,
+  fetchOpeningConditionPilotHumanReview,
+  fetchOpeningConditionPilotMasterData,
+  fetchOpeningConditionPilotTask,
   fetchReviewGenerationRunEvents,
   fetchReviewGenerationRunStatus,
+  generateOpeningConditionPilotReport,
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
+  intakeOpeningConditionPilotPacket,
+  publishOpeningConditionPilotBasis,
   requestDraftIssueGeneration,
   resolvePersistedReviewTaskIssue,
+  runOpeningConditionPilotMatch,
   subscribeReviewGenerationRunEvents,
   subscribeReviewStreamEvents,
   submitStoredObjectOcrJob,
+  upsertOpeningConditionPilotBasis,
+  upsertOpeningConditionPilotMasterData,
+  upsertOpeningConditionPilotTask,
   updatePersistedReviewTaskIssueDraft,
   uploadMinioDocument,
 } from "./domain/backendConnectivity";
+import type { OpeningConditionPilotTask } from "./domain/openingConditionPilot";
 
 export function App() {
   const initialTasks = useMemo(() => listReviewTasks(), []);
@@ -124,6 +139,8 @@ export function App() {
   const [openingPacket, setOpeningPacket] = useState<OpeningConditionReviewPacket>(() =>
     getOpeningConditionWorkspacePacket(openingConditionWorkspaces[0]?.id ?? ""),
   );
+  const [openingPilotTask, setOpeningPilotTask] = useState<OpeningConditionPilotTask | null>(null);
+  const [openingPilotStatus, setOpeningPilotStatus] = useState("平台试点记录待同步");
   const [selectedDocId, setSelectedDocId] = useState(initialTasks[0]?.id ?? "");
   const [documents, setDocuments] = useState<LibraryDocument[]>(initialTasks);
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
@@ -176,6 +193,14 @@ export function App() {
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
+
+  useEffect(() => {
+    if (activeProduct !== "opening-condition-review" || !openingWorkspaceId) {
+      return;
+    }
+
+    void syncOpeningPilotWorkspace(openingWorkspaceId);
+  }, [activeProduct, openingWorkspaceId]);
 
   useEffect(() => {
     if (activePage !== "review-loading" || !loadingDocId) {
@@ -736,12 +761,233 @@ export function App() {
     setOpeningActivePage("workspace-context");
   }
 
-  function selectOpeningWorkspace(workspaceId: string) {
-    setOpeningWorkspaceId(workspaceId);
-    setOpeningPacket(getOpeningConditionWorkspacePacket(workspaceId));
+  function getOpeningPilotTaskId(workspaceId: string) {
+    return `oc-pilot-${workspaceId}`;
   }
 
-  function confirmOpeningBasis(basisId: string) {
+  function applyOpeningPilotTaskToPacket(
+    packet: OpeningConditionReviewPacket,
+    task: OpeningConditionPilotTask,
+  ): OpeningConditionReviewPacket {
+    const evidence = task.evidence.length
+      ? task.evidence.map((item) => ({
+          id: item.id,
+          fileName: item.objectRef.fileName,
+          locator: item.locator ?? "平台资料包清单",
+          extractedValue: item.extractedValue ?? item.objectRef.summary ?? item.objectRef.fileName,
+          confidence: item.confidence,
+          masterDataId: item.masterDataIds[0],
+        }))
+      : packet.evidence;
+    const humanReviewQueue = task.humanReviewQueue.length
+      ? task.humanReviewQueue.map((item) => ({
+          id: item.id,
+          targetType:
+            item.targetType === "master_data"
+              ? ("master-data" as const)
+              : item.targetType === "check_item"
+                ? ("check-item" as const)
+                : ("basis" as const),
+          targetId: item.targetId,
+          trigger: "rule-semantic-conflict" as const,
+          reason: `${item.reason}${item.status !== "open" ? `（${item.status}）` : ""}`,
+          difyNode: "平台人工复核",
+        }))
+      : packet.humanReviewQueue;
+    const checkItems = task.checkItems.length
+      ? task.checkItems.map((item) => ({
+          id: item.id,
+          category: item.category,
+          subCategory: "平台匹配",
+          content: item.name,
+          mandatory: item.required,
+          verdict:
+            item.verdict === "needs_human_review" || item.verdict === "blocked"
+              ? ("needs-human-review" as const)
+              : item.verdict === "pass"
+                ? ("pass" as const)
+                : item.verdict === "fail"
+                  ? ("fail" as const)
+                  : ("warning" as const),
+          riskLevel: item.verdict === "fail" ? ("high" as const) : item.humanReviewIds.length ? ("medium" as const) : ("low" as const),
+          ruleExplanation: item.ruleExplanation,
+          semanticNote: item.semanticNote,
+          basisVersionId: item.basisVersionId || packet.boundBasisSetVersionId || "",
+          masterDataIds: item.masterDataIds,
+          evidenceIds: item.evidenceIds,
+          humanReviewIds: item.humanReviewIds,
+          blockedReason: item.verdict === "blocked" ? "后端试点任务标记该项阻塞。" : undefined,
+          rectification: item.humanReviewIds.length ? "请在人工复核页完成裁定。" : "无需整改。",
+        }))
+      : packet.checkItems;
+    const reportSummary = task.reportAsset
+      ? {
+          title: task.reportAsset.title,
+          conclusion: `平台报告已生成：共 ${task.reportAsset.summary.total} 项，符合 ${task.reportAsset.summary.passed} 项，不符合 ${task.reportAsset.summary.failed} 项，待复核 ${task.reportAsset.summary.humanReview} 项。`,
+          nextAction: task.state === "archived" ? "任务已归档，可进入报告资产查看。" : "可继续归档或补充导出产物。",
+          disclaimer: task.reportAsset.disclaimer,
+        }
+      : packet.reportSummary;
+
+    return {
+      ...packet,
+      stage:
+        task.state === "archived" || task.state === "report_ready"
+          ? "report-ready"
+          : task.state === "awaiting_human_review"
+            ? "human-review"
+            : task.state === "matching" || task.state === "packet_uploaded"
+              ? "material-review"
+              : packet.stage,
+      boundBasisSetVersionId: task.basisVersion?.id ?? packet.boundBasisSetVersionId,
+      evidence,
+      humanReviewQueue,
+      checkItems,
+      reportSummary,
+    };
+  }
+
+  async function syncOpeningPilotWorkspace(workspaceId: string, sourcePacket?: OpeningConditionReviewPacket) {
+    const basePacket = sourcePacket ?? getOpeningConditionWorkspacePacket(workspaceId);
+    const taskId = getOpeningPilotTaskId(workspaceId);
+    setOpeningPilotStatus("正在同步平台试点记录...");
+
+    try {
+      for (const basis of basePacket.basisVersions) {
+        await upsertOpeningConditionPilotBasis(workspaceId, basis.id, {
+          title: basis.title,
+          componentType: basis.componentType,
+          version: basis.version,
+          status:
+            basis.status === "published"
+              ? "published"
+              : basis.status === "confirmed"
+                ? "confirmed"
+                : basis.status === "rejected"
+                  ? "rejected"
+                  : "pending_confirmation",
+          applicability: basis.applicability,
+          confidence: basis.confidence,
+          confirmedBy: basis.confirmedBy,
+          confirmedAt: basis.confirmedAt,
+          publishedAt: basis.publishedAt,
+        });
+        if (basis.status === "published") {
+          await publishOpeningConditionPilotBasis(workspaceId, basis.id, basis.confirmedBy ?? session?.username ?? "pilot-user");
+        }
+      }
+
+      for (const record of basePacket.masterData) {
+        await upsertOpeningConditionPilotMasterData(workspaceId, record.id, {
+          type: record.type === "system-document" ? "system_document" : record.type,
+          label: record.label,
+          normalizedFields: {
+            value: record.normalizedValue,
+          },
+          status:
+            record.status === "published"
+              ? "published"
+              : record.status === "confirmed"
+                ? "confirmed"
+                : record.status === "rejected"
+                  ? "rejected"
+                  : "provisional",
+          validity: record.validity,
+          confidence: record.confidence,
+          confirmedBy: record.confirmedBy,
+          confirmedAt: record.confirmedAt,
+          publishedAt: record.publishedAt,
+          safeNote: record.reviewNeededReason,
+        });
+        if (record.status === "published") {
+          await decideOpeningConditionPilotMasterData(workspaceId, record.id, "publish", record.confirmedBy ?? session?.username ?? "pilot-user");
+        }
+      }
+
+      const publishedBasis = basePacket.basisVersions.find((item) => item.status === "published");
+      const publishedMasterData = basePacket.masterData.filter((item) => item.status === "published");
+      const upsertResult = await upsertOpeningConditionPilotTask(taskId, {
+        context: {
+          workspaceId,
+          tenantId: basePacket.workspaceContext.tenantName,
+          projectId: basePacket.workspaceContext.projectName,
+          contractPackageId: basePacket.workspaceContext.contractPackage,
+          participatingOrganizationId: basePacket.workspaceContext.participatingOrganization,
+        },
+        basisVersion: publishedBasis
+          ? {
+              id: publishedBasis.id,
+              workspaceId,
+              version: publishedBasis.version,
+              status: "published",
+              publishedAt: publishedBasis.publishedAt ?? new Date().toISOString(),
+            }
+          : undefined,
+        requiredMasterData: publishedMasterData.map((record) => ({
+          id: record.id,
+          workspaceId,
+          type: record.type === "system-document" ? "system_document" : record.type,
+          status: "published",
+          label: record.label,
+        })),
+      });
+      if (!upsertResult.ok) {
+        throw new Error(upsertResult.message ?? "开工条件试点任务同步失败");
+      }
+
+      const sourceObjects = basePacket.evidence.map((item) => ({
+        objectId: item.id,
+        kind: "source_archive" as const,
+        fileName: item.fileName,
+        summary: item.extractedValue,
+      }));
+      const intakeResult = await intakeOpeningConditionPilotPacket(taskId, {
+        checklistObject: {
+          objectId: `${taskId}-checklist`,
+          kind: "checklist",
+          fileName: `${basePacket.reviewTarget || "开工条件核查表"}.xlsx`,
+          summary: basePacket.reviewTarget,
+        },
+        sourceObjects,
+        submittedBy: session?.username ?? "pilot-user",
+      });
+      const matchResult = await runOpeningConditionPilotMatch(taskId, basePacket.checkItems.map((item) => ({
+        id: item.id,
+        name: item.content,
+        category: item.category,
+        required: item.mandatory,
+        expectedEvidenceHints: [item.subCategory, item.content],
+        basisVersionId: item.basisVersionId,
+        masterDataIds: item.masterDataIds,
+      })));
+      const task = matchResult.task ?? intakeResult.task ?? upsertResult.task;
+      if (task) {
+        setOpeningPilotTask(task);
+        setOpeningPacket(applyOpeningPilotTaskToPacket(basePacket, task));
+      }
+
+      const [basisResult, masterDataResult] = await Promise.all([
+        fetchOpeningConditionPilotBasis(workspaceId),
+        fetchOpeningConditionPilotMasterData(workspaceId),
+      ]);
+      setOpeningPilotStatus(
+        `平台试点记录已同步 · 依据 ${basisResult.basisVersions?.length ?? 0} · 主数据 ${masterDataResult.masterDataRecords?.length ?? 0}`,
+      );
+    } catch (error) {
+      setOpeningPilotTask(null);
+      setOpeningPacket(basePacket);
+      setOpeningPilotStatus(error instanceof Error ? `后端试点记录不可用，使用本地演示数据：${error.message}` : "后端试点记录不可用，使用本地演示数据");
+    }
+  }
+
+  function selectOpeningWorkspace(workspaceId: string) {
+    setOpeningWorkspaceId(workspaceId);
+    const nextPacket = getOpeningConditionWorkspacePacket(workspaceId);
+    setOpeningPacket(nextPacket);
+    void syncOpeningPilotWorkspace(workspaceId, nextPacket);
+  }
+
+  async function confirmOpeningBasis(basisId: string) {
     setOpeningPacket((currentPacket) => ({
       ...currentPacket,
       basisVersions: currentPacket.basisVersions.map((basis) =>
@@ -757,9 +1003,23 @@ export function App() {
           : basis,
       ),
     }));
+    const basis = openingPacket.basisVersions.find((item) => item.id === basisId);
+    if (basis) {
+      await upsertOpeningConditionPilotBasis(openingWorkspaceId, basisId, {
+        title: basis.title,
+        componentType: basis.componentType,
+        version: basis.version,
+        status: "confirmed",
+        applicability: basis.applicability,
+        confidence: basis.confidence,
+        confirmedBy: roleLabels[session?.role ?? "supervisor"],
+        confirmedAt: new Date().toISOString(),
+      }).catch(() => undefined);
+      void syncOpeningPilotWorkspace(openingWorkspaceId);
+    }
   }
 
-  function publishOpeningBasis(basisId: string) {
+  async function publishOpeningBasis(basisId: string) {
     setOpeningPacket((currentPacket) => ({
       ...currentPacket,
       boundBasisSetVersionId: basisId,
@@ -777,9 +1037,17 @@ export function App() {
           : basis,
       ),
     }));
+    const result = await publishOpeningConditionPilotBasis(
+      openingWorkspaceId,
+      basisId,
+      session?.username ?? roleLabels[session?.role ?? "supervisor"],
+    ).catch(() => null);
+    if (result?.ok) {
+      void syncOpeningPilotWorkspace(openingWorkspaceId);
+    }
   }
 
-  function confirmOpeningMasterData(recordId: string) {
+  async function confirmOpeningMasterData(recordId: string) {
     setOpeningPacket((currentPacket) => ({
       ...currentPacket,
       masterData: currentPacket.masterData.map((record) =>
@@ -795,9 +1063,25 @@ export function App() {
           : record,
       ),
     }));
+    const record = openingPacket.masterData.find((item) => item.id === recordId);
+    if (record) {
+      await upsertOpeningConditionPilotMasterData(openingWorkspaceId, recordId, {
+        type: record.type === "system-document" ? "system_document" : record.type,
+        label: record.label,
+        normalizedFields: {
+          value: record.normalizedValue,
+        },
+        status: "confirmed",
+        validity: record.validity,
+        confidence: record.confidence,
+        confirmedBy: roleLabels[session?.role ?? "supervisor"],
+        confirmedAt: new Date().toISOString(),
+      }).catch(() => undefined);
+      void syncOpeningPilotWorkspace(openingWorkspaceId);
+    }
   }
 
-  function rejectOpeningMasterData(recordId: string) {
+  async function rejectOpeningMasterData(recordId: string) {
     setOpeningPacket((currentPacket) => {
       const masterData = currentPacket.masterData.map((record) =>
         record.id === recordId
@@ -815,9 +1099,17 @@ export function App() {
         masterDataReadiness: getOpeningConditionMasterDataReadiness(masterData),
       };
     });
+    await decideOpeningConditionPilotMasterData(
+      openingWorkspaceId,
+      recordId,
+      "reject",
+      session?.username ?? "pilot-user",
+      "人工驳回该临时抽取记录，不纳入正式主数据。",
+    ).catch(() => undefined);
+    void syncOpeningPilotWorkspace(openingWorkspaceId);
   }
 
-  function publishOpeningMasterData(recordId: string) {
+  async function publishOpeningMasterData(recordId: string) {
     setOpeningPacket((currentPacket) => {
       const masterData = currentPacket.masterData.map((record) =>
         record.id === recordId
@@ -835,6 +1127,71 @@ export function App() {
         masterDataReadiness: getOpeningConditionMasterDataReadiness(masterData),
       };
     });
+    await decideOpeningConditionPilotMasterData(
+      openingWorkspaceId,
+      recordId,
+      "publish",
+      session?.username ?? "pilot-user",
+      "人工确认并发布为试点主数据。",
+    ).catch(() => undefined);
+    void syncOpeningPilotWorkspace(openingWorkspaceId);
+  }
+
+  async function decideOpeningHumanReviewItem(
+    reviewId: string,
+    decision: "confirm" | "correct" | "reject" | "defer",
+  ) {
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingWorkspaceId);
+    const result = await decideOpeningConditionPilotHumanReview(
+      taskId,
+      reviewId,
+      decision,
+      session?.username ?? "pilot-user",
+      "人工复核决策来自开工条件门户。",
+    ).catch(() => null);
+
+    if (result?.task) {
+      setOpeningPilotTask(result.task);
+      setOpeningPacket((currentPacket) => applyOpeningPilotTaskToPacket(currentPacket, result.task!));
+      setOpeningPilotStatus(`人工复核已同步 · 阻塞项 ${result.blockingCount ?? 0}`);
+      return;
+    }
+
+    const refreshed = await fetchOpeningConditionPilotHumanReview(taskId).catch(() => null);
+    setOpeningPilotStatus(refreshed?.ok ? `人工复核队列已刷新 · 阻塞项 ${refreshed.blockingCount ?? 0}` : "人工复核后端同步失败，保留本地展示");
+  }
+
+  async function generateOpeningReport() {
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingWorkspaceId);
+    const result = await generateOpeningConditionPilotReport(taskId, {
+      objectId: `${taskId}-report`,
+      kind: "report",
+      fileName: "开工条件核查内部辅助意见.md",
+      summary: "平台生成的内部辅助报告摘要。",
+    }).catch(() => null);
+
+    if (result?.task) {
+      setOpeningPilotTask(result.task);
+      setOpeningPacket((currentPacket) => applyOpeningPilotTaskToPacket(currentPacket, result.task!));
+      setOpeningPilotStatus("内部辅助报告已由后端生成");
+      return;
+    }
+
+    setOpeningPilotStatus(result?.message ?? "报告生成失败，请先处理阻塞人工复核项");
+  }
+
+  async function archiveOpeningReportTask() {
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingWorkspaceId);
+    const result = await archiveOpeningConditionPilotTask(taskId).catch(() => null);
+
+    if (result?.task) {
+      setOpeningPilotTask(result.task);
+      setOpeningPacket((currentPacket) => applyOpeningPilotTaskToPacket(currentPacket, result.task!));
+      setOpeningPilotStatus("开工条件核查试点任务已归档");
+      return;
+    }
+
+    setOpeningPilotStatus(result?.message ?? "任务归档失败，请先生成报告资产");
   }
 
   function returnToProductLauncher() {
@@ -1241,6 +1598,10 @@ export function App() {
                 <GitCompareArrows size={14} />
                 独立业务上下文
               </span>
+              <span className="shell-role-pill muted">
+                <ClipboardCheck size={14} />
+                {openingPilotStatus}
+              </span>
             </div>
           </header>
 
@@ -1271,9 +1632,20 @@ export function App() {
               <OpeningConditionReviewPage roleLabel={roleLabels[session.role]} packet={openingPacket} />
             )}
             {openingActivePage === "human-review" && (
-              <OpeningConditionHumanReviewPage packet={openingPacket} />
+              <OpeningConditionHumanReviewPage
+                packet={openingPacket}
+                pilotTask={openingPilotTask}
+                onReviewDecision={decideOpeningHumanReviewItem}
+              />
             )}
-            {openingActivePage === "reports" && <OpeningConditionReportsPage packet={openingPacket} />}
+            {openingActivePage === "reports" && (
+              <OpeningConditionReportsPage
+                packet={openingPacket}
+                pilotTask={openingPilotTask}
+                onGenerateReport={generateOpeningReport}
+                onArchive={archiveOpeningReportTask}
+              />
+            )}
           </div>
         </section>
       </div>

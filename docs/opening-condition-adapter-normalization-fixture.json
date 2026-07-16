@@ -1,0 +1,47 @@
+{
+  "purpose": "Fixture showing how optional external workflow output must be normalized before display or persistence.",
+  "input": {
+    "run": {
+      "runId": "external-run-001",
+      "workflowName": "optional-opening-condition-adapter",
+      "status": "draft-ready",
+      "startedAt": "2026-07-16T00:00:00.000Z",
+      "safeMessage": "External workflow returned a draft."
+    },
+    "checkItems": [
+      {
+        "id": "check-001",
+        "category": "资料核查",
+        "subCategory": "人员",
+        "content": "专职安全员证书齐全。",
+        "mandatory": true,
+        "verdict": "needs-human-review",
+        "riskLevel": "medium",
+        "ruleExplanation": "外部流程认为存在候选证据。",
+        "basisVersionId": "basis-001",
+        "masterDataIds": [],
+        "evidenceIds": [],
+        "humanReviewIds": [],
+        "rectification": "平台人工复核后确认。"
+      }
+    ],
+    "diagnostics": {
+      "status": "draft-ready",
+      "providerTrace": "MUST_BE_REDACTED",
+      "privateUrl": "MUST_BE_REDACTED",
+      "summary": "bounded safe summary"
+    },
+    "unsafe": {
+      "token": "MUST_BE_REDACTED",
+      "rawText": "MUST_BE_REDACTED"
+    }
+  },
+  "expected": {
+    "platformOwnsRecords": true,
+    "safeDiagnostics": {
+      "status": "draft-ready",
+      "redactedFields": ["token", "rawText", "providerTrace", "privateUrl"]
+    },
+    "forbiddenPersistentFields": ["token", "rawText", "providerTrace", "privateUrl"]
+  }
+}
