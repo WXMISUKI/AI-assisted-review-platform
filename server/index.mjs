@@ -27,6 +27,25 @@ import {
   writeReviewGenerationRunStream,
 } from "./reviewGenerationRunBridge.mjs";
 import {
+  archiveOpeningConditionPilotTask,
+  decideOpeningConditionPilotMasterDataRecord,
+  decideOpeningConditionPilotHumanReviewItem,
+  generateOpeningConditionPilotReport,
+  getOpeningConditionPilotStoreInfo,
+  getOpeningConditionPilotTask,
+  intakeOpeningConditionPilotPacket,
+  listOpeningConditionPilotHumanReviewItems,
+  listOpeningConditionPilotBasisVersions,
+  listOpeningConditionPilotMasterData,
+  listOpeningConditionPilotTasks,
+  publishOpeningConditionPilotBasisVersion,
+  runOpeningConditionPilotChecklistMatch,
+  transitionOpeningConditionPilotTask,
+  upsertOpeningConditionPilotBasisVersion,
+  upsertOpeningConditionPilotMasterDataRecord,
+  upsertOpeningConditionPilotTask,
+} from "./openingConditionPilotStore.mjs";
+import {
   getReviewTask,
   getReviewTaskStoreInfo,
   listReviewTasks,
@@ -160,6 +179,22 @@ const server = createServer(async (request, response) => {
           "POST /api/llm/check",
           "GET /api/ocr/status",
           "GET /api/review-tasks",
+          "GET /api/opening-condition/pilot-tasks",
+          "GET /api/opening-condition/pilot-tasks/:taskId",
+          "PUT /api/opening-condition/pilot-tasks/:taskId",
+          "POST /api/opening-condition/pilot-tasks/:taskId/packet",
+          "POST /api/opening-condition/pilot-tasks/:taskId/match",
+          "GET /api/opening-condition/pilot-tasks/:taskId/human-review",
+          "POST /api/opening-condition/pilot-tasks/:taskId/human-review/:reviewId/decision",
+          "POST /api/opening-condition/pilot-tasks/:taskId/report",
+          "POST /api/opening-condition/pilot-tasks/:taskId/archive",
+          "POST /api/opening-condition/pilot-tasks/:taskId/transition",
+          "GET /api/opening-condition/workspaces/:workspaceId/basis",
+          "PUT /api/opening-condition/workspaces/:workspaceId/basis/:basisId",
+          "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/publish",
+          "GET /api/opening-condition/workspaces/:workspaceId/master-data",
+          "PUT /api/opening-condition/workspaces/:workspaceId/master-data/:recordId",
+          "POST /api/opening-condition/workspaces/:workspaceId/master-data/:recordId/decision",
           "GET /api/review-tasks/:taskId",
           "PUT /api/review-tasks/:taskId",
           "POST /api/review-tasks/bulk",
@@ -201,6 +236,7 @@ const server = createServer(async (request, response) => {
           ...(await getQueueStatus()),
           worker: getReviewWorkerLoopInfo(),
         },
+        openingConditionPilot: getOpeningConditionPilotStoreInfo(),
       });
       return;
     }
@@ -228,6 +264,15 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const result = await replaceReviewTasks(Array.isArray(body.tasks) ? body.tasks : []);
       sendJson(response, 200, result);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/opening-condition/pilot-tasks") {
+      sendJson(response, 200, {
+        ok: true,
+        ...(await listOpeningConditionPilotTasks()),
+        store: getOpeningConditionPilotStoreInfo(),
+      });
       return;
     }
 
@@ -340,6 +385,179 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && ocrJobMatch) {
       sendJson(response, 200, await getOcrJobStatus(ocrJobMatch[1]));
       return;
+    }
+
+    const openingConditionPilotTaskMatch = url.pathname.match(/^\/api\/opening-condition\/pilot-tasks\/([^/]+)$/);
+    if (openingConditionPilotTaskMatch) {
+      const taskId = decodeURIComponent(openingConditionPilotTaskMatch[1]);
+      if (request.method === "GET") {
+        const task = await getOpeningConditionPilotTask(taskId);
+        sendJson(response, task ? 200 : 404, task
+          ? {
+              ok: true,
+              task,
+            }
+          : {
+              ok: false,
+              status: "not_found",
+              message: "Opening-condition pilot task not found.",
+            });
+        return;
+      }
+
+      if (request.method === "PUT") {
+        const body = await readJson(request);
+        const result = await upsertOpeningConditionPilotTask(taskId, body.task ?? body);
+        sendJson(response, result.ok ? 200 : 400, result);
+        return;
+      }
+    }
+
+    const openingConditionPilotTaskTransitionMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/transition$/,
+    );
+    if (request.method === "POST" && openingConditionPilotTaskTransitionMatch) {
+      const body = await readJson(request);
+      const result = await transitionOpeningConditionPilotTask(
+        decodeURIComponent(openingConditionPilotTaskTransitionMatch[1]),
+        body.toState,
+        body.event ?? {},
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotTaskPacketMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/packet$/,
+    );
+    if (request.method === "POST" && openingConditionPilotTaskPacketMatch) {
+      const body = await readJson(request);
+      const result = await intakeOpeningConditionPilotPacket(
+        decodeURIComponent(openingConditionPilotTaskPacketMatch[1]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotTaskMatchRunMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/match$/,
+    );
+    if (request.method === "POST" && openingConditionPilotTaskMatchRunMatch) {
+      const body = await readJson(request);
+      const result = await runOpeningConditionPilotChecklistMatch(
+        decodeURIComponent(openingConditionPilotTaskMatchRunMatch[1]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotHumanReviewListMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/human-review$/,
+    );
+    if (request.method === "GET" && openingConditionPilotHumanReviewListMatch) {
+      const result = await listOpeningConditionPilotHumanReviewItems(
+        decodeURIComponent(openingConditionPilotHumanReviewListMatch[1]),
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotHumanReviewDecisionMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/human-review\/([^/]+)\/decision$/,
+    );
+    if (request.method === "POST" && openingConditionPilotHumanReviewDecisionMatch) {
+      const body = await readJson(request);
+      const result = await decideOpeningConditionPilotHumanReviewItem(
+        decodeURIComponent(openingConditionPilotHumanReviewDecisionMatch[1]),
+        decodeURIComponent(openingConditionPilotHumanReviewDecisionMatch[2]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotReportMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/report$/,
+    );
+    if (request.method === "POST" && openingConditionPilotReportMatch) {
+      const body = await readJson(request);
+      const result = await generateOpeningConditionPilotReport(
+        decodeURIComponent(openingConditionPilotReportMatch[1]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotArchiveMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/archive$/,
+    );
+    if (request.method === "POST" && openingConditionPilotArchiveMatch) {
+      const body = await readJson(request);
+      const result = await archiveOpeningConditionPilotTask(
+        decodeURIComponent(openingConditionPilotArchiveMatch[1]),
+        body,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionBasisMatch = url.pathname.match(
+      /^\/api\/opening-condition\/workspaces\/([^/]+)\/basis(?:\/([^/]+)(?:\/([^/]+))?)?$/,
+    );
+    if (openingConditionBasisMatch) {
+      const workspaceId = decodeURIComponent(openingConditionBasisMatch[1]);
+      const basisId = openingConditionBasisMatch[2] ? decodeURIComponent(openingConditionBasisMatch[2]) : "";
+      const action = openingConditionBasisMatch[3];
+
+      if (request.method === "GET" && !basisId) {
+        sendJson(response, 200, await listOpeningConditionPilotBasisVersions(workspaceId));
+        return;
+      }
+
+      if (request.method === "PUT" && basisId && !action) {
+        const body = await readJson(request);
+        const result = await upsertOpeningConditionPilotBasisVersion(workspaceId, basisId, body.basisVersion ?? body);
+        sendJson(response, result.ok ? 200 : 400, result);
+        return;
+      }
+
+      if (request.method === "POST" && basisId && action === "publish") {
+        const body = await readJson(request);
+        const result = await publishOpeningConditionPilotBasisVersion(workspaceId, basisId, body);
+        sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+        return;
+      }
+    }
+
+    const openingConditionMasterDataMatch = url.pathname.match(
+      /^\/api\/opening-condition\/workspaces\/([^/]+)\/master-data(?:\/([^/]+)(?:\/([^/]+))?)?$/,
+    );
+    if (openingConditionMasterDataMatch) {
+      const workspaceId = decodeURIComponent(openingConditionMasterDataMatch[1]);
+      const recordId = openingConditionMasterDataMatch[2] ? decodeURIComponent(openingConditionMasterDataMatch[2]) : "";
+      const action = openingConditionMasterDataMatch[3];
+
+      if (request.method === "GET" && !recordId) {
+        sendJson(response, 200, await listOpeningConditionPilotMasterData(workspaceId));
+        return;
+      }
+
+      if (request.method === "PUT" && recordId && !action) {
+        const body = await readJson(request);
+        const result = await upsertOpeningConditionPilotMasterDataRecord(workspaceId, recordId, body.masterDataRecord ?? body);
+        sendJson(response, result.ok ? 200 : 400, result);
+        return;
+      }
+
+      if (request.method === "POST" && recordId && action === "decision") {
+        const body = await readJson(request);
+        const result = await decideOpeningConditionPilotMasterDataRecord(workspaceId, recordId, body);
+        sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+        return;
+      }
     }
 
     const reviewTaskMatch = url.pathname.match(/^\/api\/review-tasks\/([^/]+)$/);
