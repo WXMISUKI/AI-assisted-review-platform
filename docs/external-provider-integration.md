@@ -78,7 +78,8 @@ External provider support
 
 ## 下一步建议
 
-1. 先用 RAGFlow 建一个项目/合同包/分包队伍级 dataset。
-2. 把合同边界、核查表模板、历史人工修正、已确认主数据摘要作为首批索引资料。
-3. 平台侧只保存 dataset/document/chunk refs 和 safe snippet。
-4. 正式核查时只把 RAGFlow 作为召回辅助，仍以平台 basis/master-data/evidence/human-decision 为准。
+1. 先跑通单项目真实试点闭环：任务、依据、主数据、知识库绑定、资料包、人工复核、报告归档。
+2. 再用 RAGFlow 建一个项目/合同包/分包队伍级 dataset。
+3. 把合同边界、核查表模板、历史人工修正、已确认主数据摘要作为首批索引资料。
+4. 平台侧只保存 dataset/document/chunk refs 和 safe snippet。
+5. 正式核查时只把 RAGFlow 作为召回辅助，仍以平台 basis/master-data/evidence/human-decision 为准。

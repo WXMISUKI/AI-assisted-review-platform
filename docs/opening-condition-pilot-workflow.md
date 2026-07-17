@@ -15,6 +15,8 @@
 - `GET /api/opening-condition/pilot-tasks`
 - `GET /api/opening-condition/pilot-tasks/:taskId`
 - `PUT /api/opening-condition/pilot-tasks/:taskId`
+- `GET /api/opening-condition/pilot-tasks/:taskId/readiness`
+- `POST /api/opening-condition/pilot-tasks/:taskId/knowledge-base/:knowledgeBaseId/bind`
 - `POST /api/opening-condition/pilot-tasks/:taskId/packet`
 - `POST /api/opening-condition/pilot-tasks/:taskId/match`
 - `GET /api/opening-condition/pilot-tasks/:taskId/human-review`
@@ -28,8 +30,24 @@
 - `GET /api/opening-condition/workspaces/:workspaceId/master-data`
 - `PUT /api/opening-condition/workspaces/:workspaceId/master-data/:recordId`
 - `POST /api/opening-condition/workspaces/:workspaceId/master-data/:recordId/decision`
+- `GET /api/opening-condition/workspaces/:workspaceId/knowledge-bases`
+- `PUT /api/opening-condition/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId`
 
 这些接口先服务试点闭环，不代表最终权限和数据库迁移方案已经完成。
+
+## 下一阶段优先级
+
+当前最能推进投产的方向是“单项目真实试点闭环”，不是先建设完整多租户权限平台、深度调优 RAGFlow、重写 Python 工作流编排，或把所有前端演示态一次性替换完。
+
+推荐任务组：
+
+1. 运营闭环可用：任务创建/读取、知识库 list/upsert/bind、readiness 检查、正式匹配前阻塞原因可见。
+2. 资料包接入可用：对象存储中的核查表和资料包对象引用进入任务，不在前端保存私有 URL。
+3. 人工复核可用：签名、盖章、勾选、手写日期、歧义匹配、人员设备授权缺口进入人工复核队列。
+4. 报告归档可用：报告只输出内部辅助意见，必须保留证据摘要、人工决策和免责声明。
+5. 后续再做生产化：PostgreSQL schema、正式 RBAC、队列/worker、RAGFlow 检索编排、ZIP 解包与 OCR 批处理。
+
+RAGFlow 或其他知识库 provider 的需求规范是：服务端配置、平台保存 provider refs、前端只看安全摘要、召回结果只能作为支持证据，不能覆盖依据、主数据、人工决策或最终结论。
 
 ## 任务状态
 

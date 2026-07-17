@@ -13,6 +13,7 @@ import {
   deriveOpeningConditionPilotPreflightReadiness,
   generateOpeningConditionPilotReport,
   intakeOpeningConditionPilotPacket,
+  getOpeningConditionPilotTaskReadiness,
   listOpeningConditionPilotKnowledgeBases,
   listOpeningConditionPilotHumanReviewItems,
   listOpeningConditionPilotBasisVersions,
@@ -328,6 +329,51 @@ test("stores and binds subcontract-team knowledge bases without exposing unsafe 
     assert.equal(bound.ok, true);
     assert.equal(bound.task.knowledgeBaseRef.id, "kb-team-1");
     assert.equal(bound.preflightReadiness.knowledgeBase, "ready");
+    assert.equal(bound.preflightReadiness.status, "ready");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("upserting a task preserves workspace operational records and exposes readiness", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-operational-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-team-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+        summary: "已确认资料模板和人工修正记录。",
+      },
+      { storePath },
+    );
+
+    await upsertOpeningConditionPilotTask("task-1", validTaskInput(), { storePath });
+    await upsertOpeningConditionPilotTask(
+      "task-2",
+      {
+        ...validTaskInput(),
+        knowledgeBaseRef: undefined,
+      },
+      { storePath },
+    );
+
+    const listed = await listOpeningConditionPilotKnowledgeBases("ws-1", { storePath });
+    assert.equal(listed.knowledgeBases.length, 1);
+
+    const readiness = await getOpeningConditionPilotTaskReadiness("task-2", { storePath });
+    assert.equal(readiness.ok, true);
+    assert.equal(readiness.preflightReadiness.knowledgeBase, "missing");
+    assert.deepEqual(readiness.preflightReadiness.blockingReasons, ["subcontract_knowledge_base_required"]);
+
+    const bound = await bindOpeningConditionPilotKnowledgeBase("task-2", "kb-team-1", { storePath });
+    assert.equal(bound.ok, true);
     assert.equal(bound.preflightReadiness.status, "ready");
   } finally {
     await rm(directory, { recursive: true, force: true });

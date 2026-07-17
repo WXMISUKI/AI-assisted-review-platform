@@ -1282,6 +1282,26 @@ export async function getOpeningConditionPilotTask(taskId, options = {}) {
   return snapshot.tasks.find((task) => task.id === taskId) ?? null;
 }
 
+export async function getOpeningConditionPilotTaskReadiness(taskId, options = {}) {
+  const task = await getOpeningConditionPilotTask(taskId, options);
+  if (!task) {
+    return {
+      ok: false,
+      status: "not_found",
+      message: "Opening-condition pilot task not found.",
+    };
+  }
+
+  return {
+    ok: true,
+    taskId: task.id,
+    workspaceId: task.context.workspaceId,
+    state: task.state,
+    preflightReadiness: deriveOpeningConditionPilotPreflightReadiness(task),
+    knowledgeBaseRef: task.knowledgeBaseRef,
+  };
+}
+
 export async function upsertOpeningConditionPilotTask(taskId, input, options = {}) {
   const validation = validateOpeningConditionPilotTaskInput({ ...input, id: taskId });
   if (!validation.ok) {
@@ -1310,6 +1330,7 @@ export async function upsertOpeningConditionPilotTask(taskId, input, options = {
 
   await mutateSnapshot((snapshot) => ({
     snapshot: {
+      ...snapshot,
       schemaVersion: STORAGE_VERSION,
       tasks: [normalized, ...snapshot.tasks.filter((task) => task.id !== taskId)].slice(0, MAX_TASKS),
     },

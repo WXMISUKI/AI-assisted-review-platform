@@ -34,15 +34,19 @@ import {
   generateOpeningConditionPilotReport,
   getOpeningConditionPilotStoreInfo,
   getOpeningConditionPilotTask,
+  getOpeningConditionPilotTaskReadiness,
   intakeOpeningConditionPilotPacket,
+  bindOpeningConditionPilotKnowledgeBase,
   listOpeningConditionPilotHumanReviewItems,
   listOpeningConditionPilotBasisVersions,
+  listOpeningConditionPilotKnowledgeBases,
   listOpeningConditionPilotMasterData,
   listOpeningConditionPilotTasks,
   publishOpeningConditionPilotBasisVersion,
   runOpeningConditionPilotChecklistMatch,
   transitionOpeningConditionPilotTask,
   upsertOpeningConditionPilotBasisVersion,
+  upsertOpeningConditionPilotKnowledgeBase,
   upsertOpeningConditionPilotMasterDataRecord,
   upsertOpeningConditionPilotTask,
 } from "./openingConditionPilotStore.mjs";
@@ -191,12 +195,16 @@ const server = createServer(async (request, response) => {
           "POST /api/opening-condition/pilot-tasks/:taskId/report",
           "POST /api/opening-condition/pilot-tasks/:taskId/archive",
           "POST /api/opening-condition/pilot-tasks/:taskId/transition",
+          "GET /api/opening-condition/pilot-tasks/:taskId/readiness",
+          "POST /api/opening-condition/pilot-tasks/:taskId/knowledge-base/:knowledgeBaseId/bind",
           "GET /api/opening-condition/workspaces/:workspaceId/basis",
           "PUT /api/opening-condition/workspaces/:workspaceId/basis/:basisId",
           "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/publish",
           "GET /api/opening-condition/workspaces/:workspaceId/master-data",
           "PUT /api/opening-condition/workspaces/:workspaceId/master-data/:recordId",
           "POST /api/opening-condition/workspaces/:workspaceId/master-data/:recordId/decision",
+          "GET /api/opening-condition/workspaces/:workspaceId/knowledge-bases",
+          "PUT /api/opening-condition/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId",
           "GET /api/review-tasks/:taskId",
           "PUT /api/review-tasks/:taskId",
           "POST /api/review-tasks/bulk",
@@ -435,6 +443,29 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    const openingConditionPilotTaskReadinessMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/readiness$/,
+    );
+    if (request.method === "GET" && openingConditionPilotTaskReadinessMatch) {
+      const result = await getOpeningConditionPilotTaskReadiness(
+        decodeURIComponent(openingConditionPilotTaskReadinessMatch[1]),
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotTaskKnowledgeBaseBindMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/knowledge-base\/([^/]+)\/bind$/,
+    );
+    if (request.method === "POST" && openingConditionPilotTaskKnowledgeBaseBindMatch) {
+      const result = await bindOpeningConditionPilotKnowledgeBase(
+        decodeURIComponent(openingConditionPilotTaskKnowledgeBaseBindMatch[1]),
+        decodeURIComponent(openingConditionPilotTaskKnowledgeBaseBindMatch[2]),
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
     const openingConditionPilotTaskPacketMatch = url.pathname.match(
       /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/packet$/,
     );
@@ -564,6 +595,32 @@ const server = createServer(async (request, response) => {
         const body = await readJson(request);
         const result = await decideOpeningConditionPilotMasterDataRecord(workspaceId, recordId, body);
         sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+        return;
+      }
+    }
+
+    const openingConditionKnowledgeBaseMatch = url.pathname.match(
+      /^\/api\/opening-condition\/workspaces\/([^/]+)\/knowledge-bases(?:\/([^/]+))?$/,
+    );
+    if (openingConditionKnowledgeBaseMatch) {
+      const workspaceId = decodeURIComponent(openingConditionKnowledgeBaseMatch[1]);
+      const knowledgeBaseId = openingConditionKnowledgeBaseMatch[2]
+        ? decodeURIComponent(openingConditionKnowledgeBaseMatch[2])
+        : "";
+
+      if (request.method === "GET" && !knowledgeBaseId) {
+        sendJson(response, 200, await listOpeningConditionPilotKnowledgeBases(workspaceId));
+        return;
+      }
+
+      if (request.method === "PUT" && knowledgeBaseId) {
+        const body = await readJson(request);
+        const result = await upsertOpeningConditionPilotKnowledgeBase(
+          workspaceId,
+          knowledgeBaseId,
+          body.knowledgeBase ?? body,
+        );
+        sendJson(response, result.ok ? 200 : 400, result);
         return;
       }
     }

@@ -165,3 +165,20 @@ Opening-condition review requires structured records before deeper workflow auto
 - SQLite is acceptable only for local prototype state, development snapshots, or automated tests.
 
 This keeps Dify workflow output and embedding search useful without letting either become the compliance record.
+
+## Opening Condition Pilot Operability Decision
+
+For the next opening-condition milestone, prioritize a single-project real pilot loop before full multi-tenant permission management, production database migration, or provider-specific optimization.
+
+The pilot loop should make one workspace operational end to end:
+
+- select or create the project / contract package / participating organization context;
+- confirm and publish basis records from the subcontract contract or supplemental agreements;
+- initialize project master data for personnel, equipment, certificates, organizations, and system documents;
+- create and bind an organization / subcontract-team knowledge base as a support source;
+- upload the checklist and material packet;
+- run formal material completeness matching only after preflight gates are ready;
+- route uncertain signatures, stamps, checkboxes, handwritten dates, ambiguous matches, and missing authorization to human review;
+- generate and archive an internal auxiliary report after blocking human-review items are reconciled.
+
+This direction deliberately avoids local infinite optimization. RAGFlow, Dify-like workflows, OCR, and LLMs can improve extraction and recall quality, but the production value comes from platform-owned task state, readiness gates, evidence summaries, human decisions, and report assets becoming operable for a real trial user.

@@ -1,5 +1,7 @@
 import type {
   OpeningConditionObjectRef,
+  OpeningConditionPilotKnowledgeBaseRef,
+  OpeningConditionPilotPreflightReadiness,
   OpeningConditionPilotTask,
 } from "./openingConditionPilot";
 import type {
@@ -391,6 +393,17 @@ export interface OpeningConditionPilotTasksResult {
   message?: string;
 }
 
+export interface OpeningConditionPilotReadinessResult {
+  ok: boolean;
+  taskId?: string;
+  workspaceId?: string;
+  state?: OpeningConditionPilotTask["state"];
+  preflightReadiness?: OpeningConditionPilotPreflightReadiness;
+  knowledgeBaseRef?: OpeningConditionPilotKnowledgeBaseRef;
+  status?: string;
+  message?: string;
+}
+
 export interface OpeningConditionPilotBasisRecord {
   id: string;
   workspaceId: string;
@@ -438,6 +451,17 @@ export interface OpeningConditionPilotMasterDataResult {
   workspaceId: string;
   masterDataRecords: OpeningConditionPilotMasterDataRecord[];
   masterDataRecord?: OpeningConditionPilotMasterDataRecord;
+  status?: string;
+  message?: string;
+}
+
+export interface OpeningConditionPilotKnowledgeBaseResult {
+  ok: boolean;
+  workspaceId?: string;
+  knowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
+  knowledgeBase?: OpeningConditionPilotKnowledgeBaseRef;
+  task?: OpeningConditionPilotTask;
+  preflightReadiness?: OpeningConditionPilotPreflightReadiness;
   status?: string;
   message?: string;
 }
@@ -620,6 +644,44 @@ export async function upsertOpeningConditionPilotTask(taskId: string, task: Part
 export async function fetchOpeningConditionPilotTask(taskId: string) {
   const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}`);
   return readJson<OpeningConditionPilotTaskResult>(response);
+}
+
+export async function fetchOpeningConditionPilotTaskReadiness(taskId: string) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/readiness`);
+  return readJson<OpeningConditionPilotReadinessResult>(response);
+}
+
+export async function fetchOpeningConditionPilotKnowledgeBases(workspaceId: string) {
+  const response = await fetch(`/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/knowledge-bases`);
+  return readJson<OpeningConditionPilotKnowledgeBaseResult>(response);
+}
+
+export async function upsertOpeningConditionPilotKnowledgeBase(
+  workspaceId: string,
+  knowledgeBaseId: string,
+  knowledgeBase: Partial<OpeningConditionPilotKnowledgeBaseRef>,
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ knowledgeBase }),
+    },
+  );
+  return readJson<OpeningConditionPilotKnowledgeBaseResult>(response);
+}
+
+export async function bindOpeningConditionPilotKnowledgeBase(taskId: string, knowledgeBaseId: string) {
+  const response = await fetch(
+    `/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/knowledge-base/${encodeURIComponent(knowledgeBaseId)}/bind`,
+    {
+      method: "POST",
+    },
+  );
+  return readJson<OpeningConditionPilotKnowledgeBaseResult>(response);
 }
 
 export async function intakeOpeningConditionPilotPacket(taskId: string, packet: {

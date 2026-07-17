@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BookOpen,
@@ -22,6 +22,8 @@ import {
 import { agentAssetCatalog, promptAssetRegistry } from "./domain/agentAssets";
 import type {
   BackendHealthResult,
+  OpeningConditionPilotKnowledgeBaseResult,
+  OpeningConditionPilotReadinessResult,
   MinioStatusResult,
   MinioUploadResult,
   OcrStatusResult,
@@ -48,6 +50,7 @@ import {
   type OpeningConditionWorkspace,
 } from "./domain/openingConditionReview";
 import type {
+  OpeningConditionMasterDataRef,
   OpeningConditionPilotTask,
   OpeningConditionPilotHumanReviewItem,
 } from "./domain/openingConditionPilot";
@@ -81,12 +84,18 @@ import { roleLabels } from "./appShellTypes";
 import type { Role, Session, StreamingStage, ThemeMode, UploadDraft, LibraryDocument } from "./appShellTypes";
 import {
   fetchBackendHealth,
+  fetchOpeningConditionPilotKnowledgeBases,
+  fetchOpeningConditionPilotTask,
+  fetchOpeningConditionPilotTaskReadiness,
   fetchMinioStatus,
   fetchKnowledgeBaseProviderStatus,
   fetchOcrStatus,
   fetchReviewQueueStatus,
+  bindOpeningConditionPilotKnowledgeBase,
   runLlmConnectivityCheck,
   runReviewStreamConnectivityCheck,
+  upsertOpeningConditionPilotKnowledgeBase,
+  upsertOpeningConditionPilotTask,
   uploadMinioDocument,
 } from "./domain/backendConnectivity";
 
@@ -1192,6 +1201,182 @@ export function OpeningConditionReportsPage({
   );
 }
 
+const pilotReadinessLabels: Record<string, string> = {
+  ready: "就绪",
+  blocked: "阻塞",
+  provisional: "待完善",
+  missing: "缺失",
+  stale: "需刷新",
+  unreachable: "不可达",
+};
+
+function getPilotTaskId(packet: OpeningConditionReviewPacket) {
+  return `oc-pilot-${packet.workspaceId}`;
+}
+
+function mapPilotMasterDataType(type: OpeningConditionMasterDataRecord["type"]): OpeningConditionMasterDataRef["type"] {
+  return type === "system-document" ? "system_document" : type;
+}
+
+function buildPilotTaskSeed(packet: OpeningConditionReviewPacket) {
+  const workspace = packet.workspaceContext;
+  const publishedBasis = packet.basisVersions.find((basis) => basis.status === "published");
+  const publishedMasterData = packet.masterData.filter((record) => record.status === "published");
+
+  return {
+    context: {
+      workspaceId: packet.workspaceId,
+      tenantId: workspace.tenantName || "tenant-opening-condition",
+      projectId: workspace.projectName || packet.projectName,
+      contractPackageId: workspace.contractPackage || "contract-package",
+      participatingOrganizationId: workspace.participatingOrganization || "organization",
+    },
+    basisVersion: publishedBasis
+      ? {
+          id: publishedBasis.id,
+          workspaceId: packet.workspaceId,
+          version: publishedBasis.version,
+          status: "published" as const,
+          publishedAt: publishedBasis.publishedAt ?? new Date().toISOString(),
+        }
+      : undefined,
+    requiredMasterData: publishedMasterData.map((record) => ({
+      id: record.id,
+      workspaceId: packet.workspaceId,
+      type: mapPilotMasterDataType(record.type),
+      status: "published" as const,
+      label: record.label,
+    })),
+  };
+}
+
+function OpeningConditionPilotOperationalPanel({ packet }: { packet: OpeningConditionReviewPacket }) {
+  const [loading, setLoading] = useState(false);
+  const [readiness, setReadiness] = useState<OpeningConditionPilotReadinessResult | null>(null);
+  const [knowledgeBases, setKnowledgeBases] = useState<OpeningConditionPilotKnowledgeBaseResult["knowledgeBases"]>([]);
+  const [message, setMessage] = useState("");
+  const taskId = getPilotTaskId(packet);
+
+  async function refreshOperationalState() {
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const taskResult = await fetchOpeningConditionPilotTask(taskId);
+      if (!taskResult.ok || !taskResult.task) {
+        const created = await upsertOpeningConditionPilotTask(taskId, buildPilotTaskSeed(packet));
+        if (!created.ok) {
+          setMessage(created.message ?? "试点任务初始化失败");
+          return;
+        }
+      }
+
+      const kbResult = await fetchOpeningConditionPilotKnowledgeBases(packet.workspaceId);
+      setKnowledgeBases(kbResult.knowledgeBases ?? []);
+
+      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId);
+      setReadiness(readinessResult);
+      if (!readinessResult.ok) {
+        setMessage(readinessResult.message ?? "试点 readiness 读取失败");
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "试点运营状态读取失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function ensureDefaultKnowledgeBase() {
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const knowledgeBaseId = `${packet.workspaceId}-subcontract-kb`;
+      const workspace = packet.workspaceContext;
+      const upserted = await upsertOpeningConditionPilotKnowledgeBase(packet.workspaceId, knowledgeBaseId, {
+        id: knowledgeBaseId,
+        workspaceId: packet.workspaceId,
+        organizationId: workspace.participatingOrganization,
+        contractPackageId: workspace.contractPackage,
+        subcontractTeamId: workspace.participatingOrganization,
+        label: `${workspace.participatingOrganization}资料核查知识库`,
+        status: "ready",
+        summary: "用于试点的分包队伍资料模板、历史证据摘要和人工修正记录。",
+      });
+
+      if (!upserted.ok) {
+        setMessage(upserted.message ?? "知识库写入失败");
+        return;
+      }
+
+      const bound = await bindOpeningConditionPilotKnowledgeBase(taskId, knowledgeBaseId);
+      if (!bound.ok) {
+        setMessage(bound.message ?? "知识库绑定失败");
+        return;
+      }
+
+      await refreshOperationalState();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "知识库绑定失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshOperationalState();
+  }, [taskId]);
+
+  const status = readiness?.preflightReadiness?.status ?? "provisional";
+  const knowledgeBaseLabel = readiness?.knowledgeBaseRef?.label ?? knowledgeBases?.[0]?.label ?? "尚未绑定";
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <div className="section-title row">
+        <div>
+          <span className="eyebrow">后端试点运营状态</span>
+          <h2>单项目真实试点闭环</h2>
+        </div>
+        <button type="button" className="secondary" onClick={refreshOperationalState} disabled={loading}>
+          {loading ? "同步中..." : "刷新状态"}
+        </button>
+      </div>
+      <p>这里读取平台后端任务、前置门禁和分包队伍知识库绑定状态，不依赖 Dify 工作流作为主路径。</p>
+      <div className="opening-condition-meta">
+        <span>任务 {taskId}</span>
+        <span>状态 {readiness?.state ?? "待初始化"}</span>
+        <span>门禁 {pilotReadinessLabels[status] ?? status}</span>
+        <span>知识库 {knowledgeBaseLabel}</span>
+      </div>
+      {readiness?.preflightReadiness && (
+        <div className="opening-condition-meta">
+          <span>依据 {pilotReadinessLabels[readiness.preflightReadiness.basis] ?? readiness.preflightReadiness.basis}</span>
+          <span>
+            主数据 {pilotReadinessLabels[readiness.preflightReadiness.masterData] ?? readiness.preflightReadiness.masterData}
+          </span>
+          <span>
+            资料包 {pilotReadinessLabels[readiness.preflightReadiness.materialPacket] ?? readiness.preflightReadiness.materialPacket}
+          </span>
+          <span>
+            支撑库 {pilotReadinessLabels[readiness.preflightReadiness.knowledgeBase] ?? readiness.preflightReadiness.knowledgeBase}
+          </span>
+        </div>
+      )}
+      <div className="dialog-actions">
+        <button type="button" className="primary" onClick={ensureDefaultKnowledgeBase} disabled={loading}>
+          生成并绑定试点知识库
+        </button>
+      </div>
+      {readiness?.preflightReadiness?.blockingReasons.length ? (
+        <small>{readiness.preflightReadiness.blockingReasons.join(" / ")}</small>
+      ) : (
+        <small>{readiness?.preflightReadiness?.nextAction ?? "等待后端状态同步。"}</small>
+      )}
+      {message && <div className="connectivity-error">{message}</div>}
+    </section>
+  );
+}
+
 export function OpeningConditionReviewPage({
   roleLabel,
   packet = openingConditionReviewPacket,
@@ -1237,6 +1422,7 @@ export function OpeningConditionReviewPage({
       </section>
 
       <OpeningConditionReadinessPanel packet={packet} />
+      <OpeningConditionPilotOperationalPanel packet={packet} />
 
       <section className="opening-condition-grid">
         <article className="opening-panel opening-panel-wide">
