@@ -12,11 +12,13 @@ import {
   decideOpeningConditionPilotMasterDataRecord,
   deriveOpeningConditionPilotPreflightReadiness,
   generateOpeningConditionPilotReport,
+  initializeOpeningConditionPilotTaskIntake,
   intakeOpeningConditionPilotPacket,
   getOpeningConditionPilotTaskReadiness,
   listOpeningConditionPilotKnowledgeBases,
   listOpeningConditionPilotHumanReviewItems,
   listOpeningConditionPilotBasisVersions,
+  listOpeningConditionPilotTasks,
   listOpeningConditionPilotMasterData,
   publishOpeningConditionPilotBasisVersion,
   runOpeningConditionPilotChecklistMatch,
@@ -375,6 +377,189 @@ test("upserting a task preserves workspace operational records and exposes readi
     const bound = await bindOpeningConditionPilotKnowledgeBase("task-2", "kb-team-1", { storePath });
     assert.equal(bound.ok, true);
     assert.equal(bound.preflightReadiness.status, "ready");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("initializes intake from workspace facts in one orchestration flow", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-intake-init-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "承台施工分包合同",
+        status: "published",
+        version: "v1",
+        publishedAt: "2026-07-17T00:00:00.000Z",
+        sourceObject: {
+          objectId: "basis-object-1",
+          kind: "basis",
+          fileName: "承台施工分包合同.pdf",
+        },
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "专职安全员",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+        summary: "已确认分包资料模板。",
+      },
+      { storePath },
+    );
+
+    const initialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-init-1",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "承台施工条件核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "承台开工资料包.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(initialized.ok, true);
+    assert.equal(initialized.task.state, "packet_uploaded");
+    assert.equal(initialized.task.basisVersion.id, "basis-1");
+    assert.equal(initialized.task.basisVersion.sourceObject.objectId, "basis-object-1");
+    assert.equal(initialized.task.knowledgeBaseRef.id, "kb-1");
+    assert.equal(initialized.preflightReadiness.status, "ready");
+    assert.equal(initialized.intake.knowledgeBaseResolution, "auto_bound_single_ready");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps intake ready state blocked when multiple knowledge-base candidates exist", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-intake-kb-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "承台施工分包合同",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "专职安全员",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "知识库一",
+        status: "ready",
+        summary: "ready",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-2",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-2",
+        label: "知识库二",
+        status: "ready",
+        summary: "ready",
+      },
+      { storePath },
+    );
+
+    const initialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-init-2",
+        context: validTaskInput().context,
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "承台施工条件核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "承台开工资料包.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(initialized.ok, true);
+    assert.equal(initialized.task.knowledgeBaseRef, undefined);
+    assert.equal(initialized.preflightReadiness.status, "blocked");
+    assert.equal(initialized.intake.knowledgeBaseResolution, "multiple_ready_candidates");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects invalid intake/init requests before mutating the store", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-intake-invalid-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    const result = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-init-3",
+        context: validTaskInput().context,
+        sourceObjects: [],
+      },
+      { storePath },
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "invalid_input");
+    assert.match(result.errors.join("\n"), /checklistObject/);
+
+    const snapshot = await listOpeningConditionPilotTasks({ storePath });
+    assert.equal(snapshot.tasks.length, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

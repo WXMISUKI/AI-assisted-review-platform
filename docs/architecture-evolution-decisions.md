@@ -182,3 +182,16 @@ The pilot loop should make one workspace operational end to end:
 - generate and archive an internal auxiliary report after blocking human-review items are reconciled.
 
 This direction deliberately avoids local infinite optimization. RAGFlow, Dify-like workflows, OCR, and LLMs can improve extraction and recall quality, but the production value comes from platform-owned task state, readiness gates, evidence summaries, human decisions, and report assets becoming operable for a real trial user.
+
+## Opening Condition Intake Orchestration Decision
+
+For the pilot intake stage, add a domain-owned orchestration entry instead of rebuilding file upload inside the opening-condition module.
+
+The chosen path is:
+
+- keep generic upload and object-storage channels as shared platform capability;
+- accept only safe object references at the opening-condition domain boundary;
+- initialize or reinitialize the pilot task from workspace context, published basis, approved master data, optional knowledge-base selection, checklist object ref, and material packet refs in one backend mutation;
+- return readiness plus bounded orchestration diagnostics so the frontend does not have to manually compose task upsert, packet bind, and knowledge-base binding flows.
+
+This preserves a clean enterprise boundary: upload remains infrastructure, while intake/init becomes the business orchestration seam for the opening-condition pilot.

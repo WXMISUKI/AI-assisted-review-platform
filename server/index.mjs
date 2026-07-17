@@ -35,6 +35,7 @@ import {
   getOpeningConditionPilotStoreInfo,
   getOpeningConditionPilotTask,
   getOpeningConditionPilotTaskReadiness,
+  initializeOpeningConditionPilotTaskIntake,
   intakeOpeningConditionPilotPacket,
   bindOpeningConditionPilotKnowledgeBase,
   listOpeningConditionPilotHumanReviewItems,
@@ -188,6 +189,7 @@ const server = createServer(async (request, response) => {
           "GET /api/opening-condition/pilot-tasks",
           "GET /api/opening-condition/pilot-tasks/:taskId",
           "PUT /api/opening-condition/pilot-tasks/:taskId",
+          "POST /api/opening-condition/pilot-tasks/intake-init",
           "POST /api/opening-condition/pilot-tasks/:taskId/packet",
           "POST /api/opening-condition/pilot-tasks/:taskId/match",
           "GET /api/opening-condition/pilot-tasks/:taskId/human-review",
@@ -289,6 +291,13 @@ const server = createServer(async (request, response) => {
         ...(await listOpeningConditionPilotTasks()),
         store: getOpeningConditionPilotStoreInfo(),
       });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/opening-condition/pilot-tasks/intake-init") {
+      const body = await readJson(request);
+      const result = await initializeOpeningConditionPilotTaskIntake(body);
+      sendJson(response, result.ok ? 200 : result.status === "invalid_state" ? 409 : 400, result);
       return;
     }
 

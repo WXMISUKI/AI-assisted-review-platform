@@ -14,6 +14,7 @@ export type OpeningConditionPilotTaskState =
 
 export type OpeningConditionPilotEventType =
   | "task.created"
+  | "task.intake_initialized"
   | "task.blocked"
   | "packet.uploaded"
   | "extraction.started"
@@ -59,6 +60,8 @@ export interface OpeningConditionBasisVersionRef {
   version: string;
   status: "published";
   publishedAt: string;
+  sourceObject?: OpeningConditionObjectRef;
+  evidenceRefs?: OpeningConditionObjectRef[];
 }
 
 export interface OpeningConditionMasterDataRef {
@@ -237,6 +240,33 @@ export interface OpeningConditionPilotTask {
   events: OpeningConditionPilotTaskEvent[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OpeningConditionPilotIntakeDiagnostics {
+  basisResolution:
+    | "bound_from_workspace"
+    | "bound_from_existing_task"
+    | "basis_not_found"
+    | "basis_not_published"
+    | "basis_missing";
+  selectedBasisVersionId?: string;
+  boundBasisSourceObject?: boolean;
+  masterDataResolution: {
+    requestedIds: string[];
+    approvedWorkspaceCount: number;
+    boundCount: number;
+    missingIds: string[];
+  };
+  knowledgeBaseResolution:
+    | "bound_from_input"
+    | "bound_from_existing_task"
+    | "auto_bound_single_ready"
+    | "knowledge_base_not_found"
+    | "multiple_ready_candidates"
+    | "no_ready_candidate"
+    | "not_requested";
+  selectedKnowledgeBaseId?: string;
+  packetObjectCount: number;
 }
 
 export const openingConditionPilotStateLabels: Record<OpeningConditionPilotTaskState, string> = {

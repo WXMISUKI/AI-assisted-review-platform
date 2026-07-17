@@ -87,6 +87,7 @@ import {
   fetchOpeningConditionPilotKnowledgeBases,
   fetchOpeningConditionPilotTask,
   fetchOpeningConditionPilotTaskReadiness,
+  initializeOpeningConditionPilotIntake,
   fetchMinioStatus,
   fetchKnowledgeBaseProviderStatus,
   fetchOcrStatus,
@@ -95,7 +96,6 @@ import {
   runLlmConnectivityCheck,
   runReviewStreamConnectivityCheck,
   upsertOpeningConditionPilotKnowledgeBase,
-  upsertOpeningConditionPilotTask,
   uploadMinioDocument,
 } from "./domain/backendConnectivity";
 
@@ -1218,12 +1218,14 @@ function mapPilotMasterDataType(type: OpeningConditionMasterDataRecord["type"]):
   return type === "system-document" ? "system_document" : type;
 }
 
-function buildPilotTaskSeed(packet: OpeningConditionReviewPacket) {
+function buildPilotIntakeRequest(packet: OpeningConditionReviewPacket) {
   const workspace = packet.workspaceContext;
   const publishedBasis = packet.basisVersions.find((basis) => basis.status === "published");
   const publishedMasterData = packet.masterData.filter((record) => record.status === "published");
+  const uniqueEvidence = Array.from(new Map(packet.evidence.map((item) => [item.fileName, item])).values());
 
   return {
+    taskId: getPilotTaskId(packet),
     context: {
       workspaceId: packet.workspaceId,
       tenantId: workspace.tenantName || "tenant-opening-condition",
@@ -1247,6 +1249,30 @@ function buildPilotTaskSeed(packet: OpeningConditionReviewPacket) {
       status: "published" as const,
       label: record.label,
     })),
+    checklistObject: {
+      objectId: `${packet.id}-checklist`,
+      kind: "checklist" as const,
+      fileName: `${packet.reviewTarget}.docx`,
+      summary: "开工条件核查表对象引用",
+    },
+    sourceObjects:
+      uniqueEvidence.length > 0
+        ? uniqueEvidence.slice(0, 20).map((item, index) => ({
+            objectId: `${packet.id}-source-${index + 1}`,
+            kind: "source_archive" as const,
+            fileName: item.fileName,
+            summary: item.locator,
+          }))
+        : [
+            {
+              objectId: `${packet.id}-source-1`,
+              kind: "source_archive" as const,
+              fileName: `${packet.projectName}-资料包.zip`,
+              summary: "试点资料包对象引用",
+            },
+          ],
+    submittedBy: "opening-condition-portal",
+    requiredMasterDataIds: publishedMasterData.map((record) => record.id),
   };
 }
 
@@ -1255,6 +1281,7 @@ function OpeningConditionPilotOperationalPanel({ packet }: { packet: OpeningCond
   const [readiness, setReadiness] = useState<OpeningConditionPilotReadinessResult | null>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<OpeningConditionPilotKnowledgeBaseResult["knowledgeBases"]>([]);
   const [message, setMessage] = useState("");
+  const [taskExists, setTaskExists] = useState(false);
   const taskId = getPilotTaskId(packet);
 
   async function refreshOperationalState() {
@@ -1263,17 +1290,16 @@ function OpeningConditionPilotOperationalPanel({ packet }: { packet: OpeningCond
 
     try {
       const taskResult = await fetchOpeningConditionPilotTask(taskId);
-      if (!taskResult.ok || !taskResult.task) {
-        const created = await upsertOpeningConditionPilotTask(taskId, buildPilotTaskSeed(packet));
-        if (!created.ok) {
-          setMessage(created.message ?? "试点任务初始化失败");
-          return;
-        }
-      }
-
       const kbResult = await fetchOpeningConditionPilotKnowledgeBases(packet.workspaceId);
       setKnowledgeBases(kbResult.knowledgeBases ?? []);
 
+      if (!taskResult.ok || !taskResult.task) {
+        setTaskExists(false);
+        setReadiness(null);
+        return;
+      }
+
+      setTaskExists(true);
       const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId);
       setReadiness(readinessResult);
       if (!readinessResult.ok) {
@@ -1281,6 +1307,34 @@ function OpeningConditionPilotOperationalPanel({ packet }: { packet: OpeningCond
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "试点运营状态读取失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function initializePilotIntake() {
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const result = await initializeOpeningConditionPilotIntake(buildPilotIntakeRequest(packet));
+      if (!result.ok) {
+        setMessage(result.message ?? "资料包接入初始化失败");
+        return;
+      }
+
+      setTaskExists(true);
+      setReadiness({
+        ok: true,
+        taskId,
+        workspaceId: packet.workspaceId,
+        state: result.task?.state,
+        preflightReadiness: result.preflightReadiness,
+        knowledgeBaseRef: result.task?.knowledgeBaseRef,
+      });
+      await refreshOperationalState();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "资料包接入初始化失败");
     } finally {
       setLoading(false);
     }
@@ -1344,7 +1398,7 @@ function OpeningConditionPilotOperationalPanel({ packet }: { packet: OpeningCond
       <p>这里读取平台后端任务、前置门禁和分包队伍知识库绑定状态，不依赖 Dify 工作流作为主路径。</p>
       <div className="opening-condition-meta">
         <span>任务 {taskId}</span>
-        <span>状态 {readiness?.state ?? "待初始化"}</span>
+        <span>状态 {taskExists ? readiness?.state ?? "读取中" : "待初始化"}</span>
         <span>门禁 {pilotReadinessLabels[status] ?? status}</span>
         <span>知识库 {knowledgeBaseLabel}</span>
       </div>
@@ -1363,12 +1417,17 @@ function OpeningConditionPilotOperationalPanel({ packet }: { packet: OpeningCond
         </div>
       )}
       <div className="dialog-actions">
+        <button type="button" className="primary" onClick={initializePilotIntake} disabled={loading}>
+          {taskExists ? "重新初始化资料包接入" : "初始化资料包接入任务"}
+        </button>
         <button type="button" className="primary" onClick={ensureDefaultKnowledgeBase} disabled={loading}>
           生成并绑定试点知识库
         </button>
       </div>
       {readiness?.preflightReadiness?.blockingReasons.length ? (
         <small>{readiness.preflightReadiness.blockingReasons.join(" / ")}</small>
+      ) : !taskExists ? (
+        <small>对象上传仍走通用对象存储接口；这里负责把核查表、资料包和工作区事实编排为正式试点任务。</small>
       ) : (
         <small>{readiness?.preflightReadiness?.nextAction ?? "等待后端状态同步。"}</small>
       )}

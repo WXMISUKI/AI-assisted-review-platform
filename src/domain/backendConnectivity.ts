@@ -1,5 +1,6 @@
 import type {
   OpeningConditionObjectRef,
+  OpeningConditionPilotIntakeDiagnostics,
   OpeningConditionPilotKnowledgeBaseRef,
   OpeningConditionPilotPreflightReadiness,
   OpeningConditionPilotTask,
@@ -486,6 +487,17 @@ export interface OpeningConditionPilotReportResult {
   message?: string;
 }
 
+export interface OpeningConditionPilotIntakeInitResult {
+  ok: boolean;
+  status?: string;
+  task?: OpeningConditionPilotTask;
+  packet?: OpeningConditionPilotTask["packet"];
+  preflightReadiness?: OpeningConditionPilotPreflightReadiness;
+  intake?: OpeningConditionPilotIntakeDiagnostics;
+  message?: string;
+  errors?: string[];
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
@@ -697,6 +709,26 @@ export async function intakeOpeningConditionPilotPacket(taskId: string, packet: 
     body: JSON.stringify(packet),
   });
   return readJson<OpeningConditionPilotTaskResult>(response);
+}
+
+export async function initializeOpeningConditionPilotIntake(input: {
+  taskId: string;
+  context: OpeningConditionPilotTask["context"];
+  checklistObject: OpeningConditionObjectRef;
+  sourceObjects: OpeningConditionObjectRef[];
+  basisVersionId?: string;
+  knowledgeBaseId?: string;
+  requiredMasterDataIds?: string[];
+  submittedBy?: string;
+}) {
+  const response = await fetch("/api/opening-condition/pilot-tasks/intake-init", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  return readJson<OpeningConditionPilotIntakeInitResult>(response);
 }
 
 export async function runOpeningConditionPilotMatch(taskId: string, checklistItems: Array<{

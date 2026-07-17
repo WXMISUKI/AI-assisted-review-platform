@@ -169,6 +169,10 @@ function normalizeBasisVersion(value) {
     version: normalizeString(value.version, "published", 120),
     status: "published",
     publishedAt: normalizeString(value.publishedAt, new Date().toISOString(), 80),
+    sourceObject: normalizeObjectRef(value.sourceObject) ?? undefined,
+    evidenceRefs: Array.isArray(value.evidenceRefs)
+      ? value.evidenceRefs.map(normalizeObjectRef).filter(Boolean).slice(0, 50)
+      : [],
   });
 }
 
@@ -289,6 +293,14 @@ function deriveKnowledgeBaseProviderSyncStatus(providerRefs = []) {
     return "disabled";
   }
   return statuses.every((status) => status === "ready") ? "ready" : "provisional";
+}
+
+function isKnowledgeBaseReadyForFormalReview(knowledgeBaseRef) {
+  return Boolean(
+    knowledgeBaseRef &&
+      knowledgeBaseRef.status === "ready" &&
+      !["stale", "unreachable", "disabled"].includes(knowledgeBaseRef.providerSyncStatus ?? ""),
+  );
 }
 
 function normalizeKnowledgeBaseEntry(value) {
@@ -1300,6 +1312,304 @@ export async function getOpeningConditionPilotTaskReadiness(taskId, options = {}
     preflightReadiness: deriveOpeningConditionPilotPreflightReadiness(task),
     knowledgeBaseRef: task.knowledgeBaseRef,
   };
+}
+
+function sortByPublishedAtDesc(left, right) {
+  return String(right.publishedAt ?? "").localeCompare(String(left.publishedAt ?? ""));
+}
+
+function getPublishedBasisRecord(snapshot, workspaceId, basisVersionId = "") {
+  const publishedRecords = snapshot.basisVersions
+    .filter((item) => item.workspaceId === workspaceId && item.status === "published")
+    .sort(sortByPublishedAtDesc);
+
+  if (basisVersionId) {
+    return publishedRecords.find((item) => item.id === basisVersionId) ?? null;
+  }
+
+  return publishedRecords[0] ?? null;
+}
+
+function toTaskBasisVersionRef(basisRecord) {
+  if (!basisRecord) {
+    return undefined;
+  }
+
+  return normalizeBasisVersion({
+    ...basisRecord,
+    status: "published",
+    sourceObject: basisRecord.sourceObject,
+    evidenceRefs: basisRecord.evidenceRefs,
+  });
+}
+
+function getApprovedWorkspaceMasterDataRecords(snapshot, workspaceId) {
+  return snapshot.masterDataRecords.filter(
+    (item) =>
+      item.workspaceId === workspaceId && (item.status === "published" || item.status === "human_approved"),
+  );
+}
+
+function toTaskMasterDataRef(record) {
+  return normalizeMasterDataRef({
+    id: record.id,
+    workspaceId: record.workspaceId,
+    type: record.type,
+    status: record.status,
+    label: record.label,
+  });
+}
+
+function resolveRequiredMasterDataForIntake(snapshot, workspaceId, requiredMasterDataIds = []) {
+  const requestedIds = normalizeStringList(requiredMasterDataIds, 200, 180);
+  const approvedWorkspaceRecords = getApprovedWorkspaceMasterDataRecords(snapshot, workspaceId);
+  const recordMap = new Map(approvedWorkspaceRecords.map((item) => [item.id, item]));
+  const selectedRecords =
+    requestedIds.length > 0
+      ? requestedIds.map((id) => recordMap.get(id)).filter(Boolean)
+      : approvedWorkspaceRecords;
+  const boundRefs = selectedRecords.map(toTaskMasterDataRef).filter(Boolean);
+  const missingIds = requestedIds.filter((id) => !recordMap.has(id));
+
+  return {
+    requestedIds,
+    approvedWorkspaceCount: approvedWorkspaceRecords.length,
+    boundRefs,
+    missingIds,
+  };
+}
+
+function resolveKnowledgeBaseForIntake(snapshot, workspaceId, requestedKnowledgeBaseId = "", existingKnowledgeBaseId = "") {
+  const workspaceKnowledgeBases = snapshot.knowledgeBases
+    .filter((item) => item.workspaceId === workspaceId)
+    .map((item) => normalizeKnowledgeBaseRecord(item, workspaceId))
+    .filter(Boolean);
+  const readyKnowledgeBases = workspaceKnowledgeBases.filter((item) => isKnowledgeBaseReadyForFormalReview(item));
+
+  if (requestedKnowledgeBaseId) {
+    const selected = workspaceKnowledgeBases.find((item) => item.id === requestedKnowledgeBaseId);
+    return {
+      knowledgeBaseRef: selected ? normalizeKnowledgeBaseRef(selected, workspaceId) : undefined,
+      resolution: selected ? "bound_from_input" : "knowledge_base_not_found",
+      selectedKnowledgeBaseId: selected?.id,
+    };
+  }
+
+  if (existingKnowledgeBaseId) {
+    const existing = workspaceKnowledgeBases.find((item) => item.id === existingKnowledgeBaseId);
+    if (existing) {
+      return {
+        knowledgeBaseRef: normalizeKnowledgeBaseRef(existing, workspaceId),
+        resolution: "bound_from_existing_task",
+        selectedKnowledgeBaseId: existing.id,
+      };
+    }
+  }
+
+  if (readyKnowledgeBases.length === 1) {
+    return {
+      knowledgeBaseRef: normalizeKnowledgeBaseRef(readyKnowledgeBases[0], workspaceId),
+      resolution: "auto_bound_single_ready",
+      selectedKnowledgeBaseId: readyKnowledgeBases[0].id,
+    };
+  }
+
+  if (readyKnowledgeBases.length > 1) {
+    return {
+      knowledgeBaseRef: undefined,
+      resolution: "multiple_ready_candidates",
+      selectedKnowledgeBaseId: undefined,
+    };
+  }
+
+  return {
+    knowledgeBaseRef: undefined,
+    resolution: existingKnowledgeBaseId ? "knowledge_base_not_found" : "no_ready_candidate",
+    selectedKnowledgeBaseId: undefined,
+  };
+}
+
+function buildPilotPacketFromIntakeInput(taskId, context, input = {}) {
+  return normalizePacket(
+    {
+      id: input.packetId ?? `${taskId}-packet`,
+      checklistObject: input.checklistObject,
+      sourceObjects: Array.isArray(input.sourceObjects) ? input.sourceObjects : [],
+      submittedBy: input.submittedBy,
+      submittedAt: input.submittedAt,
+    },
+    taskId,
+    context.workspaceId,
+  );
+}
+
+function createPilotIntakeEvent(taskId, sequence, type, state, message, progress, safeDiagnostics = {}) {
+  return normalizeEvent(
+    {
+      id: `oc-event-${taskId}-${sequence}`,
+      taskId,
+      sequence,
+      type,
+      state,
+      occurredAt: new Date().toISOString(),
+      message,
+      progress,
+      safeDiagnostics,
+    },
+    taskId,
+    sequence,
+  );
+}
+
+export async function initializeOpeningConditionPilotTaskIntake(input = {}, options = {}) {
+  const taskId = normalizeString(input.taskId, "", 180);
+  const context = normalizeWorkspaceContext(input.context);
+  const errors = [];
+
+  if (!taskId) {
+    errors.push("taskId is required");
+  }
+
+  if (!context) {
+    errors.push("workspace context with workspaceId, tenantId, projectId, contractPackageId, and participatingOrganizationId is required");
+  }
+
+  const packet = context ? buildPilotPacketFromIntakeInput(taskId, context, input) : undefined;
+  if (!packet) {
+    errors.push("intake packet must include checklistObject with objectId and fileName");
+  }
+
+  if (errors.length > 0) {
+    return {
+      ok: false,
+      status: "invalid_input",
+      message: "A valid opening-condition intake/init request is required.",
+      errors,
+    };
+  }
+
+  return mutateSnapshot((snapshot) => {
+    const existingTask = snapshot.tasks.find((task) => task.id === taskId) ?? null;
+    if (existingTask && terminalStates.has(existingTask.state)) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "invalid_state",
+          message: `Cannot reinitialize opening-condition pilot task while task is ${existingTask.state}.`,
+        },
+      };
+    }
+
+    const basisRecord = getPublishedBasisRecord(snapshot, context.workspaceId, normalizeString(input.basisVersionId, "", 180));
+    const basisVersion = basisRecord ? toTaskBasisVersionRef(basisRecord) : undefined;
+    const basisResolution = basisRecord
+      ? "bound_from_workspace"
+      : input.basisVersionId
+        ? "basis_not_found"
+        : "basis_missing";
+
+    const masterDataResolution = resolveRequiredMasterDataForIntake(
+      snapshot,
+      context.workspaceId,
+      Array.isArray(input.requiredMasterDataIds) ? input.requiredMasterDataIds : [],
+    );
+
+    const knowledgeBaseResolution = resolveKnowledgeBaseForIntake(
+      snapshot,
+      context.workspaceId,
+      normalizeString(input.knowledgeBaseId, "", 180),
+      existingTask?.knowledgeBaseRef?.id ?? "",
+    );
+
+    const nextTaskState = deriveInitialState(
+      {
+        context,
+        basisVersion,
+        requiredMasterData: masterDataResolution.boundRefs,
+        knowledgeBaseRef: knowledgeBaseResolution.knowledgeBaseRef,
+        packet,
+      },
+      existingTask?.state ?? "draft",
+    );
+    const now = new Date().toISOString();
+    const existingEvents = existingTask?.events ?? [];
+    const startSequence = existingEvents.length + 1;
+    const intakeDiagnostics = {
+      basisResolution,
+      selectedBasisVersionId: basisVersion?.id,
+      boundBasisSourceObject: Boolean(basisVersion?.sourceObject),
+      masterDataResolution: {
+        requestedIds: masterDataResolution.requestedIds,
+        approvedWorkspaceCount: masterDataResolution.approvedWorkspaceCount,
+        boundCount: masterDataResolution.boundRefs.length,
+        missingIds: masterDataResolution.missingIds,
+      },
+      knowledgeBaseResolution: knowledgeBaseResolution.resolution,
+      selectedKnowledgeBaseId: knowledgeBaseResolution.selectedKnowledgeBaseId,
+      packetObjectCount: packet.sourceObjects.length,
+    };
+    const intakeEvent = createPilotIntakeEvent(
+      taskId,
+      startSequence,
+      existingTask ? "task.intake_initialized" : "task.created",
+      nextTaskState,
+      existingTask ? "开工条件试点任务已重新初始化。" : "开工条件试点任务已初始化。",
+      5,
+      {
+        basisResolution,
+        knowledgeBaseResolution: knowledgeBaseResolution.resolution,
+        boundMasterDataCount: masterDataResolution.boundRefs.length,
+        missingMasterDataIds: masterDataResolution.missingIds,
+      },
+    );
+    const packetEvent = createPilotIntakeEvent(
+      taskId,
+      startSequence + 1,
+      "packet.uploaded",
+      nextTaskState,
+      `资料包已接收，包含 ${packet.sourceObjects.length} 个资料对象。`,
+      nextTaskState === "packet_uploaded" ? 15 : 10,
+      {
+        checklistFileName: packet.checklistObject.fileName,
+        sourceObjectCount: packet.sourceObjects.length,
+        sourceFileNames: packet.sourceObjects.map((item) => item.fileName).slice(0, 30),
+      },
+    );
+
+    const nextTask = normalizeOpeningConditionPilotTask({
+      ...existingTask,
+      id: taskId,
+      context,
+      state: nextTaskState,
+      basisVersion,
+      requiredMasterData: masterDataResolution.boundRefs,
+      knowledgeBaseRef: knowledgeBaseResolution.knowledgeBaseRef,
+      packet,
+      checkItems: [],
+      evidence: [],
+      humanReviewQueue: [],
+      reportAsset: undefined,
+      createdAt: existingTask?.createdAt ?? now,
+      updatedAt: now,
+      events: [...existingEvents, intakeEvent, packetEvent],
+    });
+    const nextTasks = [nextTask, ...snapshot.tasks.filter((task) => task.id !== taskId)].slice(0, MAX_TASKS);
+
+    return {
+      snapshot: {
+        ...snapshot,
+        tasks: nextTasks,
+      },
+      value: {
+        ok: true,
+        task: nextTask,
+        packet: nextTask.packet,
+        preflightReadiness: nextTask.preflightReadiness,
+        intake: intakeDiagnostics,
+      },
+    };
+  }, options.storePath);
 }
 
 export async function upsertOpeningConditionPilotTask(taskId, input, options = {}) {
