@@ -700,6 +700,7 @@ export async function bindOpeningConditionPilotKnowledgeBase(taskId: string, kno
 export async function intakeOpeningConditionPilotPacket(taskId: string, packet: {
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
+  inventoryEntries?: NonNullable<OpeningConditionPilotTask["packet"]>["inventoryEntries"];
   submittedBy?: string;
 }) {
   const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/packet`, {
@@ -717,6 +718,7 @@ export async function initializeOpeningConditionPilotIntake(input: {
   context: OpeningConditionPilotTask["context"];
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
+  inventoryEntries?: NonNullable<OpeningConditionPilotTask["packet"]>["inventoryEntries"];
   checklistItems?: OpeningConditionPilotChecklistDefinitionItem[];
   basisVersionId?: string;
   knowledgeBaseId?: string;

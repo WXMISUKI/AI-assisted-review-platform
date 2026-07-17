@@ -112,8 +112,18 @@ export interface OpeningConditionPilotPacket {
   workspaceId: string;
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
+  inventoryEntries: OpeningConditionPilotPacketInventoryEntry[];
   submittedAt: string;
   submittedBy: string;
+}
+
+export interface OpeningConditionPilotPacketInventoryEntry {
+  id: string;
+  sourceObjectId?: string;
+  fileName: string;
+  relativePath?: string;
+  summary?: string;
+  sizeBytes?: number;
 }
 
 export interface OpeningConditionPilotEvidence {
@@ -281,6 +291,8 @@ export interface OpeningConditionPilotIntakeDiagnostics {
     | "not_requested";
   selectedKnowledgeBaseId?: string;
   packetObjectCount: number;
+  inventoryResolution?: "direct_input" | "derived_from_source_objects";
+  inventoryEntryCount?: number;
   checklistDefinitionCount?: number;
   checklistDefinitionResolution?:
     | "direct_input"

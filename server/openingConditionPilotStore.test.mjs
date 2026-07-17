@@ -455,9 +455,12 @@ test("initializes intake from workspace facts in one orchestration flow", async 
     assert.equal(initialized.task.knowledgeBaseRef.id, "kb-1");
     assert.equal(initialized.preflightReadiness.status, "ready");
     assert.equal(initialized.intake.knowledgeBaseResolution, "auto_bound_single_ready");
+    assert.equal(initialized.intake.inventoryResolution, "derived_from_source_objects");
+    assert.equal(initialized.intake.inventoryEntryCount, 1);
     assert.equal(initialized.intake.checklistDefinitionResolution, "derived_from_template");
     assert.equal(initialized.intake.selectedChecklistTemplateId, "pier-cap-opening-condition-checklist");
     assert.equal(initialized.task.checklistDefinition.length, 5);
+    assert.equal(initialized.task.packet.inventoryEntries.length, 1);
     assert.equal(initialized.task.checklistDefinition[0].name, "项目管理人员及专职安全员资格证书");
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -763,6 +766,21 @@ test("intakes a packet as bounded object summaries and records an event", async 
             fileName: "设备资料.zip",
           },
         ],
+        inventoryEntries: [
+          {
+            id: "entry-1",
+            sourceObjectId: "source-1",
+            fileName: "人员/专职安全员证书.pdf",
+            relativePath: "人员/专职安全员证书.pdf",
+            summary: "专职安全员证书扫描件",
+          },
+          {
+            id: "entry-2",
+            sourceObjectId: "source-2",
+            fileName: "设备/汽车吊检验报告.pdf",
+            relativePath: "设备/汽车吊检验报告.pdf",
+          },
+        ],
       },
       { storePath },
     );
@@ -770,8 +788,11 @@ test("intakes a packet as bounded object summaries and records an event", async 
     assert.equal(intake.ok, true);
     assert.equal(intake.task.state, "packet_uploaded");
     assert.equal(intake.packet.sourceObjects.length, 2);
+    assert.equal(intake.packet.inventoryEntries.length, 2);
     assert.equal("privateUrl" in intake.packet.checklistObject, false);
     assert.equal("token" in intake.packet.sourceObjects[0], false);
+    assert.equal(intake.event.safeDiagnostics.inventoryResolution, "direct_input");
+    assert.equal(intake.event.safeDiagnostics.inventoryEntryCount, 2);
     assert.deepEqual(intake.event.safeDiagnostics.sourceFileNames, ["人员证书.zip", "设备资料.zip"]);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -866,6 +887,23 @@ test("matches checklist items against packet inventory and opens human review fo
             fileName: "汽车吊备案资料.pdf",
           },
         ],
+        inventoryEntries: [
+          {
+            id: "entry-1",
+            sourceObjectId: "source-1",
+            fileName: "人员/专职安全员证书.pdf",
+          },
+          {
+            id: "entry-2",
+            sourceObjectId: "source-2",
+            fileName: "设备/汽车吊检验报告.pdf",
+          },
+          {
+            id: "entry-3",
+            sourceObjectId: "source-3",
+            fileName: "设备/汽车吊备案资料.pdf",
+          },
+        ],
       },
       { storePath },
     );
@@ -909,7 +947,64 @@ test("matches checklist items against packet inventory and opens human review fo
     assert.equal(result.checkItems.find((item) => item.id === "item-stamp").verdict, "needs_human_review");
     assert.equal(result.checkItems.find((item) => item.id === "item-stamp").visualAssertions[0].requiresHumanReview, true);
     assert.equal(result.humanReviewQueue.length, 3);
-    assert.equal(result.evidence.some((item) => item.objectRef.fileName === "专职安全员证书.pdf"), true);
+    assert.equal(result.evidence.some((item) => item.objectRef.fileName === "人员/专职安全员证书.pdf"), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("matches against packet inventory entries before coarse source object names", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-packet-inventory-match-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-1", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-1",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "archive-1",
+            kind: "source_archive",
+            fileName: "承台施工资料包.zip",
+          },
+        ],
+        inventoryEntries: [
+          {
+            id: "entry-person",
+            sourceObjectId: "archive-1",
+            fileName: "人员/专职安全员证书.pdf",
+            relativePath: "人员/专职安全员证书.pdf",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch(
+      "task-1",
+      {
+        checklistItems: [
+          {
+            id: "item-person",
+            name: "专职安全员证书",
+            expectedEvidenceHints: ["专职安全员", "证书"],
+            masterDataIds: ["md-1"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.checkItems[0].verdict, "pass");
+    assert.equal(result.evidence[0].objectRef.fileName, "人员/专职安全员证书.pdf");
+    assert.equal(result.evidence[0].locator, "人员/专职安全员证书.pdf");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

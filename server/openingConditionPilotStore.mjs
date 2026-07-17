@@ -7,6 +7,7 @@ const STORAGE_VERSION = 1;
 const MAX_TASKS = 100;
 const MAX_EVENTS_PER_TASK = 300;
 const MAX_OBJECTS_PER_PACKET = 200;
+const MAX_PACKET_INVENTORY_ENTRIES = 500;
 const MAX_CHECKLIST_ITEMS = 300;
 const MAX_STRING_LENGTH = 2000;
 const MAX_KNOWLEDGE_BASE_RECORDS = 300;
@@ -151,6 +152,40 @@ function normalizeObjectRef(value) {
     checksum: normalizeString(value.checksum, "", 160) || undefined,
     summary: normalizeString(value.summary, "", 300) || undefined,
   });
+}
+
+function normalizePacketInventoryEntry(value, index = 0, sourceObjectIds = new Set()) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const fileName = normalizeString(value.fileName ?? value.name, "", 240);
+  if (!fileName) {
+    return null;
+  }
+
+  const sourceObjectId = normalizeString(value.sourceObjectId, "", 180);
+  return sanitizeOpeningConditionPilotValue({
+    id: normalizeString(value.id, `packet-entry-${index + 1}`, 180),
+    sourceObjectId: sourceObjectId && sourceObjectIds.has(sourceObjectId) ? sourceObjectId : undefined,
+    fileName,
+    relativePath: normalizeString(value.relativePath ?? value.path, "", 500) || undefined,
+    summary: normalizeString(value.summary, "", 300) || undefined,
+    sizeBytes: normalizeNumber(value.sizeBytes ?? value.size, 0, 1024 * 1024 * 1024) || undefined,
+  });
+}
+
+function derivePacketInventoryEntriesFromSourceObjects(sourceObjects = []) {
+  return sourceObjects.map((objectRef, index) =>
+    sanitizeOpeningConditionPilotValue({
+      id: `packet-entry-${index + 1}`,
+      sourceObjectId: objectRef.objectId,
+      fileName: objectRef.fileName,
+      relativePath: objectRef.fileName,
+      summary: objectRef.summary,
+      sizeBytes: objectRef.sizeBytes,
+    }),
+  );
 }
 
 function normalizeBasisVersion(value) {
@@ -423,6 +458,13 @@ function normalizePacket(value, taskId, workspaceId) {
   const sourceObjects = Array.isArray(value.sourceObjects)
     ? value.sourceObjects.map(normalizeObjectRef).filter(Boolean).slice(0, MAX_OBJECTS_PER_PACKET)
     : [];
+  const sourceObjectIds = new Set(sourceObjects.map((item) => item.objectId));
+  const inventoryEntries = Array.isArray(value.inventoryEntries)
+    ? value.inventoryEntries
+        .map((item, index) => normalizePacketInventoryEntry(item, index, sourceObjectIds))
+        .filter(Boolean)
+        .slice(0, MAX_PACKET_INVENTORY_ENTRIES)
+    : derivePacketInventoryEntriesFromSourceObjects(sourceObjects).slice(0, MAX_PACKET_INVENTORY_ENTRIES);
 
   if (!id || !checklistObject) {
     return undefined;
@@ -434,6 +476,7 @@ function normalizePacket(value, taskId, workspaceId) {
     workspaceId,
     checklistObject,
     sourceObjects,
+    inventoryEntries,
     submittedAt: normalizeString(value.submittedAt, new Date().toISOString(), 80),
     submittedBy: normalizeString(value.submittedBy, "pilot-user", 160),
   };
@@ -596,6 +639,30 @@ function getMatchScore(checklistItem, objectRef) {
     const partial = hint.length >= 2 && fileText.includes(hint.slice(0, Math.min(4, hint.length))) ? 1 : 0;
     return score + partial;
   }, 0);
+}
+
+function buildPacketMatchCandidates(packet) {
+  const sourceObjectMap = new Map((packet?.sourceObjects ?? []).map((item) => [item.objectId, item]));
+  const inventoryEntries =
+    Array.isArray(packet?.inventoryEntries) && packet.inventoryEntries.length > 0
+      ? packet.inventoryEntries
+      : derivePacketInventoryEntriesFromSourceObjects(packet?.sourceObjects ?? []);
+
+  return inventoryEntries.map((entry) => {
+    const sourceObject = entry.sourceObjectId ? sourceObjectMap.get(entry.sourceObjectId) : null;
+    return {
+      entry,
+      objectRef: sanitizeOpeningConditionPilotValue({
+        ...(sourceObject ?? {
+          objectId: `${packet?.id ?? "packet"}:${entry.id}`,
+          kind: "evidence",
+        }),
+        fileName: entry.fileName,
+        summary: entry.summary ?? sourceObject?.summary,
+        sizeBytes: entry.sizeBytes ?? sourceObject?.sizeBytes,
+      }),
+    };
+  });
 }
 
 function getChecklistReviewText(checklistItem) {
@@ -1492,6 +1559,7 @@ function buildPilotPacketFromIntakeInput(taskId, context, input = {}) {
       id: input.packetId ?? `${taskId}-packet`,
       checklistObject: input.checklistObject,
       sourceObjects: Array.isArray(input.sourceObjects) ? input.sourceObjects : [],
+      inventoryEntries: Array.isArray(input.inventoryEntries) ? input.inventoryEntries : undefined,
       submittedBy: input.submittedBy,
       submittedAt: input.submittedAt,
     },
@@ -1585,6 +1653,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       existingTask,
     );
     const checklistDefinition = checklistResolution.checklistDefinition;
+    const inventoryResolution = Array.isArray(input.inventoryEntries) ? "direct_input" : "derived_from_source_objects";
 
     const nextTaskState = deriveInitialState(
       {
@@ -1613,6 +1682,8 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       knowledgeBaseResolution: knowledgeBaseResolution.resolution,
       selectedKnowledgeBaseId: knowledgeBaseResolution.selectedKnowledgeBaseId,
       packetObjectCount: packet.sourceObjects.length,
+      inventoryResolution,
+      inventoryEntryCount: packet.inventoryEntries.length,
       checklistDefinitionCount: checklistDefinition.length,
       checklistDefinitionResolution: checklistResolution.resolution,
       selectedChecklistTemplateId: checklistResolution.templateId,
@@ -1629,6 +1700,8 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         knowledgeBaseResolution: knowledgeBaseResolution.resolution,
         boundMasterDataCount: masterDataResolution.boundRefs.length,
         missingMasterDataIds: masterDataResolution.missingIds,
+        inventoryResolution,
+        inventoryEntryCount: packet.inventoryEntries.length,
         checklistDefinitionCount: checklistDefinition.length,
         checklistDefinitionResolution: checklistResolution.resolution,
         checklistTemplateId: checklistResolution.templateId,
@@ -1644,6 +1717,9 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       {
         checklistFileName: packet.checklistObject.fileName,
         sourceObjectCount: packet.sourceObjects.length,
+        inventoryResolution,
+        inventoryEntryCount: packet.inventoryEntries.length,
+        inventoryFileNames: packet.inventoryEntries.map((item) => item.fileName).slice(0, 30),
         sourceFileNames: packet.sourceObjects.map((item) => item.fileName).slice(0, 30),
       },
     );
@@ -1811,6 +1887,9 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
 
     const existingTask = snapshot.tasks[index];
     const packet = normalizePacket(input.packet ?? input, taskId, existingTask.context.workspaceId);
+    const inventoryResolution = Array.isArray((input.packet ?? input).inventoryEntries)
+      ? "direct_input"
+      : "derived_from_source_objects";
     if (!packet) {
       return {
         snapshot,
@@ -1848,6 +1927,9 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
         safeDiagnostics: {
           checklistFileName: packet.checklistObject.fileName,
           sourceObjectCount: packet.sourceObjects.length,
+          inventoryResolution,
+          inventoryEntryCount: packet.inventoryEntries.length,
+          inventoryFileNames: packet.inventoryEntries.map((item) => item.fileName).slice(0, 30),
           sourceFileNames: packet.sourceObjects.map((item) => item.fileName).slice(0, 30),
         },
       },
@@ -1945,7 +2027,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
     }
 
     const basisVersionId = existingTask.basisVersion?.id ?? "";
-    const sourceObjects = existingTask.packet.sourceObjects;
+    const packetCandidates = buildPacketMatchCandidates(existingTask.packet);
     const evidence = [];
     const humanReviewQueue = [];
     const checkItems = checklistItems.map((item, itemIndex) => {
@@ -1972,10 +2054,10 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         };
       }
 
-      const scoredMatches = sourceObjects
-        .map((objectRef) => ({
-          objectRef,
-          score: getMatchScore(item, objectRef),
+      const scoredMatches = packetCandidates
+        .map((candidate) => ({
+          ...candidate,
+          score: getMatchScore(item, candidate.objectRef),
         }))
         .filter((match) => match.score > 0)
         .sort((left, right) => right.score - left.score);
@@ -1996,7 +2078,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           taskId,
           itemId: item.id,
           objectRef: match.objectRef,
-          locator: "资料包文件清单",
+          locator: match.entry.relativePath || "资料包文件清单",
           extractedValue: match.objectRef.summary ?? match.objectRef.fileName,
           confidence: ambiguous ? "medium" : "high",
           masterDataIds: item.masterDataIds,
@@ -2079,7 +2161,8 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
     const startSequence = existingTask.events.length + 1;
     const events = [
       createMatchEvent(taskId, startSequence, "extraction.completed", "extracting", "资料包文件清单已归一化。", 35, {
-        sourceObjectCount: sourceObjects.length,
+        sourceObjectCount: existingTask.packet.sourceObjects.length,
+        inventoryEntryCount: existingTask.packet.inventoryEntries.length,
       }),
       createMatchEvent(taskId, startSequence + 1, "matching.started", "matching", "开始按核查表执行确定性匹配。", 50, {
         checklistItemCount: checklistItems.length,

@@ -234,3 +234,17 @@ The chosen direction is:
 - keep heavy document parsing, OCR recovery, and semantic checklist generation as later slices that feed the same backend checklist-definition contract.
 
 This keeps the opening-condition pilot moving toward a real trial loop without forcing premature parser complexity into the critical path.
+
+## Opening Condition Packet Inventory Manifest Decision
+
+After checklist-object adaptation, the next fastest production-facing slice is not deep OCR or ZIP extraction yet. It is a task-owned packet inventory manifest that lets the platform describe what the submitted material packet actually contains.
+
+The chosen direction is:
+
+- let pilot packets persist bounded inventory entries alongside checklist and source object refs;
+- accept direct inventory input when available from later upload or ZIP-manifest tooling;
+- derive a default inventory from submitted source objects when no explicit inventory is available;
+- make formal matching prefer inventory entries as deterministic candidates instead of only coarse packet object names;
+- keep real ZIP traversal, OCR batch execution, and richer document metadata as later slices feeding the same manifest contract.
+
+This keeps the project moving toward a real trial loop while preserving a clean seam for future archive parsing and evidence-grounding upgrades.
