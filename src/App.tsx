@@ -1026,20 +1026,22 @@ export function App() {
                 summary: "试点资料包对象引用",
               },
             ],
-      basisVersionId: publishedBasis?.id,
+	      checklistItems: buildOpeningPilotChecklistItems(packet),
+	      basisVersionId: publishedBasis?.id,
       requiredMasterDataIds: publishedMasterData.map((record) => record.id),
       submittedBy: session?.username ?? "pilot-user",
     };
   }
 
-  function buildOpeningPilotChecklistItems(packet: OpeningConditionReviewPacket) {
-    return packet.checkItems.map((item) => ({
-      id: item.id,
-      name: item.content,
-      category: item.category,
-      required: item.mandatory,
-      expectedEvidenceHints: [item.subCategory, item.content].filter(Boolean),
-      basisVersionId: item.basisVersionId,
+	  function buildOpeningPilotChecklistItems(packet: OpeningConditionReviewPacket) {
+	    return packet.checkItems.map((item) => ({
+	      id: item.id,
+	      name: item.content,
+	      category: item.category,
+	      subCategory: item.subCategory,
+	      required: item.mandatory,
+	      expectedEvidenceHints: [item.subCategory, item.content].filter(Boolean),
+	      basisVersionId: item.basisVersionId,
       masterDataIds: item.masterDataIds,
     }));
   }
@@ -1255,7 +1257,7 @@ export function App() {
     setOpeningPilotBusy(true);
 
     try {
-      const result = await runOpeningConditionPilotMatch(taskId, buildOpeningPilotChecklistItems(openingPacket));
+	      const result = await runOpeningConditionPilotMatch(taskId);
       if (!result.ok || !result.task) {
         setOpeningPilotStatus(result.message ?? "正式核查执行失败");
         return;

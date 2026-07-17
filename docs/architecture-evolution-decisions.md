@@ -208,3 +208,15 @@ The chosen direction is:
 - once a pilot task exists, backend task state becomes the preferred execution view over local demo summaries.
 
 This keeps the pilot behavior understandable for enterprise users and reduces the risk of hidden auto-execution before the business is ready to trust it.
+
+## Opening Condition Task-Bound Checklist Definition Decision
+
+After the portal gained explicit execution controls, the next production-facing gap is checklist ownership. Formal matching should not depend on the frontend resending a transient checklist definition every time.
+
+The chosen direction is:
+
+- persist a normalized checklist definition on the pilot task during intake/init;
+- let formal matching reuse the stored task-bound checklist definition by default;
+- keep checklist file parsing itself as a later slice, so future DOCX/XLSX adapters only need to feed the same backend checklist-definition contract.
+
+This gives the pilot a more durable execution boundary without prematurely expanding into heavy document parsing.

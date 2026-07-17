@@ -432,6 +432,16 @@ test("initializes intake from workspace facts in one orchestration flow", async 
         taskId: "task-init-1",
         context: validTaskInput().context,
         basisVersionId: "basis-1",
+        checklistItems: [
+          {
+            id: "item-a",
+            category: "资料核查",
+            subCategory: "人员",
+            name: "专职安全员证书",
+            expectedEvidenceHints: ["专职安全员", "证书"],
+            masterDataIds: ["md-1"],
+          },
+        ],
         checklistObject: {
           objectId: "checklist-1",
           kind: "checklist",
@@ -455,6 +465,8 @@ test("initializes intake from workspace facts in one orchestration flow", async 
     assert.equal(initialized.task.knowledgeBaseRef.id, "kb-1");
     assert.equal(initialized.preflightReadiness.status, "ready");
     assert.equal(initialized.intake.knowledgeBaseResolution, "auto_bound_single_ready");
+    assert.equal(initialized.task.checklistDefinition.length, 1);
+    assert.equal(initialized.task.checklistDefinition[0].name, "专职安全员证书");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -741,6 +753,84 @@ test("matches checklist items against packet inventory and opens human review fo
     assert.equal(result.checkItems.find((item) => item.id === "item-stamp").visualAssertions[0].requiresHumanReview, true);
     assert.equal(result.humanReviewQueue.length, 3);
     assert.equal(result.evidence.some((item) => item.objectRef.fileName === "专职安全员证书.pdf"), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("replays formal matching from stored task-bound checklist definition", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-checklist-def-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "承台施工分包合同",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "专职安全员",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+        summary: "ready",
+      },
+      { storePath },
+    );
+
+    await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-1",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistItems: [
+          {
+            id: "item-person",
+            name: "专职安全员证书",
+            expectedEvidenceHints: ["专职安全员", "证书"],
+            masterDataIds: ["md-1"],
+          },
+        ],
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "专职安全员证书.pdf",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch("task-1", {}, { storePath });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.task.checklistDefinition.length, 1);
+    assert.equal(result.task.checklistDefinition[0].id, "item-person");
+    assert.equal(result.checkItems[0].verdict, "pass");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

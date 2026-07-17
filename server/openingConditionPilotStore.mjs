@@ -912,6 +912,9 @@ export function normalizeOpeningConditionPilotTask(value) {
     requiredMasterData,
     knowledgeBaseRef,
     packet,
+    checklistDefinition: Array.isArray(value.checklistDefinition)
+      ? value.checklistDefinition.map((item, index) => normalizeChecklistItem(item, index)).filter(Boolean)
+      : [],
     checkItems: Array.isArray(value.checkItems)
       ? value.checkItems.map((item) => normalizeCheckItem(item, id)).filter(Boolean)
       : [],
@@ -1514,6 +1517,9 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       context.workspaceId,
       Array.isArray(input.requiredMasterDataIds) ? input.requiredMasterDataIds : [],
     );
+    const checklistDefinition = Array.isArray(input.checklistItems)
+      ? input.checklistItems.map((item, index) => normalizeChecklistItem(item, index)).filter(Boolean)
+      : existingTask?.checklistDefinition ?? [];
 
     const knowledgeBaseResolution = resolveKnowledgeBaseForIntake(
       snapshot,
@@ -1529,6 +1535,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         requiredMasterData: masterDataResolution.boundRefs,
         knowledgeBaseRef: knowledgeBaseResolution.knowledgeBaseRef,
         packet,
+        checklistDefinition,
       },
       existingTask?.state ?? "draft",
     );
@@ -1548,6 +1555,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       knowledgeBaseResolution: knowledgeBaseResolution.resolution,
       selectedKnowledgeBaseId: knowledgeBaseResolution.selectedKnowledgeBaseId,
       packetObjectCount: packet.sourceObjects.length,
+      checklistDefinitionCount: checklistDefinition.length,
     };
     const intakeEvent = createPilotIntakeEvent(
       taskId,
@@ -1561,6 +1569,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         knowledgeBaseResolution: knowledgeBaseResolution.resolution,
         boundMasterDataCount: masterDataResolution.boundRefs.length,
         missingMasterDataIds: masterDataResolution.missingIds,
+        checklistDefinitionCount: checklistDefinition.length,
       },
     );
     const packetEvent = createPilotIntakeEvent(
@@ -1586,6 +1595,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       requiredMasterData: masterDataResolution.boundRefs,
       knowledgeBaseRef: knowledgeBaseResolution.knowledgeBaseRef,
       packet,
+      checklistDefinition,
       checkItems: [],
       evidence: [],
       humanReviewQueue: [],
@@ -1859,15 +1869,15 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
     }
 
     const checklistItems = Array.isArray(input.checklistItems)
-      ? input.checklistItems.map(normalizeChecklistItem).filter(Boolean).slice(0, MAX_CHECKLIST_ITEMS)
-      : [];
+      ? input.checklistItems.map((item, index) => normalizeChecklistItem(item, index)).filter(Boolean).slice(0, MAX_CHECKLIST_ITEMS)
+      : existingTask.checklistDefinition ?? [];
     if (checklistItems.length === 0) {
       return {
         snapshot,
         value: {
           ok: false,
           status: "invalid_input",
-          message: "At least one checklist item is required for deterministic matching.",
+          message: "A stored or request-level checklist definition is required for deterministic matching.",
         },
       };
     }
@@ -2029,6 +2039,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
     const nextTask = normalizeOpeningConditionPilotTask({
       ...existingTask,
       state: finalState,
+      checklistDefinition: checklistItems,
       checkItems,
       evidence,
       humanReviewQueue,

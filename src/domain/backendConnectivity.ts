@@ -1,5 +1,6 @@
 import type {
   OpeningConditionObjectRef,
+  OpeningConditionPilotChecklistDefinitionItem,
   OpeningConditionPilotIntakeDiagnostics,
   OpeningConditionPilotKnowledgeBaseRef,
   OpeningConditionPilotPreflightReadiness,
@@ -716,6 +717,7 @@ export async function initializeOpeningConditionPilotIntake(input: {
   context: OpeningConditionPilotTask["context"];
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
+  checklistItems?: OpeningConditionPilotChecklistDefinitionItem[];
   basisVersionId?: string;
   knowledgeBaseId?: string;
   requiredMasterDataIds?: string[];
@@ -731,10 +733,11 @@ export async function initializeOpeningConditionPilotIntake(input: {
   return readJson<OpeningConditionPilotIntakeInitResult>(response);
 }
 
-export async function runOpeningConditionPilotMatch(taskId: string, checklistItems: Array<{
+export async function runOpeningConditionPilotMatch(taskId: string, checklistItems?: Array<{
   id: string;
   name: string;
   category?: string;
+  subCategory?: string;
   required?: boolean;
   expectedEvidenceHints?: string[];
   basisVersionId?: string;
@@ -745,7 +748,7 @@ export async function runOpeningConditionPilotMatch(taskId: string, checklistIte
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ checklistItems }),
+    body: JSON.stringify(checklistItems ? { checklistItems } : {}),
   });
   return readJson<OpeningConditionPilotTaskResult>(response);
 }

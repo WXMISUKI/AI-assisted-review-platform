@@ -200,3 +200,14 @@ The system SHALL let the opening-condition pilot portal trigger intake/init and 
 #### Scenario: Operator starts formal execution
 - **WHEN** the operator explicitly triggers intake/init and then formal checklist matching
 - **THEN** the pilot workflow proceeds through packet-ready, matching, human-review, and report gates using backend task state as the source of truth
+
+### Requirement: Task-bound checklist definition
+The system SHALL persist a normalized checklist definition on the opening-condition pilot task before or during formal execution.
+
+#### Scenario: Intake stores checklist definition
+- **WHEN** intake/init receives normalized checklist-definition items
+- **THEN** the pilot task stores those items as task-owned execution inputs
+
+#### Scenario: Formal match reuses stored checklist definition
+- **WHEN** a formal match request omits checklist items and the pilot task already has a stored checklist definition
+- **THEN** the backend executes deterministic matching from the stored task-owned checklist definition

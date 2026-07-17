@@ -161,6 +161,19 @@ export interface OpeningConditionPilotVisualAssertion {
   note?: string;
 }
 
+export interface OpeningConditionPilotChecklistDefinitionItem {
+  id: string;
+  category: string;
+  subCategory?: string;
+  name: string;
+  required: boolean;
+  expectedEvidenceHints: string[];
+  basisVersionId: string;
+  masterDataIds: string[];
+  scopeStatus?: OpeningConditionPilotScopeStatus;
+  visualAssertions?: OpeningConditionPilotVisualAssertion[];
+}
+
 export interface OpeningConditionPilotCheckItem {
   id: string;
   taskId: string;
@@ -233,6 +246,7 @@ export interface OpeningConditionPilotTask {
   knowledgeBaseRef?: OpeningConditionPilotKnowledgeBaseRef;
   preflightReadiness?: OpeningConditionPilotPreflightReadiness;
   packet?: OpeningConditionPilotPacket;
+  checklistDefinition: OpeningConditionPilotChecklistDefinitionItem[];
   checkItems: OpeningConditionPilotCheckItem[];
   evidence: OpeningConditionPilotEvidence[];
   humanReviewQueue: OpeningConditionPilotHumanReviewItem[];
