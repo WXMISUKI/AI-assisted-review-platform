@@ -97,6 +97,7 @@ import {
 } from "./domain/reviewPreparationPackage";
 import {
   archiveOpeningConditionPilotTask,
+  bindOpeningConditionPilotKnowledgeBase,
   addPersistedManualReviewTaskIssue,
   completePersistedReviewTask,
   createReviewGenerationRun,
@@ -105,14 +106,17 @@ import {
   deletePersistedManualReviewTaskIssue,
   fetchOpeningConditionPilotBasis,
   fetchOpeningConditionPilotHumanReview,
+  fetchOpeningConditionPilotKnowledgeBases,
   fetchOpeningConditionPilotMasterData,
   fetchOpeningConditionPilotTask,
+  fetchOpeningConditionPilotTaskReadiness,
   fetchReviewGenerationRunEvents,
   fetchReviewGenerationRunStatus,
   generateOpeningConditionPilotReport,
   hydrateOcrResultStructure,
   fetchOcrJobStatus,
   intakeOpeningConditionPilotPacket,
+  initializeOpeningConditionPilotIntake,
   publishOpeningConditionPilotBasis,
   requestDraftIssueGeneration,
   resolvePersistedReviewTaskIssue,
@@ -121,6 +125,7 @@ import {
   subscribeReviewStreamEvents,
   submitStoredObjectOcrJob,
   upsertOpeningConditionPilotBasis,
+  upsertOpeningConditionPilotKnowledgeBase,
   upsertOpeningConditionPilotMasterData,
   upsertOpeningConditionPilotTask,
   updatePersistedReviewTaskIssueDraft,
@@ -140,7 +145,11 @@ export function App() {
     getOpeningConditionWorkspacePacket(openingConditionWorkspaces[0]?.id ?? ""),
   );
   const [openingPilotTask, setOpeningPilotTask] = useState<OpeningConditionPilotTask | null>(null);
+  const [openingPilotReadiness, setOpeningPilotReadiness] = useState<Awaited<
+    ReturnType<typeof fetchOpeningConditionPilotTaskReadiness>
+  > | null>(null);
   const [openingPilotStatus, setOpeningPilotStatus] = useState("平台试点记录待同步");
+  const [openingPilotBusy, setOpeningPilotBusy] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState(initialTasks[0]?.id ?? "");
   const [documents, setDocuments] = useState<LibraryDocument[]>(initialTasks);
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ name: "", project: "" });
@@ -847,7 +856,7 @@ export function App() {
     };
   }
 
-  async function syncOpeningPilotWorkspace(workspaceId: string, sourcePacket?: OpeningConditionReviewPacket) {
+  async function legacyAutoRunOpeningPilotWorkspace(workspaceId: string, sourcePacket?: OpeningConditionReviewPacket) {
     const basePacket = sourcePacket ?? getOpeningConditionWorkspacePacket(workspaceId);
     const taskId = getOpeningPilotTaskId(workspaceId);
     setOpeningPilotStatus("正在同步平台试点记录...");
@@ -977,6 +986,294 @@ export function App() {
       setOpeningPilotTask(null);
       setOpeningPacket(basePacket);
       setOpeningPilotStatus(error instanceof Error ? `后端试点记录不可用，使用本地演示数据：${error.message}` : "后端试点记录不可用，使用本地演示数据");
+    }
+  }
+
+  function buildOpeningPilotIntakeRequest(packet: OpeningConditionReviewPacket) {
+    const workspace = packet.workspaceContext;
+    const publishedBasis = packet.basisVersions.find((basis) => basis.status === "published");
+    const publishedMasterData = packet.masterData.filter((record) => record.status === "published");
+    const uniqueEvidence = Array.from(new Map(packet.evidence.map((item) => [item.fileName, item])).values());
+
+    return {
+      taskId: getOpeningPilotTaskId(packet.workspaceId),
+      context: {
+        workspaceId: packet.workspaceId,
+        tenantId: workspace.tenantName || "tenant-opening-condition",
+        projectId: workspace.projectName || packet.projectName,
+        contractPackageId: workspace.contractPackage || "contract-package",
+        participatingOrganizationId: workspace.participatingOrganization || "organization",
+      },
+      checklistObject: {
+        objectId: `${packet.id}-checklist`,
+        kind: "checklist" as const,
+        fileName: `${packet.reviewTarget}.docx`,
+        summary: "开工条件核查表对象引用",
+      },
+      sourceObjects:
+        uniqueEvidence.length > 0
+          ? uniqueEvidence.slice(0, 20).map((item, index) => ({
+              objectId: `${packet.id}-source-${index + 1}`,
+              kind: "source_archive" as const,
+              fileName: item.fileName,
+              summary: item.locator,
+            }))
+          : [
+              {
+                objectId: `${packet.id}-source-1`,
+                kind: "source_archive" as const,
+                fileName: `${packet.projectName}-资料包.zip`,
+                summary: "试点资料包对象引用",
+              },
+            ],
+      basisVersionId: publishedBasis?.id,
+      requiredMasterDataIds: publishedMasterData.map((record) => record.id),
+      submittedBy: session?.username ?? "pilot-user",
+    };
+  }
+
+  function buildOpeningPilotChecklistItems(packet: OpeningConditionReviewPacket) {
+    return packet.checkItems.map((item) => ({
+      id: item.id,
+      name: item.content,
+      category: item.category,
+      required: item.mandatory,
+      expectedEvidenceHints: [item.subCategory, item.content].filter(Boolean),
+      basisVersionId: item.basisVersionId,
+      masterDataIds: item.masterDataIds,
+    }));
+  }
+
+  async function hydrateOpeningPilotTaskState(
+    workspaceId: string,
+    basePacket: OpeningConditionReviewPacket,
+    options: {
+      statusWhenMissing?: string;
+      statusPrefix?: string;
+    } = {},
+  ) {
+    const taskId = getOpeningPilotTaskId(workspaceId);
+    const taskResult = await fetchOpeningConditionPilotTask(taskId).catch(() => null);
+
+    if (!taskResult?.ok || !taskResult.task) {
+      setOpeningPilotTask(null);
+      setOpeningPilotReadiness(null);
+      setOpeningPacket(basePacket);
+      setOpeningPilotStatus(options.statusWhenMissing ?? "试点任务未初始化，可先执行资料包接入。");
+      return;
+    }
+
+    const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+    setOpeningPilotTask(taskResult.task);
+    setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : null);
+    setOpeningPacket(applyOpeningPilotTaskToPacket(basePacket, taskResult.task));
+
+    const blockingText = readinessResult?.preflightReadiness?.blockingReasons?.length
+      ? `阻塞 ${readinessResult.preflightReadiness.blockingReasons.length} 项`
+      : "门禁已同步";
+    setOpeningPilotStatus(
+      `${options.statusPrefix ?? "平台试点记录已同步"} · 状态 ${taskResult.task.state} · ${blockingText}`,
+    );
+  }
+
+  async function syncOpeningPilotWorkspace(workspaceId: string, sourcePacket?: OpeningConditionReviewPacket) {
+    const basePacket = sourcePacket ?? getOpeningConditionWorkspacePacket(workspaceId);
+    setOpeningPilotBusy(true);
+    setOpeningPilotStatus("正在同步工作区事实和试点任务状态...");
+
+    try {
+      for (const basis of basePacket.basisVersions) {
+        await upsertOpeningConditionPilotBasis(workspaceId, basis.id, {
+          title: basis.title,
+          componentType: basis.componentType,
+          version: basis.version,
+          status:
+            basis.status === "published"
+              ? "published"
+              : basis.status === "confirmed"
+                ? "confirmed"
+                : basis.status === "rejected"
+                  ? "rejected"
+                  : "pending_confirmation",
+          applicability: basis.applicability,
+          confidence: basis.confidence,
+          confirmedBy: basis.confirmedBy,
+          confirmedAt: basis.confirmedAt,
+          publishedAt: basis.publishedAt,
+        });
+        if (basis.status === "published") {
+          await publishOpeningConditionPilotBasis(
+            workspaceId,
+            basis.id,
+            basis.confirmedBy ?? session?.username ?? "pilot-user",
+          );
+        }
+      }
+
+      for (const record of basePacket.masterData) {
+        await upsertOpeningConditionPilotMasterData(workspaceId, record.id, {
+          type: record.type === "system-document" ? "system_document" : record.type,
+          label: record.label,
+          normalizedFields: {
+            value: record.normalizedValue,
+          },
+          status:
+            record.status === "published"
+              ? "published"
+              : record.status === "confirmed"
+                ? "confirmed"
+                : record.status === "rejected"
+                  ? "rejected"
+                  : "provisional",
+          validity: record.validity,
+          confidence: record.confidence,
+          confirmedBy: record.confirmedBy,
+          confirmedAt: record.confirmedAt,
+          publishedAt: record.publishedAt,
+          safeNote: record.reviewNeededReason,
+        });
+        if (record.status === "published") {
+          await decideOpeningConditionPilotMasterData(
+            workspaceId,
+            record.id,
+            "publish",
+            record.confirmedBy ?? session?.username ?? "pilot-user",
+          );
+        }
+      }
+
+      await hydrateOpeningPilotTaskState(workspaceId, basePacket, {
+        statusWhenMissing: "工作区事实已同步，试点任务尚未初始化。",
+        statusPrefix: "工作区事实和试点任务已同步",
+      });
+    } catch (error) {
+      setOpeningPilotTask(null);
+      setOpeningPilotReadiness(null);
+      setOpeningPacket(basePacket);
+      setOpeningPilotStatus(
+        error instanceof Error
+          ? `后端试点记录不可用，使用本地演示数据：${error.message}`
+          : "后端试点记录不可用，使用本地演示数据",
+      );
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function refreshOpeningPilotTask(workspaceId = openingWorkspaceId, sourcePacket?: OpeningConditionReviewPacket) {
+    const basePacket = sourcePacket ?? openingPacket;
+    setOpeningPilotBusy(true);
+
+    try {
+      await hydrateOpeningPilotTaskState(workspaceId, basePacket, {
+        statusWhenMissing: "试点任务尚未初始化，可先执行资料包接入。",
+        statusPrefix: "试点任务已刷新",
+      });
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function initializeOpeningPilotTask() {
+    setOpeningPilotBusy(true);
+
+    try {
+      const result = await initializeOpeningConditionPilotIntake(buildOpeningPilotIntakeRequest(openingPacket));
+      if (!result.ok || !result.task) {
+        setOpeningPilotStatus(result.message ?? "资料包接入初始化失败");
+        return;
+      }
+
+      setOpeningPilotTask(result.task);
+      setOpeningPilotReadiness(
+        result.preflightReadiness
+          ? {
+              ok: true,
+              taskId: result.task.id,
+              workspaceId: result.task.context.workspaceId,
+              state: result.task.state,
+              preflightReadiness: result.preflightReadiness,
+              knowledgeBaseRef: result.task.knowledgeBaseRef,
+            }
+          : null,
+      );
+      setOpeningPacket((currentPacket) => applyOpeningPilotTaskToPacket(currentPacket, result.task!));
+      setOpeningPilotStatus(
+        result.preflightReadiness?.blockingReasons?.length
+          ? `资料包接入已完成 · 仍有 ${result.preflightReadiness.blockingReasons.length} 项门禁阻塞`
+          : "资料包接入已完成，可执行正式核查",
+      );
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "资料包接入初始化失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function ensureOpeningDefaultKnowledgeBase() {
+    const taskId = getOpeningPilotTaskId(openingWorkspaceId);
+    const workspace = openingPacket.workspaceContext;
+    setOpeningPilotBusy(true);
+
+    try {
+      const knowledgeBaseId = `${openingWorkspaceId}-subcontract-kb`;
+      const upserted = await upsertOpeningConditionPilotKnowledgeBase(openingWorkspaceId, knowledgeBaseId, {
+        id: knowledgeBaseId,
+        workspaceId: openingWorkspaceId,
+        organizationId: workspace.participatingOrganization,
+        contractPackageId: workspace.contractPackage,
+        subcontractTeamId: workspace.participatingOrganization,
+        label: `${workspace.participatingOrganization}资料核查知识库`,
+        status: "ready",
+        summary: "用于试点的分包队伍资料模板、历史证据摘要和人工修正记录。",
+      });
+
+      if (!upserted.ok) {
+        setOpeningPilotStatus(upserted.message ?? "知识库写入失败");
+        return;
+      }
+
+      const existingTask = await fetchOpeningConditionPilotTask(taskId).catch(() => null);
+      if (existingTask?.ok && existingTask.task) {
+        const bound = await bindOpeningConditionPilotKnowledgeBase(taskId, knowledgeBaseId);
+        if (!bound.ok) {
+          setOpeningPilotStatus(bound.message ?? "知识库绑定失败");
+          return;
+        }
+      }
+
+      await refreshOpeningPilotTask(openingWorkspaceId);
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "知识库绑定失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function runOpeningPilotFormalMatch() {
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingWorkspaceId);
+    setOpeningPilotBusy(true);
+
+    try {
+      const result = await runOpeningConditionPilotMatch(taskId, buildOpeningPilotChecklistItems(openingPacket));
+      if (!result.ok || !result.task) {
+        setOpeningPilotStatus(result.message ?? "正式核查执行失败");
+        return;
+      }
+
+      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+      setOpeningPilotTask(result.task);
+      setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
+      setOpeningPacket((currentPacket) => applyOpeningPilotTaskToPacket(currentPacket, result.task!));
+      setOpeningPilotStatus(
+        result.task.state === "awaiting_human_review"
+          ? `正式核查已完成，进入人工复核 · 待处理 ${result.task.humanReviewQueue.length} 项`
+          : "正式核查已完成，任务进入报告准备阶段",
+      );
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "正式核查执行失败");
+    } finally {
+      setOpeningPilotBusy(false);
     }
   }
 
@@ -1629,7 +1926,18 @@ export function App() {
               />
             )}
             {openingActivePage === "check-tasks" && (
-              <OpeningConditionReviewPage roleLabel={roleLabels[session.role]} packet={openingPacket} />
+              <OpeningConditionReviewPage
+                roleLabel={roleLabels[session.role]}
+                packet={openingPacket}
+                pilotTask={openingPilotTask}
+                pilotReadiness={openingPilotReadiness}
+                pilotStatus={openingPilotStatus}
+                pilotBusy={openingPilotBusy}
+                onRefreshPilotTask={() => void refreshOpeningPilotTask()}
+                onInitializePilotTask={() => void initializeOpeningPilotTask()}
+                onRunPilotMatch={() => void runOpeningPilotFormalMatch()}
+                onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
+              />
             )}
             {openingActivePage === "human-review" && (
               <OpeningConditionHumanReviewPage

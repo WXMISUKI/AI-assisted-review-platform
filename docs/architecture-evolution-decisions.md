@@ -195,3 +195,16 @@ The chosen path is:
 - return readiness plus bounded orchestration diagnostics so the frontend does not have to manually compose task upsert, packet bind, and knowledge-base binding flows.
 
 This preserves a clean enterprise boundary: upload remains infrastructure, while intake/init becomes the business orchestration seam for the opening-condition pilot.
+
+## Opening Condition Manual Execution Console Decision
+
+After intake/init became a domain-owned backend seam, the next pilot priority is not deeper parsing first but explicit operator control.
+
+The chosen direction is:
+
+- workspace synchronization may hydrate basis, master data, knowledge-base records, and existing pilot task state;
+- workspace synchronization must not silently trigger formal checklist matching;
+- the portal should expose explicit actions for intake/init, formal matching, and task refresh;
+- once a pilot task exists, backend task state becomes the preferred execution view over local demo summaries.
+
+This keeps the pilot behavior understandable for enterprise users and reduces the risk of hidden auto-execution before the business is ready to trust it.

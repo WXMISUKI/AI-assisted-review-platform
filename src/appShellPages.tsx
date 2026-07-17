@@ -1436,12 +1436,111 @@ function OpeningConditionPilotOperationalPanel({ packet }: { packet: OpeningCond
   );
 }
 
+function OpeningConditionPilotExecutionPanel({
+  pilotTask,
+  readiness,
+  statusMessage,
+  busy,
+  onRefresh,
+  onInitialize,
+  onRunMatch,
+  onEnsureKnowledgeBase,
+}: {
+  pilotTask?: OpeningConditionPilotTask | null;
+  readiness?: OpeningConditionPilotReadinessResult | null;
+  statusMessage: string;
+  busy?: boolean;
+  onRefresh?: () => void;
+  onInitialize?: () => void;
+  onRunMatch?: () => void;
+  onEnsureKnowledgeBase?: () => void;
+}) {
+  const readinessStatus = readiness?.preflightReadiness?.status ?? "provisional";
+  const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? [];
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <div className="section-title row">
+        <div>
+          <span className="eyebrow">试点执行台</span>
+          <h2>显式初始化与正式核查</h2>
+        </div>
+        {onRefresh && (
+          <button type="button" className="secondary" onClick={onRefresh} disabled={busy}>
+            {busy ? "同步中..." : "刷新任务状态"}
+          </button>
+        )}
+      </div>
+      <p>工作区同步只负责沉淀依据和主数据。资料包接入、正式核查和结果推进由操作员显式触发。</p>
+      <div className="opening-condition-meta">
+        <span>任务 {pilotTask?.id ?? "未初始化"}</span>
+        <span>状态 {pilotTask?.state ?? "draft"}</span>
+        <span>门禁 {pilotReadinessLabels[readinessStatus] ?? readinessStatus}</span>
+        <span>知识库 {pilotTask?.knowledgeBaseRef?.label ?? "未绑定"}</span>
+      </div>
+      {readiness?.preflightReadiness && (
+        <div className="opening-condition-meta">
+          <span>依据 {pilotReadinessLabels[readiness.preflightReadiness.basis] ?? readiness.preflightReadiness.basis}</span>
+          <span>
+            主数据 {pilotReadinessLabels[readiness.preflightReadiness.masterData] ?? readiness.preflightReadiness.masterData}
+          </span>
+          <span>
+            资料包 {pilotReadinessLabels[readiness.preflightReadiness.materialPacket] ?? readiness.preflightReadiness.materialPacket}
+          </span>
+          <span>
+            支撑库 {pilotReadinessLabels[readiness.preflightReadiness.knowledgeBase] ?? readiness.preflightReadiness.knowledgeBase}
+          </span>
+        </div>
+      )}
+      <div className="dialog-actions">
+        {onInitialize && (
+          <button type="button" className="primary" onClick={onInitialize} disabled={busy}>
+            {pilotTask ? "重新初始化资料包接入" : "初始化资料包接入"}
+          </button>
+        )}
+        {onRunMatch && (
+          <button type="button" className="primary" onClick={onRunMatch} disabled={busy || !pilotTask}>
+            执行正式核查
+          </button>
+        )}
+        {onEnsureKnowledgeBase && (
+          <button type="button" className="secondary" onClick={onEnsureKnowledgeBase} disabled={busy}>
+            生成并绑定试点知识库
+          </button>
+        )}
+      </div>
+      <strong>{statusMessage}</strong>
+      <small>
+        {blockingReasons.length > 0
+          ? blockingReasons.join(" / ")
+          : readiness?.preflightReadiness?.nextAction ?? "先完成资料包接入，再进入正式匹配。"}
+      </small>
+    </section>
+  );
+}
+
 export function OpeningConditionReviewPage({
   roleLabel,
   packet = openingConditionReviewPacket,
+  pilotTask,
+  pilotReadiness,
+  pilotStatus,
+  pilotBusy,
+  onRefreshPilotTask,
+  onInitializePilotTask,
+  onRunPilotMatch,
+  onEnsureKnowledgeBase,
 }: {
   roleLabel: string;
   packet?: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
+  pilotReadiness?: OpeningConditionPilotReadinessResult | null;
+  pilotStatus: string;
+  pilotBusy?: boolean;
+  onRefreshPilotTask?: () => void;
+  onInitializePilotTask?: () => void;
+  onRunPilotMatch?: () => void;
+  onEnsureKnowledgeBase?: () => void;
 }) {
   const verdictSummary = getOpeningConditionVerdictSummary(packet);
   const riskSummary = getOpeningConditionRiskSummary(packet);
@@ -1481,7 +1580,16 @@ export function OpeningConditionReviewPage({
       </section>
 
       <OpeningConditionReadinessPanel packet={packet} />
-      <OpeningConditionPilotOperationalPanel packet={packet} />
+      <OpeningConditionPilotExecutionPanel
+        pilotTask={pilotTask}
+        readiness={pilotReadiness}
+        statusMessage={pilotStatus}
+        busy={pilotBusy}
+        onRefresh={onRefreshPilotTask}
+        onInitialize={onInitializePilotTask}
+        onRunMatch={onRunPilotMatch}
+        onEnsureKnowledgeBase={onEnsureKnowledgeBase}
+      />
 
       <section className="opening-condition-grid">
         <article className="opening-panel opening-panel-wide">
