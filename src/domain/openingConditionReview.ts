@@ -146,13 +146,24 @@ export interface OpeningConditionKnowledgeBaseRecord {
   humanCorrections: number;
   masterDataRefs: string[];
   summary: string;
+  providerRefs?: {
+    provider: "mock" | "ragflow";
+    id: string;
+    datasetId: string;
+    documentId?: string;
+    chunkId?: string;
+    syncStatus: "ready" | "provisional" | "stale" | "unreachable" | "disabled";
+    summary?: string;
+    lastSyncedAt?: string;
+  }[];
+  providerSyncStatus?: "ready" | "provisional" | "stale" | "unreachable" | "disabled";
 }
 
 export interface OpeningConditionPreflightReadiness {
   status: "ready" | "blocked" | "provisional";
   basis: "ready" | "missing";
   masterData: "ready" | "missing";
-  knowledgeBase: "ready" | "missing" | "provisional";
+  knowledgeBase: "ready" | "missing" | "provisional" | "blocked" | "stale" | "unreachable";
   materialPacket: "ready" | "missing";
   blockingReasons: string[];
   nextAction: string;
@@ -493,6 +504,17 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
     humanCorrections: 4,
     masterDataRefs: ["md-person-001", "md-equipment-001", "md-doc-001"],
     summary: "已沉淀承台施工开工资料模板、人员设备证照摘要、审批表签章修正记录和主数据引用。",
+    providerRefs: [
+      {
+        provider: "ragflow",
+        id: "ragflow-dataset-g15-08-pier-substructure",
+        datasetId: "ragflow-dataset-g15-08-pier-substructure",
+        syncStatus: "ready",
+        summary: "RAGFlow dataset bound to the subcontract-team knowledge base.",
+        lastSyncedAt: "2026-07-15T10:30:00.000Z",
+      },
+    ],
+    providerSyncStatus: "ready",
   },
   preflightReadiness: {
     status: "ready",

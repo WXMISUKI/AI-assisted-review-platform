@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { normalizeProviderRefs } from "./providerContracts.mjs";
 
 const STORAGE_VERSION = 1;
 const MAX_TASKS = 100;
@@ -248,6 +249,13 @@ function normalizeKnowledgeBaseRef(value, workspaceId = "") {
   }
 
   const status = knowledgeBaseStatusValues.has(value.status) ? value.status : "draft";
+  const rawProviderRefs = Array.isArray(value.providerRefs)
+    ? value.providerRefs
+    : value.providerRef
+      ? [value.providerRef]
+      : [];
+  const providerRefs = normalizeProviderRefs(rawProviderRefs);
+  const providerSyncStatus = deriveKnowledgeBaseProviderSyncStatus(providerRefs);
   return sanitizeOpeningConditionPilotValue({
     id,
     workspaceId: resolvedWorkspaceId,
@@ -257,7 +265,30 @@ function normalizeKnowledgeBaseRef(value, workspaceId = "") {
     label: normalizeString(value.label, id, 240),
     status,
     summary: normalizeString(value.summary, "", 500),
+    providerRefs,
+    providerSyncStatus,
   });
+}
+
+function deriveKnowledgeBaseProviderSyncStatus(providerRefs = []) {
+  if (!providerRefs.length) {
+    return undefined;
+  }
+
+  const statuses = providerRefs.map((item) => item.syncStatus).filter(Boolean);
+  if (statuses.includes("unreachable")) {
+    return "unreachable";
+  }
+  if (statuses.includes("stale")) {
+    return "stale";
+  }
+  if (statuses.includes("provisional")) {
+    return "provisional";
+  }
+  if (statuses.every((status) => status === "disabled")) {
+    return "disabled";
+  }
+  return statuses.every((status) => status === "ready") ? "ready" : "provisional";
 }
 
 function normalizeKnowledgeBaseEntry(value) {
@@ -771,7 +802,23 @@ export function deriveOpeningConditionPilotPreflightReadiness(input = {}) {
   const requiresMasterData = input.requiresMasterData !== false;
   const masterDataReady = !requiresMasterData || requiredMasterData.length > 0;
   const knowledgeBaseRef = normalizeKnowledgeBaseRef(input.knowledgeBaseRef, input.context?.workspaceId);
-  const knowledgeBaseReady = knowledgeBaseRef?.status === "ready";
+  const providerSyncStatus = knowledgeBaseRef?.providerSyncStatus;
+  const providerBlocks =
+    providerSyncStatus === "stale" || providerSyncStatus === "unreachable" || providerSyncStatus === "disabled";
+  const knowledgeBaseReady = knowledgeBaseRef?.status === "ready" && !providerBlocks;
+  const knowledgeBaseState = !knowledgeBaseRef
+    ? "missing"
+    : knowledgeBaseRef.status !== "ready"
+      ? "provisional"
+      : providerSyncStatus === "stale"
+        ? "stale"
+        : providerSyncStatus === "unreachable"
+          ? "unreachable"
+          : providerSyncStatus === "disabled"
+            ? "blocked"
+            : providerSyncStatus === "provisional"
+              ? "provisional"
+              : "ready";
   const packetReady = Boolean(input.packet);
   const blockingReasons = [];
 
@@ -783,6 +830,15 @@ export function deriveOpeningConditionPilotPreflightReadiness(input = {}) {
   }
   if (!knowledgeBaseReady) {
     blockingReasons.push("subcontract_knowledge_base_required");
+    if (providerSyncStatus === "stale") {
+      blockingReasons.push("subcontract_knowledge_base_provider_stale");
+    }
+    if (providerSyncStatus === "unreachable") {
+      blockingReasons.push("subcontract_knowledge_base_provider_unreachable");
+    }
+    if (providerSyncStatus === "disabled") {
+      blockingReasons.push("subcontract_knowledge_base_provider_disabled");
+    }
   }
 
   const status = blockingReasons.length === 0 ? "ready" : packetReady ? "blocked" : "provisional";
@@ -791,7 +847,11 @@ export function deriveOpeningConditionPilotPreflightReadiness(input = {}) {
     : !masterDataReady
       ? "确认并发布项目人员、设备、证照、单位或制度资料主数据。"
       : !knowledgeBaseReady
-        ? "绑定组织/分包队伍专属知识库。"
+        ? providerSyncStatus === "stale"
+          ? "刷新组织/分包队伍专属知识库外部索引。"
+          : providerSyncStatus === "unreachable"
+            ? "恢复知识库 provider 连通性后再执行正式资料核查。"
+            : "绑定组织/分包队伍专属知识库。"
         : packetReady
           ? "可以执行正式资料核查。"
           : "上传开工条件核查表和资料包。";
@@ -800,7 +860,7 @@ export function deriveOpeningConditionPilotPreflightReadiness(input = {}) {
     status,
     basis: basisReady ? "ready" : "missing",
     masterData: masterDataReady ? "ready" : "missing",
-    knowledgeBase: knowledgeBaseReady ? "ready" : knowledgeBaseRef ? "provisional" : "missing",
+    knowledgeBase: knowledgeBaseState,
     materialPacket: packetReady ? "ready" : "missing",
     blockingReasons,
     nextAction,

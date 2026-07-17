@@ -42,15 +42,42 @@ export interface BackendHealthResult {
       bucket: string | null;
       region: string;
     };
+    ragflow?: {
+      configured: boolean;
+      enabled: boolean;
+      hasBaseURL: boolean;
+      hasApiKey: boolean;
+      defaultDatasetId: string | null;
+      healthPath: string;
+      retrievalPath: string;
+      status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
+      summary: string;
+    };
     summary?: {
       total: number;
       ready: number;
       overall: "ready" | "degraded" | "unconfigured";
+      optional?: {
+        total: number;
+        ready: number;
+      };
     };
   };
+  knowledgeBaseProvider?: ExternalProviderReadinessSummary;
   agentService?: AgentServiceReadinessSummary;
   queue?: ReviewQueueStatusResult;
   message?: string;
+}
+
+export interface ExternalProviderReadinessSummary {
+  provider?: string;
+  configured: boolean;
+  ready: boolean;
+  status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
+  source: string;
+  summary: string;
+  diagnostics?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentServiceReadinessSummary {
@@ -442,6 +469,11 @@ async function readJson<T>(response: Response): Promise<T> {
 export async function fetchBackendHealth() {
   const response = await fetch("/api/health");
   return readJson<BackendHealthResult>(response);
+}
+
+export async function fetchKnowledgeBaseProviderStatus() {
+  const response = await fetch("/api/knowledge-base/provider/status");
+  return readJson<ExternalProviderReadinessSummary>(response);
 }
 
 export async function runLlmConnectivityCheck() {

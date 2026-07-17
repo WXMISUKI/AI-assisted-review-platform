@@ -247,6 +247,27 @@ test("derives preflight readiness with basis, master-data, knowledge-base, and p
   assert.equal(provisionalKnowledgeBase.status, "provisional");
   assert.equal(provisionalKnowledgeBase.knowledgeBase, "provisional");
   assert.deepEqual(provisionalKnowledgeBase.blockingReasons, ["subcontract_knowledge_base_required"]);
+
+  const staleProviderKnowledgeBase = deriveOpeningConditionPilotPreflightReadiness({
+    ...validTaskInput(),
+    knowledgeBaseRef: {
+      ...validTaskInput().knowledgeBaseRef,
+      providerRefs: [
+        {
+          provider: "ragflow",
+          id: "dataset-1",
+          datasetId: "dataset-1",
+          syncStatus: "stale",
+        },
+      ],
+    },
+  });
+  assert.equal(staleProviderKnowledgeBase.status, "provisional");
+  assert.equal(staleProviderKnowledgeBase.knowledgeBase, "stale");
+  assert.deepEqual(staleProviderKnowledgeBase.blockingReasons, [
+    "subcontract_knowledge_base_required",
+    "subcontract_knowledge_base_provider_stale",
+  ]);
 });
 
 test("stores and binds subcontract-team knowledge bases without exposing unsafe fields as facts", async () => {

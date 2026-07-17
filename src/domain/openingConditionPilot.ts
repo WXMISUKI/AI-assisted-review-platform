@@ -69,6 +69,17 @@ export interface OpeningConditionMasterDataRef {
   label: string;
 }
 
+export interface OpeningConditionPilotKnowledgeBaseProviderRef {
+  provider: "mock" | "ragflow";
+  id: string;
+  datasetId: string;
+  documentId?: string;
+  chunkId?: string;
+  syncStatus: "ready" | "provisional" | "stale" | "unreachable" | "disabled";
+  summary?: string;
+  lastSyncedAt?: string;
+}
+
 export interface OpeningConditionPilotKnowledgeBaseRef {
   id: string;
   workspaceId: string;
@@ -78,13 +89,15 @@ export interface OpeningConditionPilotKnowledgeBaseRef {
   label: string;
   status: "draft" | "ready" | "needs_review" | "archived";
   summary: string;
+  providerRefs?: OpeningConditionPilotKnowledgeBaseProviderRef[];
+  providerSyncStatus?: "ready" | "provisional" | "stale" | "unreachable" | "disabled";
 }
 
 export interface OpeningConditionPilotPreflightReadiness {
   status: "ready" | "blocked" | "provisional";
   basis: "ready" | "missing";
   masterData: "ready" | "missing";
-  knowledgeBase: "ready" | "missing" | "provisional";
+  knowledgeBase: "ready" | "missing" | "provisional" | "blocked" | "stale" | "unreachable";
   materialPacket: "ready" | "missing";
   blockingReasons: string[];
   nextAction: string;

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { normalizePositiveInteger, normalizeProviderStatus, normalizeProviderString } from "./providerContracts.mjs";
 
 function loadDotEnv() {
   const envPath = resolve(process.cwd(), ".env");
@@ -38,15 +39,6 @@ function normalizeBaseURL(value) {
   return typeof value === "string" ? value.trim().replace(/\/$/, "") : "";
 }
 
-function normalizePositiveInteger(value, fallback, max) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue) || numberValue <= 0) {
-    return fallback;
-  }
-
-  return Math.min(Math.floor(numberValue), max);
-}
-
 export const config = {
   port: Number(process.env.BACKEND_PORT || 8787),
   openai: {
@@ -67,6 +59,26 @@ export const config = {
     bucket: process.env.MINIO_BUCKET || "construction-review-docs",
     region: process.env.MINIO_REGION || "us-east-1",
   },
+  ragflow: {
+    enabled: process.env.RAGFLOW_ENABLED === "true",
+    baseURL: normalizeBaseURL(process.env.RAGFLOW_BASE_URL || ""),
+    apiKey: process.env.RAGFLOW_API_KEY || "",
+    defaultDatasetId: normalizeProviderString(process.env.RAGFLOW_DEFAULT_DATASET_ID || "", "", 180),
+    healthPath: normalizeProviderString(process.env.RAGFLOW_HEALTH_PATH || "", "/api/v1/health", 180),
+    datasetPath: normalizeProviderString(process.env.RAGFLOW_DATASET_PATH || "", "/api/v1/datasets", 180),
+    documentPath: normalizeProviderString(
+      process.env.RAGFLOW_DOCUMENT_PATH || "",
+      "/api/v1/datasets/:datasetId/documents",
+      220,
+    ),
+    chunkPath: normalizeProviderString(
+      process.env.RAGFLOW_CHUNK_PATH || "",
+      "/api/v1/documents/:documentId/chunks",
+      220,
+    ),
+    retrievalPath: normalizeProviderString(process.env.RAGFLOW_RETRIEVAL_PATH || "", "/api/v1/retrieval", 180),
+    timeoutMs: normalizePositiveInteger(process.env.RAGFLOW_TIMEOUT_MS, 5000, 60_000),
+  },
   agentService: {
     baseURL: normalizeBaseURL(process.env.AGENT_SERVICE_BASE_URL || ""),
     timeoutMs: normalizePositiveInteger(process.env.AGENT_SERVICE_TIMEOUT_MS, 5000, 60_000),
@@ -79,6 +91,7 @@ export function getSafeProviderStatus() {
   const minioConfigured = Boolean(
     config.minio.endpoint && config.minio.accessKey && config.minio.secretKey && config.minio.bucket,
   );
+  const ragflowConfigured = Boolean(config.ragflow.enabled && config.ragflow.baseURL && config.ragflow.apiKey);
   const readyCount = [openaiConfigured, paddleConfigured, minioConfigured].filter(Boolean).length;
 
   return {
@@ -102,6 +115,24 @@ export function getSafeProviderStatus() {
       bucket: config.minio.bucket || null,
       region: config.minio.region,
     },
+    ragflow: {
+      configured: ragflowConfigured,
+      enabled: config.ragflow.enabled,
+      hasBaseURL: Boolean(config.ragflow.baseURL),
+      hasApiKey: Boolean(config.ragflow.apiKey),
+      defaultDatasetId: config.ragflow.defaultDatasetId || null,
+      healthPath: config.ragflow.healthPath,
+      retrievalPath: config.ragflow.retrievalPath,
+      status: normalizeProviderStatus(
+        ragflowConfigured ? "ready" : config.ragflow.enabled ? "degraded" : "disabled",
+        "disabled",
+      ),
+      summary: ragflowConfigured
+        ? "RAGFlow provider is configured for retrieval support."
+        : config.ragflow.enabled
+          ? "RAGFlow provider is enabled but not fully configured."
+          : "RAGFlow provider is disabled.",
+    },
     agentService: {
       configured: Boolean(config.agentService.baseURL),
       timeoutMs: config.agentService.timeoutMs,
@@ -110,6 +141,10 @@ export function getSafeProviderStatus() {
       total: 3,
       ready: readyCount,
       overall: readyCount === 3 ? "ready" : readyCount > 0 ? "degraded" : "unconfigured",
+      optional: {
+        total: 1,
+        ready: ragflowConfigured ? 1 : 0,
+      },
     },
   };
 }

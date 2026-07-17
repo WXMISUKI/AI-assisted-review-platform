@@ -82,6 +82,7 @@ import type { Role, Session, StreamingStage, ThemeMode, UploadDraft, LibraryDocu
 import {
   fetchBackendHealth,
   fetchMinioStatus,
+  fetchKnowledgeBaseProviderStatus,
   fetchOcrStatus,
   fetchReviewQueueStatus,
   runLlmConnectivityCheck,
@@ -1364,6 +1365,8 @@ export function DataAssetsPage({
   const [ocrResult, setOcrResult] = useState<OcrStatusResult | null>(null);
   const [minioResult, setMinioResult] = useState<MinioStatusResult | null>(null);
   const [queueResult, setQueueResult] = useState<BackendHealthResult["queue"] | null>(null);
+  const [knowledgeBaseProviderResult, setKnowledgeBaseProviderResult] =
+    useState<BackendHealthResult["knowledgeBaseProvider"] | null>(null);
   const [minioUploadResult, setMinioUploadResult] = useState<MinioUploadResult | null>(null);
   const [uploadingToMinio, setUploadingToMinio] = useState(false);
   const [streamEvents, setStreamEvents] = useState<ReviewStreamEvent[]>([]);
@@ -1387,6 +1390,9 @@ export function DataAssetsPage({
 
       const queue = await fetchReviewQueueStatus();
       setQueueResult(queue);
+
+      const knowledgeBaseProvider = await fetchKnowledgeBaseProviderStatus();
+      setKnowledgeBaseProviderResult(knowledgeBaseProvider);
 
       const llm = await runLlmConnectivityCheck();
       setLlmResult(llm);
@@ -1427,6 +1433,9 @@ export function DataAssetsPage({
     : "waiting";
   const queueSummary = queueResult
     ? `${queueResult.adapter ?? "queue"} | queued ${queueResult.counts?.queued ?? 0} | active ${queueResult.activeJobCount ?? 0}`
+    : "waiting";
+  const ragSummary = knowledgeBaseProviderResult
+    ? `${knowledgeBaseProviderResult.source} | ${knowledgeBaseProviderResult.status}`
     : "waiting";
 
   return (
@@ -1514,6 +1523,11 @@ export function DataAssetsPage({
             title="MinIO"
             status={minioResult?.ok ? "ready" : "pending"}
             detail={minioResult?.summary ?? "等待检查"}
+          />
+          <ConnectivityStatus
+            title="RAGFlow"
+            status={knowledgeBaseProviderResult?.ready ? "ready" : knowledgeBaseProviderResult?.configured ? "failed" : "pending"}
+            detail={knowledgeBaseProviderResult?.summary ?? ragSummary}
           />
           <ConnectivityStatus
             title="Agent Service"

@@ -9,6 +9,7 @@ import {
 } from "./minioClient.mjs";
 import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs";
 import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
+import { getKnowledgeBaseProviderReadiness } from "./knowledgeBaseProvider.mjs";
 import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
@@ -175,10 +176,11 @@ const server = createServer(async (request, response) => {
         service: "ai-assisted-review-backend",
         message: "Backend is running. Use /api/health for connectivity status.",
         routes: [
-          "GET /api/health",
-          "POST /api/llm/check",
-          "GET /api/ocr/status",
-          "GET /api/review-tasks",
+        "GET /api/health",
+        "POST /api/llm/check",
+        "GET /api/ocr/status",
+        "GET /api/knowledge-base/provider/status",
+        "GET /api/review-tasks",
           "GET /api/opening-condition/pilot-tasks",
           "GET /api/opening-condition/pilot-tasks/:taskId",
           "PUT /api/opening-condition/pilot-tasks/:taskId",
@@ -231,6 +233,7 @@ const server = createServer(async (request, response) => {
         service: "ai-assisted-review-backend",
         timestamp: new Date().toISOString(),
         providers: getSafeProviderStatus(),
+        knowledgeBaseProvider: await getKnowledgeBaseProviderReadiness(),
         agentService: await getAgentServiceReadiness(),
         queue: {
           ...(await getQueueStatus()),
@@ -248,6 +251,11 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/api/ocr/status") {
       sendJson(response, 200, getOcrStatus());
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/knowledge-base/provider/status") {
+      sendJson(response, 200, await getKnowledgeBaseProviderReadiness());
       return;
     }
 

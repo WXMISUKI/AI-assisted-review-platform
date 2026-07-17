@@ -257,6 +257,7 @@ flowchart TD
 - OCR、LLM 或其他外部编排能力只作为可替换适配器，为资料包解压、OCR/LLM 抽取、核查表解析或报告草稿提供辅助输出；Dify 主要作为既有流程参考，不作为主维护路径。
 - 外部输出必须先归一化为平台拥有的依据、主数据、证据、核查项、人工决策和报告记录，不能直接作为事实源或最终结论展示。
 - 组织/分包队伍知识库沉淀已确认合同边界、资料模板、项目主数据、历史证据、人工修正和可引用资料片段；向量索引只能做召回辅助，不能代替结构化事实。
+- RAGFlow 等外部知识库 provider 通过统一 provider 契约接入，配置与安全边界见 [external-provider-integration.md](./external-provider-integration.md)。
 - 前端开工条件门户负责展示工作区选择、依据确认、主数据初始化、规则/语义结果、待复核队列和辅助报告。
 - 后续数据库落地时，应把 basis_version、project_master_data、subcontract_knowledge_base、opening_condition_packet、check_item_result、evidence、human_review_decision 作为独立持久化对象。
 
