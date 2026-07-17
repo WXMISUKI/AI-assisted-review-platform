@@ -6,11 +6,14 @@ import test from "node:test";
 
 import {
   archiveOpeningConditionPilotTask,
+  bindOpeningConditionPilotKnowledgeBase,
   canTransitionOpeningConditionPilotTask,
   decideOpeningConditionPilotHumanReviewItem,
   decideOpeningConditionPilotMasterDataRecord,
+  deriveOpeningConditionPilotPreflightReadiness,
   generateOpeningConditionPilotReport,
   intakeOpeningConditionPilotPacket,
+  listOpeningConditionPilotKnowledgeBases,
   listOpeningConditionPilotHumanReviewItems,
   listOpeningConditionPilotBasisVersions,
   listOpeningConditionPilotMasterData,
@@ -19,6 +22,7 @@ import {
   sanitizeOpeningConditionPilotValue,
   transitionOpeningConditionPilotTask,
   upsertOpeningConditionPilotBasisVersion,
+  upsertOpeningConditionPilotKnowledgeBase,
   upsertOpeningConditionPilotMasterDataRecord,
   upsertOpeningConditionPilotTask,
   validateOpeningConditionPilotTaskInput,
@@ -49,6 +53,16 @@ function validTaskInput() {
         label: "专职安全员",
       },
     ],
+    knowledgeBaseRef: {
+      id: "kb-1",
+      workspaceId: "ws-1",
+      organizationId: "org-1",
+      contractPackageId: "contract-1",
+      subcontractTeamId: "team-1",
+      label: "承台施工分包队伍知识库",
+      status: "ready",
+      summary: "已确认人员、设备、证照和历史修正摘要。",
+    },
   };
 }
 
@@ -202,6 +216,103 @@ test("records master-data decisions with safe notes only", async () => {
   }
 });
 
+test("derives preflight readiness with basis, master-data, knowledge-base, and packet reasons", () => {
+  const missingAll = deriveOpeningConditionPilotPreflightReadiness({
+    context: validTaskInput().context,
+  });
+  assert.equal(missingAll.status, "provisional");
+  assert.equal(missingAll.basis, "missing");
+  assert.equal(missingAll.masterData, "missing");
+  assert.equal(missingAll.knowledgeBase, "missing");
+  assert.deepEqual(missingAll.blockingReasons, [
+    "published_basis_required",
+    "published_master_data_required",
+    "subcontract_knowledge_base_required",
+  ]);
+
+  const readyForPacket = deriveOpeningConditionPilotPreflightReadiness(validTaskInput());
+  assert.equal(readyForPacket.status, "ready");
+  assert.equal(readyForPacket.basis, "ready");
+  assert.equal(readyForPacket.masterData, "ready");
+  assert.equal(readyForPacket.knowledgeBase, "ready");
+  assert.equal(readyForPacket.materialPacket, "missing");
+
+  const provisionalKnowledgeBase = deriveOpeningConditionPilotPreflightReadiness({
+    ...validTaskInput(),
+    knowledgeBaseRef: {
+      ...validTaskInput().knowledgeBaseRef,
+      status: "needs_review",
+    },
+  });
+  assert.equal(provisionalKnowledgeBase.status, "provisional");
+  assert.equal(provisionalKnowledgeBase.knowledgeBase, "provisional");
+  assert.deepEqual(provisionalKnowledgeBase.blockingReasons, ["subcontract_knowledge_base_required"]);
+});
+
+test("stores and binds subcontract-team knowledge bases without exposing unsafe fields as facts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-kb-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask(
+      "task-1",
+      {
+        ...validTaskInput(),
+        knowledgeBaseRef: undefined,
+      },
+      { storePath },
+    );
+
+    const upserted = await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-team-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+        summary: "沉淀模板、历史证据摘要和人工修正记录。",
+        rawText: "must-redact",
+        entries: [
+          {
+            id: "kb-entry-1",
+            type: "human_correction",
+            title: "签章日期复核修正",
+            summary: "审批表签章日期需人工确认后再进入报告。",
+            masterDataIds: ["md-1"],
+            evidenceIds: ["ev-1"],
+            sourceObject: {
+              objectId: "source-1",
+              kind: "evidence",
+              fileName: "开工申请审批表.pdf",
+              privateUrl: "must-redact",
+            },
+          },
+        ],
+      },
+      { storePath },
+    );
+    assert.equal(upserted.ok, true);
+    assert.equal(upserted.knowledgeBase.entries.length, 1);
+    assert.equal("rawText" in upserted.knowledgeBase, false);
+    assert.equal("privateUrl" in upserted.knowledgeBase.entries[0].sourceObject, false);
+
+    const listed = await listOpeningConditionPilotKnowledgeBases("ws-1", { storePath });
+    assert.equal(listed.ok, true);
+    assert.equal(listed.knowledgeBases.length, 1);
+    assert.equal(listed.knowledgeBases[0].entries[0].type, "human_correction");
+
+    const bound = await bindOpeningConditionPilotKnowledgeBase("task-1", "kb-team-1", { storePath });
+    assert.equal(bound.ok, true);
+    assert.equal(bound.task.knowledgeBaseRef.id, "kb-team-1");
+    assert.equal(bound.preflightReadiness.knowledgeBase, "ready");
+    assert.equal(bound.preflightReadiness.status, "ready");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("intakes a packet as bounded object summaries and records an event", async () => {
   const directory = await mkdtemp(join(tmpdir(), "oc-pilot-packet-"));
   const storePath = join(directory, "tasks.json");
@@ -241,6 +352,63 @@ test("intakes a packet as bounded object summaries and records an event", async 
     assert.equal("privateUrl" in intake.packet.checklistObject, false);
     assert.equal("token" in intake.packet.sourceObjects[0], false);
     assert.deepEqual(intake.event.safeDiagnostics.sourceFileNames, ["人员证书.zip", "设备资料.zip"]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("blocks formal checklist matching when preflight readiness is incomplete", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-preflight-block-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask(
+      "task-1",
+      {
+        ...validTaskInput(),
+        knowledgeBaseRef: undefined,
+      },
+      { storePath },
+    );
+    await intakeOpeningConditionPilotPacket(
+      "task-1",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "专职安全员证书.pdf",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch(
+      "task-1",
+      {
+        checklistItems: [
+          {
+            id: "item-person",
+            name: "专职安全员证书",
+            expectedEvidenceHints: ["专职安全员"],
+            masterDataIds: ["md-1"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "preflight_blocked");
+    assert.equal(result.preflightReadiness.status, "blocked");
+    assert.equal(result.preflightReadiness.materialPacket, "ready");
+    assert.deepEqual(result.preflightReadiness.blockingReasons, ["subcontract_knowledge_base_required"]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

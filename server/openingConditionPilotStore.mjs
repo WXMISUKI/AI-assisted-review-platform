@@ -7,6 +7,8 @@ const MAX_EVENTS_PER_TASK = 300;
 const MAX_OBJECTS_PER_PACKET = 200;
 const MAX_CHECKLIST_ITEMS = 300;
 const MAX_STRING_LENGTH = 2000;
+const MAX_KNOWLEDGE_BASE_RECORDS = 300;
+const MAX_KNOWLEDGE_BASE_ENTRIES = 200;
 const DEFAULT_STORE_PATH = resolve(process.cwd(), ".local-data", "opening-condition-pilot-tasks.json");
 
 export const pilotTaskStates = [
@@ -51,6 +53,7 @@ const contentComplianceValues = new Set(["compliant", "non_compliant", "partiall
 const finalDispositionValues = new Set(["pass", "fail", "needs_human_review", "blocked", "not_applicable"]);
 const visualAssertionTypes = new Set(["stamp", "signature", "checkbox", "handwritten_date", "seal", "other"]);
 const visualAssertionStatuses = new Set(["detected", "missing", "uncertain", "confirmed", "rejected", "not_required"]);
+const knowledgeBaseStatusValues = new Set(["draft", "ready", "needs_review", "archived"]);
 
 let writeQueue = Promise.resolve();
 
@@ -224,6 +227,84 @@ function normalizeMasterDataRef(value) {
     type: normalizeString(value.type, "system_document", 80),
     status,
     label: normalizeString(value.label, id, 240),
+  });
+}
+
+function normalizeStringList(value, maxItems = 50, maxLength = 180) {
+  return Array.isArray(value)
+    ? value.map((item) => normalizeString(item, "", maxLength)).filter(Boolean).slice(0, maxItems)
+    : [];
+}
+
+function normalizeKnowledgeBaseRef(value, workspaceId = "") {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const id = normalizeString(value.id, "", 180);
+  const resolvedWorkspaceId = normalizeString(value.workspaceId, workspaceId, 160);
+  if (!id || !resolvedWorkspaceId) {
+    return undefined;
+  }
+
+  const status = knowledgeBaseStatusValues.has(value.status) ? value.status : "draft";
+  return sanitizeOpeningConditionPilotValue({
+    id,
+    workspaceId: resolvedWorkspaceId,
+    organizationId: normalizeString(value.organizationId, "", 160),
+    contractPackageId: normalizeString(value.contractPackageId, "", 160),
+    subcontractTeamId: normalizeString(value.subcontractTeamId, "", 160),
+    label: normalizeString(value.label, id, 240),
+    status,
+    summary: normalizeString(value.summary, "", 500),
+  });
+}
+
+function normalizeKnowledgeBaseEntry(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const id = normalizeString(value.id, "", 180);
+  if (!id) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    id,
+    type: ["template", "historical_evidence", "extraction_note", "human_correction", "master_data_reference"].includes(
+      value.type,
+    )
+      ? value.type
+      : "historical_evidence",
+    title: normalizeString(value.title, id, 240),
+    summary: normalizeString(value.summary, "", 500),
+    sourceObject: normalizeObjectRef(value.sourceObject) ?? undefined,
+    masterDataIds: normalizeStringList(value.masterDataIds, 50, 180),
+    evidenceIds: normalizeStringList(value.evidenceIds, 50, 180),
+    confidence: ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "medium",
+    updatedAt: normalizeString(value.updatedAt, new Date().toISOString(), 80),
+  });
+}
+
+function normalizeKnowledgeBaseRecord(value, workspaceId = "") {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const ref = normalizeKnowledgeBaseRef(value, workspaceId);
+  if (!ref) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    ...ref,
+    entries: Array.isArray(value.entries)
+      ? value.entries.map(normalizeKnowledgeBaseEntry).filter(Boolean).slice(0, MAX_KNOWLEDGE_BASE_ENTRIES)
+      : [],
+    safeNote: normalizeString(value.safeNote, "", 500) || undefined,
+    createdAt: normalizeString(value.createdAt, new Date().toISOString(), 80),
+    updatedAt: normalizeString(value.updatedAt, new Date().toISOString(), 80),
   });
 }
 
@@ -682,6 +763,50 @@ function deriveInitialState(input, currentState = "draft") {
   return input.packet ? "packet_uploaded" : "ready_for_packet";
 }
 
+export function deriveOpeningConditionPilotPreflightReadiness(input = {}) {
+  const basisReady = Boolean(normalizeBasisVersion(input.basisVersion));
+  const requiredMasterData = Array.isArray(input.requiredMasterData)
+    ? input.requiredMasterData.map(normalizeMasterDataRef).filter(Boolean)
+    : [];
+  const requiresMasterData = input.requiresMasterData !== false;
+  const masterDataReady = !requiresMasterData || requiredMasterData.length > 0;
+  const knowledgeBaseRef = normalizeKnowledgeBaseRef(input.knowledgeBaseRef, input.context?.workspaceId);
+  const knowledgeBaseReady = knowledgeBaseRef?.status === "ready";
+  const packetReady = Boolean(input.packet);
+  const blockingReasons = [];
+
+  if (!basisReady) {
+    blockingReasons.push("published_basis_required");
+  }
+  if (!masterDataReady) {
+    blockingReasons.push("published_master_data_required");
+  }
+  if (!knowledgeBaseReady) {
+    blockingReasons.push("subcontract_knowledge_base_required");
+  }
+
+  const status = blockingReasons.length === 0 ? "ready" : packetReady ? "blocked" : "provisional";
+  const nextAction = !basisReady
+    ? "确认并发布判定依据版本。"
+    : !masterDataReady
+      ? "确认并发布项目人员、设备、证照、单位或制度资料主数据。"
+      : !knowledgeBaseReady
+        ? "绑定组织/分包队伍专属知识库。"
+        : packetReady
+          ? "可以执行正式资料核查。"
+          : "上传开工条件核查表和资料包。";
+
+  return sanitizeOpeningConditionPilotValue({
+    status,
+    basis: basisReady ? "ready" : "missing",
+    masterData: masterDataReady ? "ready" : "missing",
+    knowledgeBase: knowledgeBaseReady ? "ready" : knowledgeBaseRef ? "provisional" : "missing",
+    materialPacket: packetReady ? "ready" : "missing",
+    blockingReasons,
+    nextAction,
+  });
+}
+
 export function normalizeOpeningConditionPilotTask(value) {
   if (!isPlainObject(value)) {
     return null;
@@ -705,13 +830,16 @@ export function normalizeOpeningConditionPilotTask(value) {
         .filter(Boolean)
     : [];
 
-  return sanitizeOpeningConditionPilotValue({
+  const knowledgeBaseRef = normalizeKnowledgeBaseRef(value.knowledgeBaseRef, context.workspaceId);
+  const packet = normalizePacket(value.packet, id, context.workspaceId);
+  const normalizedTask = {
     id,
     context,
     state,
     basisVersion: normalizeBasisVersion(value.basisVersion),
     requiredMasterData,
-    packet: normalizePacket(value.packet, id, context.workspaceId),
+    knowledgeBaseRef,
+    packet,
     checkItems: Array.isArray(value.checkItems)
       ? value.checkItems.map((item) => normalizeCheckItem(item, id)).filter(Boolean)
       : [],
@@ -725,6 +853,11 @@ export function normalizeOpeningConditionPilotTask(value) {
     events,
     createdAt: normalizeString(value.createdAt, now, 80),
     updatedAt: normalizeString(value.updatedAt, now, 80),
+  };
+
+  return sanitizeOpeningConditionPilotValue({
+    ...normalizedTask,
+    preflightReadiness: deriveOpeningConditionPilotPreflightReadiness(normalizedTask),
   });
 }
 
@@ -733,6 +866,9 @@ function normalizeSnapshot(value) {
     return {
       schemaVersion: STORAGE_VERSION,
       tasks: [],
+      basisVersions: [],
+      masterDataRecords: [],
+      knowledgeBases: [],
     };
   }
 
@@ -749,12 +885,19 @@ function normalizeSnapshot(value) {
   const masterDataRecords = Array.isArray(value.masterDataRecords)
     ? value.masterDataRecords.map((item) => normalizeMasterDataRecord(item)).filter(Boolean).slice(0, 1000)
     : [];
+  const knowledgeBases = Array.isArray(value.knowledgeBases)
+    ? value.knowledgeBases
+        .map((item) => normalizeKnowledgeBaseRecord(item))
+        .filter(Boolean)
+        .slice(0, MAX_KNOWLEDGE_BASE_RECORDS)
+    : [];
 
   return {
     schemaVersion: STORAGE_VERSION,
     tasks,
     basisVersions,
     masterDataRecords,
+    knowledgeBases,
   };
 }
 
@@ -769,6 +912,7 @@ async function readSnapshot(storePath = DEFAULT_STORE_PATH) {
         tasks: [],
         basisVersions: [],
         masterDataRecords: [],
+        knowledgeBases: [],
       };
     }
     throw error;
@@ -972,6 +1116,102 @@ export async function decideOpeningConditionPilotMasterDataRecord(workspaceId, r
       value: {
         ok: true,
         masterDataRecord: nextRecord,
+      },
+    };
+  }, options.storePath);
+}
+
+export async function listOpeningConditionPilotKnowledgeBases(workspaceId, options = {}) {
+  const snapshot = await readSnapshot(options.storePath);
+  return {
+    ok: true,
+    workspaceId,
+    knowledgeBases: snapshot.knowledgeBases.filter((item) => item.workspaceId === workspaceId),
+  };
+}
+
+export async function upsertOpeningConditionPilotKnowledgeBase(workspaceId, knowledgeBaseId, input, options = {}) {
+  const normalized = normalizeKnowledgeBaseRecord(
+    {
+      ...input,
+      id: knowledgeBaseId,
+      workspaceId,
+      updatedAt: new Date().toISOString(),
+    },
+    workspaceId,
+  );
+
+  if (!normalized) {
+    return {
+      ok: false,
+      status: "invalid_input",
+      message: "A valid opening-condition subcontract knowledge base is required.",
+    };
+  }
+
+  return mutateSnapshot((snapshot) => ({
+    snapshot: {
+      ...snapshot,
+      knowledgeBases: [
+        normalized,
+        ...snapshot.knowledgeBases.filter((item) => !(item.workspaceId === workspaceId && item.id === knowledgeBaseId)),
+      ],
+    },
+    value: {
+      ok: true,
+      knowledgeBase: normalized,
+    },
+  }), options.storePath);
+}
+
+export async function bindOpeningConditionPilotKnowledgeBase(taskId, knowledgeBaseId, options = {}) {
+  return mutateSnapshot((snapshot) => {
+    const taskIndex = snapshot.tasks.findIndex((task) => task.id === taskId);
+    if (taskIndex < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition pilot task not found.",
+        },
+      };
+    }
+
+    const existingTask = snapshot.tasks[taskIndex];
+    const knowledgeBase = snapshot.knowledgeBases.find(
+      (item) => item.workspaceId === existingTask.context.workspaceId && item.id === knowledgeBaseId,
+    );
+    if (!knowledgeBase) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition subcontract knowledge base not found.",
+        },
+      };
+    }
+
+    const now = new Date().toISOString();
+    const nextTask = normalizeOpeningConditionPilotTask({
+      ...existingTask,
+      knowledgeBaseRef: knowledgeBase,
+      updatedAt: now,
+    });
+    const nextTasks = [...snapshot.tasks];
+    nextTasks[taskIndex] = nextTask;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        tasks: nextTasks,
+      },
+      value: {
+        ok: true,
+        task: nextTask,
+        knowledgeBase,
+        preflightReadiness: nextTask.preflightReadiness,
       },
     };
   }, options.storePath);
@@ -1199,6 +1439,19 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           ok: false,
           status: "missing_packet",
           message: "Checklist matching requires a submitted packet first.",
+        },
+      };
+    }
+
+    const preflightReadiness = deriveOpeningConditionPilotPreflightReadiness(existingTask);
+    if (preflightReadiness.status !== "ready") {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "preflight_blocked",
+          message: "Formal checklist matching requires published basis, required master data, and a ready subcontract knowledge base.",
+          preflightReadiness,
         },
       };
     }

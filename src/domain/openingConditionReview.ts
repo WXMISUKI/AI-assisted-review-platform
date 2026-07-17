@@ -134,6 +134,30 @@ export interface OpeningConditionMasterDataRecord {
   reviewNeededReason?: string;
 }
 
+export interface OpeningConditionKnowledgeBaseRecord {
+  id: string;
+  workspaceId: string;
+  organizationName: string;
+  contractPackage: string;
+  subcontractTeamName: string;
+  status: "draft" | "ready" | "needs-review" | "archived";
+  templates: number;
+  evidenceSummaries: number;
+  humanCorrections: number;
+  masterDataRefs: string[];
+  summary: string;
+}
+
+export interface OpeningConditionPreflightReadiness {
+  status: "ready" | "blocked" | "provisional";
+  basis: "ready" | "missing";
+  masterData: "ready" | "missing";
+  knowledgeBase: "ready" | "missing" | "provisional";
+  materialPacket: "ready" | "missing";
+  blockingReasons: string[];
+  nextAction: string;
+}
+
 export interface OpeningConditionHumanReviewItem {
   id: string;
   targetType: "basis" | "master-data" | "check-item";
@@ -243,6 +267,8 @@ export interface OpeningConditionReviewPacket {
     rejected: number;
     reviewNeeded: number;
   };
+  knowledgeBase?: OpeningConditionKnowledgeBaseRecord;
+  preflightReadiness: OpeningConditionPreflightReadiness;
   humanReviewQueue: OpeningConditionHumanReviewItem[];
   checkItems: OpeningConditionCheckItem[];
   reportSummary: OpeningConditionReportSummary;
@@ -455,6 +481,28 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
     rejected: 0,
     reviewNeeded: 1,
   },
+  knowledgeBase: {
+    id: "kb-g15-08-pier-substructure",
+    workspaceId: "oc-ws-g15-08-supervisor",
+    organizationName: "嘉金八标项目经理部",
+    contractPackage: "8标主线预制下部结构",
+    subcontractTeamName: "承台施工分包队伍",
+    status: "ready",
+    templates: 6,
+    evidenceSummaries: 18,
+    humanCorrections: 4,
+    masterDataRefs: ["md-person-001", "md-equipment-001", "md-doc-001"],
+    summary: "已沉淀承台施工开工资料模板、人员设备证照摘要、审批表签章修正记录和主数据引用。",
+  },
+  preflightReadiness: {
+    status: "ready",
+    basis: "ready",
+    masterData: "ready",
+    knowledgeBase: "ready",
+    materialPacket: "ready",
+    blockingReasons: [],
+    nextAction: "可以执行正式资料核查；低置信签章项进入平台人工复核。",
+  },
   humanReviewQueue: [
     {
       id: "hr-basis-001",
@@ -610,7 +658,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   },
 };
 
-export function getOpeningConditionWorkspacePacket(workspaceId: string) {
+export function getOpeningConditionWorkspacePacket(workspaceId: string): OpeningConditionReviewPacket {
   if (workspaceId === openingConditionReviewPacket.workspaceId) {
     return openingConditionReviewPacket;
   }
@@ -628,9 +676,34 @@ export function getOpeningConditionWorkspacePacket(workspaceId: string) {
     workspaceId: workspace.id,
     status: workspace.activeBasisSetVersionId ? record.status : ("provisional" as const),
   }));
+  const masterDataReadiness = getOpeningConditionMasterDataReadiness(masterData);
   const blockedReason = workspace.activeBasisSetVersionId
     ? undefined
     : "当前工作区尚未发布依据集版本，正式核查任务只能停留在待确认状态。";
+  const knowledgeBase: OpeningConditionKnowledgeBaseRecord | undefined =
+    workspace.activeBasisSetVersionId && openingConditionReviewPacket.knowledgeBase
+    ? {
+        ...openingConditionReviewPacket.knowledgeBase,
+        workspaceId: workspace.id,
+        organizationName: workspace.participatingOrganization,
+        contractPackage: workspace.contractPackage,
+      }
+    : undefined;
+  const preflightReadiness: OpeningConditionPreflightReadiness = {
+    status: workspace.activeBasisSetVersionId && knowledgeBase ? "ready" : "blocked",
+    basis: workspace.activeBasisSetVersionId ? "ready" : "missing",
+    masterData: masterDataReadiness.published > 0 ? "ready" : "missing",
+    knowledgeBase: knowledgeBase ? "ready" : "missing",
+    materialPacket: "ready",
+    blockingReasons: [
+      ...(workspace.activeBasisSetVersionId ? [] : ["published_basis_required"]),
+      ...(masterDataReadiness.published > 0 ? [] : ["published_master_data_required"]),
+      ...(knowledgeBase ? [] : ["subcontract_knowledge_base_required"]),
+    ],
+    nextAction: workspace.activeBasisSetVersionId
+      ? "可以执行正式资料核查；低置信字段进入平台人工复核。"
+      : "先确认并发布判定依据，再初始化主数据并绑定分包队伍知识库。",
+  };
 
   return {
     ...openingConditionReviewPacket,
@@ -649,7 +722,9 @@ export function getOpeningConditionWorkspacePacket(workspaceId: string) {
       : ("basis-confirmation" as const),
     basisVersions,
     masterData,
-    masterDataReadiness: getOpeningConditionMasterDataReadiness(masterData),
+    masterDataReadiness,
+    knowledgeBase,
+    preflightReadiness,
     checkItems: openingConditionReviewPacket.checkItems.map((item) =>
       blockedReason
         ? {

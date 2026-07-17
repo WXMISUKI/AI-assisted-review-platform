@@ -69,6 +69,27 @@ export interface OpeningConditionMasterDataRef {
   label: string;
 }
 
+export interface OpeningConditionPilotKnowledgeBaseRef {
+  id: string;
+  workspaceId: string;
+  organizationId: string;
+  contractPackageId: string;
+  subcontractTeamId: string;
+  label: string;
+  status: "draft" | "ready" | "needs_review" | "archived";
+  summary: string;
+}
+
+export interface OpeningConditionPilotPreflightReadiness {
+  status: "ready" | "blocked" | "provisional";
+  basis: "ready" | "missing";
+  masterData: "ready" | "missing";
+  knowledgeBase: "ready" | "missing" | "provisional";
+  materialPacket: "ready" | "missing";
+  blockingReasons: string[];
+  nextAction: string;
+}
+
 export interface OpeningConditionPilotPacket {
   id: string;
   taskId: string;
@@ -193,6 +214,8 @@ export interface OpeningConditionPilotTask {
   state: OpeningConditionPilotTaskState;
   basisVersion?: OpeningConditionBasisVersionRef;
   requiredMasterData: OpeningConditionMasterDataRef[];
+  knowledgeBaseRef?: OpeningConditionPilotKnowledgeBaseRef;
+  preflightReadiness?: OpeningConditionPilotPreflightReadiness;
   packet?: OpeningConditionPilotPacket;
   checkItems: OpeningConditionPilotCheckItem[];
   evidence: OpeningConditionPilotEvidence[];

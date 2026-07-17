@@ -24,6 +24,14 @@ _Avoid_: Personnel roster, equipment registry
 Human-confirmed or published personnel, equipment, certificate, company, or system-document facts used by opening-condition checks.
 _Avoid_: OCR output, vector chunk
 
+**Preflight Gate**:
+A mandatory opening-condition stage that must publish the basis version and required project master data before formal material review can start.
+_Avoid_: Optional setup, upload checklist
+
+**Subcontract Team Knowledge Base**:
+An organization-scoped and subcontract-team-scoped evidence library that supports material verification with reusable documents, extracted fields, and references.
+_Avoid_: Global vector store, Dify dataset
+
 **Material Review Item**:
 A checklist item that can be checked from submitted documents or published master data in the current pilot.
 _Avoid_: On-site inspection item, emergency drill item

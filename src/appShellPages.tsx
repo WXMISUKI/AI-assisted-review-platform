@@ -869,6 +869,38 @@ function OpeningConditionCheckItemRow({ item }: { item: OpeningConditionCheckIte
   );
 }
 
+function OpeningConditionReadinessPanel({ packet }: { packet: OpeningConditionReviewPacket }) {
+  const readiness = packet.preflightReadiness;
+  const knowledgeBase = packet.knowledgeBase;
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <span className="eyebrow">正式核查前置门禁</span>
+      <h2>{readiness.status === "ready" ? "依据、主数据和知识库已就绪" : "正式资料核查尚未就绪"}</h2>
+      <p>{readiness.nextAction}</p>
+      <div className="opening-condition-meta">
+        <span>依据 {readiness.basis}</span>
+        <span>主数据 {readiness.masterData}</span>
+        <span>知识库 {readiness.knowledgeBase}</span>
+        <span>资料包 {readiness.materialPacket}</span>
+      </div>
+      {knowledgeBase && (
+        <div className="opening-record-list">
+          <div>
+            <strong>{knowledgeBase.subcontractTeamName}</strong>
+            <span>
+              {knowledgeBase.status} · 模板 {knowledgeBase.templates} · 证据摘要 {knowledgeBase.evidenceSummaries} ·
+              人工修正 {knowledgeBase.humanCorrections}
+            </span>
+            <p>{knowledgeBase.summary}</p>
+          </div>
+        </div>
+      )}
+      {readiness.blockingReasons.length > 0 && <small>{readiness.blockingReasons.join(" · ")}</small>}
+    </section>
+  );
+}
+
 export function OpeningConditionWorkspacePage({
   workspaces,
   selectedWorkspaceId,
@@ -1101,7 +1133,7 @@ export function OpeningConditionHumanReviewPage({
           : humanReviewItems.map((item) => (
               <div key={item.id}>
                 <strong>{item.targetLabel}</strong>
-                <span>{item.difyNode}</span>
+                <span>平台复核：{item.difyNode}</span>
                 <p>{item.reason}</p>
               </div>
             ))}
@@ -1203,6 +1235,8 @@ export function OpeningConditionReviewPage({
         <MetricBlock label="主数据确认" value={`${confirmedMasterDataCount}/${packet.masterData.length}`} />
       </section>
 
+      <OpeningConditionReadinessPanel packet={packet} />
+
       <section className="opening-condition-grid">
         <article className="opening-panel opening-panel-wide">
           <span className="eyebrow">推荐任务组</span>
@@ -1271,7 +1305,7 @@ export function OpeningConditionReviewPage({
             {humanReviewItems.map((item) => (
               <div key={item.id}>
                 <strong>{item.targetLabel}</strong>
-                <span>{item.difyNode}</span>
+                <span>平台复核：{item.difyNode}</span>
                 <p>{item.reason}</p>
               </div>
             ))}
