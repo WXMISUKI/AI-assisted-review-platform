@@ -432,16 +432,6 @@ test("initializes intake from workspace facts in one orchestration flow", async 
         taskId: "task-init-1",
         context: validTaskInput().context,
         basisVersionId: "basis-1",
-        checklistItems: [
-          {
-            id: "item-a",
-            category: "资料核查",
-            subCategory: "人员",
-            name: "专职安全员证书",
-            expectedEvidenceHints: ["专职安全员", "证书"],
-            masterDataIds: ["md-1"],
-          },
-        ],
         checklistObject: {
           objectId: "checklist-1",
           kind: "checklist",
@@ -465,8 +455,175 @@ test("initializes intake from workspace facts in one orchestration flow", async 
     assert.equal(initialized.task.knowledgeBaseRef.id, "kb-1");
     assert.equal(initialized.preflightReadiness.status, "ready");
     assert.equal(initialized.intake.knowledgeBaseResolution, "auto_bound_single_ready");
-    assert.equal(initialized.task.checklistDefinition.length, 1);
-    assert.equal(initialized.task.checklistDefinition[0].name, "专职安全员证书");
+    assert.equal(initialized.intake.checklistDefinitionResolution, "derived_from_template");
+    assert.equal(initialized.intake.selectedChecklistTemplateId, "pier-cap-opening-condition-checklist");
+    assert.equal(initialized.task.checklistDefinition.length, 5);
+    assert.equal(initialized.task.checklistDefinition[0].name, "项目管理人员及专职安全员资格证书");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("reuses existing checklist definition when the new checklist object is not recognized", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-checklist-fallback-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "承台施工分包合同",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "专职安全员",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+        summary: "ready",
+      },
+      { storePath },
+    );
+
+    await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-init-fallback",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistItems: [
+          {
+            id: "item-a",
+            category: "资料核查",
+            name: "专职安全员证书",
+            expectedEvidenceHints: ["专职安全员", "证书"],
+            masterDataIds: ["md-1"],
+          },
+        ],
+        checklistObject: {
+          objectId: "checklist-known",
+          kind: "checklist",
+          fileName: "人工维护核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "承台开工资料包.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const reinitialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-init-fallback",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistObject: {
+          objectId: "checklist-unknown",
+          kind: "checklist",
+          fileName: "未知模板核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-2",
+            kind: "source_archive",
+            fileName: "承台开工资料包-v2.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(reinitialized.ok, true);
+    assert.equal(reinitialized.intake.checklistDefinitionResolution, "reused_existing_task");
+    assert.equal(reinitialized.task.checklistDefinition.length, 1);
+    assert.equal(reinitialized.task.checklistDefinition[0].id, "item-a");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("returns manual checklist-definition diagnostics when no source can be resolved", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-checklist-manual-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "承台施工分包合同",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "专职安全员",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+        summary: "ready",
+      },
+      { storePath },
+    );
+
+    const initialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-init-manual",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistObject: {
+          objectId: "checklist-unknown",
+          kind: "checklist",
+          fileName: "未知模板核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "承台开工资料包.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(initialized.ok, true);
+    assert.equal(initialized.intake.checklistDefinitionResolution, "manual_definition_required");
+    assert.equal(initialized.task.checklistDefinition.length, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

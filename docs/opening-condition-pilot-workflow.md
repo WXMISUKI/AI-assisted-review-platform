@@ -77,6 +77,7 @@ draft
 - 判定依据确认和项目主数据初始化是正式资料核查前的强制前置阶段；平台不得在每次资料包上传时绕过前置阶段，让智能体临时重新理解合同边界、人员设备清单或依据适用性。
 - 正式核查前，工作区应绑定组织/分包队伍知识库，用于召回历史资料模板、已确认字段、人工修正记录和可复用证据摘要。
 - 领域正式入口为 `POST /api/opening-condition/pilot-tasks/intake-init`；该入口只接收已上传对象的安全引用，并在一次编排中完成任务初始化、资料包绑定、依据/主数据/知识库解析和 readiness 返回。
+- `intake/init` 优先使用后端受控 checklist adapter：若请求未显式提供 checklist definition，后端会先根据 `checklistObject` 的已知模板派生任务内 checklist definition；若模板未识别且任务也没有既有定义，则返回“需人工补定义”的安全诊断，而不是伪造正式核查输入。
 - 工作区页面加载和上下文切换只允许同步业务事实与已有任务状态，不得隐式触发正式核查；正式资料包接入和正式匹配必须由操作员显式发起。
 - 任务在 intake/init 阶段应持有一份规范化 checklist definition；正式核查优先复用任务内 checklist definition，而不是依赖前端每次重新临时拼装并传入全部核查项。
 - 资料包 intake 会保存核查表对象引用和资料对象清单，并写入 `packet_uploaded` 安全事件。

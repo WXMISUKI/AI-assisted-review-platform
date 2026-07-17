@@ -220,3 +220,17 @@ The chosen direction is:
 - keep checklist file parsing itself as a later slice, so future DOCX/XLSX adapters only need to feed the same backend checklist-definition contract.
 
 This gives the pilot a more durable execution boundary without prematurely expanding into heavy document parsing.
+
+## Opening Condition Controlled Checklist Adapter Decision
+
+After checklist definition became task-owned, the next fastest production-facing slice is not full DOCX/XLSX parsing. It is a controlled backend adapter from checklist object references to task-bound checklist definitions.
+
+The chosen direction is:
+
+- keep explicit request-level checklist definition input as an allowed override;
+- let intake/init derive checklist definition from recognized checklist-object templates by default;
+- fall back to an existing task definition when reinitialization happens against an unrecognized checklist object;
+- return a safe manual-action diagnostic when no explicit, derived, or existing checklist definition is available;
+- keep heavy document parsing, OCR recovery, and semantic checklist generation as later slices that feed the same backend checklist-definition contract.
+
+This keeps the opening-condition pilot moving toward a real trial loop without forcing premature parser complexity into the critical path.

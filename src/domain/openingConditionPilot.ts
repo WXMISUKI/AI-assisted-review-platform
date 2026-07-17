@@ -281,6 +281,13 @@ export interface OpeningConditionPilotIntakeDiagnostics {
     | "not_requested";
   selectedKnowledgeBaseId?: string;
   packetObjectCount: number;
+  checklistDefinitionCount?: number;
+  checklistDefinitionResolution?:
+    | "direct_input"
+    | "derived_from_template"
+    | "reused_existing_task"
+    | "manual_definition_required";
+  selectedChecklistTemplateId?: string;
 }
 
 export const openingConditionPilotStateLabels: Record<OpeningConditionPilotTaskState, string> = {

@@ -77,3 +77,14 @@ The system SHALL expose intake/init and formal-match contracts that support task
 #### Scenario: Match uses stored task definition
 - **WHEN** the portal triggers formal matching after intake/init
 - **THEN** the frontend may omit checklist items and rely on the task-owned checklist definition already persisted by the backend
+
+### Requirement: Checklist adapter diagnostics contract
+The system SHALL expose bounded checklist adapter diagnostics through the opening-condition pilot intake/init contract.
+
+#### Scenario: Intake returns checklist adapter outcome
+- **WHEN** the intake/init API returns
+- **THEN** the payload includes whether checklist-definition resolution came from direct input, controlled template derivation, existing-task fallback, or unresolved manual action
+
+#### Scenario: Frontend defaults to backend adaptation
+- **WHEN** the portal initializes a known pilot checklist object
+- **THEN** the frontend may omit checklist-definition items and rely on the backend checklist-object adapter as the default path

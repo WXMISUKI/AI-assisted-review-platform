@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { deriveOpeningConditionPilotChecklistDefinition } from "./openingConditionChecklistAdapter.mjs";
 import { normalizeProviderRefs } from "./providerContracts.mjs";
 
 const STORAGE_VERSION = 1;
@@ -1432,6 +1433,59 @@ function resolveKnowledgeBaseForIntake(snapshot, workspaceId, requestedKnowledge
   };
 }
 
+function resolveChecklistDefinitionForIntake(input, packet, basisVersion, requiredMasterData = [], existingTask = null) {
+  const explicitChecklistDefinition =
+    Array.isArray(input.checklistItems) && input.checklistItems.length > 0
+      ? input.checklistItems
+          .map((item, index) => normalizeChecklistItem(item, index))
+          .filter(Boolean)
+          .slice(0, MAX_CHECKLIST_ITEMS)
+      : [];
+  if (explicitChecklistDefinition.length > 0) {
+    return {
+      checklistDefinition: explicitChecklistDefinition,
+      resolution: "direct_input",
+    };
+  }
+
+  const derivedChecklist = deriveOpeningConditionPilotChecklistDefinition({
+    checklistObject: packet?.checklistObject,
+    basisVersionId: basisVersion?.id ?? "",
+    requiredMasterData,
+  });
+  const derivedChecklistDefinition = Array.isArray(derivedChecklist.checklistItems)
+    ? derivedChecklist.checklistItems
+        .map((item, index) => normalizeChecklistItem(item, index))
+        .filter(Boolean)
+        .slice(0, MAX_CHECKLIST_ITEMS)
+    : [];
+  if (derivedChecklistDefinition.length > 0) {
+    return {
+      checklistDefinition: derivedChecklistDefinition,
+      resolution: derivedChecklist.resolution,
+      templateId: derivedChecklist.templateId,
+    };
+  }
+
+  const existingChecklistDefinition = Array.isArray(existingTask?.checklistDefinition)
+    ? existingTask.checklistDefinition
+        .map((item, index) => normalizeChecklistItem(item, index))
+        .filter(Boolean)
+        .slice(0, MAX_CHECKLIST_ITEMS)
+    : [];
+  if (existingChecklistDefinition.length > 0) {
+    return {
+      checklistDefinition: existingChecklistDefinition,
+      resolution: "reused_existing_task",
+    };
+  }
+
+  return {
+    checklistDefinition: [],
+    resolution: "manual_definition_required",
+  };
+}
+
 function buildPilotPacketFromIntakeInput(taskId, context, input = {}) {
   return normalizePacket(
     {
@@ -1517,16 +1571,20 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       context.workspaceId,
       Array.isArray(input.requiredMasterDataIds) ? input.requiredMasterDataIds : [],
     );
-    const checklistDefinition = Array.isArray(input.checklistItems)
-      ? input.checklistItems.map((item, index) => normalizeChecklistItem(item, index)).filter(Boolean)
-      : existingTask?.checklistDefinition ?? [];
-
     const knowledgeBaseResolution = resolveKnowledgeBaseForIntake(
       snapshot,
       context.workspaceId,
       normalizeString(input.knowledgeBaseId, "", 180),
       existingTask?.knowledgeBaseRef?.id ?? "",
     );
+    const checklistResolution = resolveChecklistDefinitionForIntake(
+      input,
+      packet,
+      basisVersion,
+      masterDataResolution.boundRefs,
+      existingTask,
+    );
+    const checklistDefinition = checklistResolution.checklistDefinition;
 
     const nextTaskState = deriveInitialState(
       {
@@ -1556,6 +1614,8 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       selectedKnowledgeBaseId: knowledgeBaseResolution.selectedKnowledgeBaseId,
       packetObjectCount: packet.sourceObjects.length,
       checklistDefinitionCount: checklistDefinition.length,
+      checklistDefinitionResolution: checklistResolution.resolution,
+      selectedChecklistTemplateId: checklistResolution.templateId,
     };
     const intakeEvent = createPilotIntakeEvent(
       taskId,
@@ -1570,6 +1630,8 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         boundMasterDataCount: masterDataResolution.boundRefs.length,
         missingMasterDataIds: masterDataResolution.missingIds,
         checklistDefinitionCount: checklistDefinition.length,
+        checklistDefinitionResolution: checklistResolution.resolution,
+        checklistTemplateId: checklistResolution.templateId,
       },
     );
     const packetEvent = createPilotIntakeEvent(
