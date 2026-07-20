@@ -19,6 +19,24 @@ OCR Worker：OCR、证照后处理、入库 MaxKB、检索命中验收
 
 MaxKB 和 OCR Worker 都不应成为项目组织结构、施工队伍、审查任务或人工审批结论的事实库。
 
+当前联调边界已经收敛为：前置平台不直连 MaxKB 容器，也不保存 MaxKB 管理员账号密码；平台调用 OCR Worker / MaxKB Provider Proxy。Proxy 内部持有 MaxKB 登录配置，并向平台暴露安全的 provider status 与 retrieval API。
+
+平台侧推荐配置：
+
+```env
+KNOWLEDGE_PROVIDER=maxkb
+MAXKB_ENABLED=true
+MAXKB_BASE_URL=http://192.168.0.235:8091
+MAXKB_API_KEY=<platform-to-proxy-bearer-token>
+MAXKB_DEFAULT_KNOWLEDGE_ID=019f787c-644e-7162-bfe5-f4ee02a91539
+MAXKB_TIMEOUT_MS=5000
+MAXKB_HEALTH_PATH=/api/health
+MAXKB_STATUS_PATH=/api/knowledge-base/provider/status
+MAXKB_RETRIEVAL_PATH=/api/knowledge/:knowledgeId/search
+```
+
+其中 `MAXKB_API_KEY` 对应 Worker/Proxy 的 Bearer token；`MAXKB_USERNAME` / `MAXKB_PASSWORD` 应只存在于 Worker/Proxy 侧。
+
 ## 2. 当前已完成内容
 
 ### 2.1 MaxKB 本地知识库闭环

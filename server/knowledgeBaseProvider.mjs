@@ -88,6 +88,65 @@ function normalizeMaxkbKnowledgeId(value, fallback = "") {
   return normalizeProviderString(value?.knowledgeId ?? value?.datasetId ?? value?.id ?? value, fallback, 180);
 }
 
+function buildMaxkbMetadata(maxkb) {
+  return sanitizeProviderValue({
+    selected: config.knowledgeProvider === "maxkb",
+    baseURL: Boolean(maxkb.baseURL),
+    apiKey: Boolean(maxkb.apiKey),
+    username: Boolean(maxkb.username),
+    password: Boolean(maxkb.password),
+    knowledgeId: Boolean(maxkb.defaultKnowledgeId),
+    defaultKnowledgeId: maxkb.defaultKnowledgeId || undefined,
+    healthPath: maxkb.healthPath || undefined,
+    statusPath: maxkb.statusPath || undefined,
+    retrievalPath: maxkb.retrievalPath || undefined,
+    timeoutMs: maxkb.timeoutMs,
+  });
+}
+
+export function normalizeMaxkbReadinessPayload(payload = {}, options = {}) {
+  const responseStatus = Number.isFinite(Number(options.responseStatus)) ? Number(options.responseStatus) : 0;
+  const fallbackMetadata = sanitizeProviderValue(options.metadata ?? {});
+  const proxyProvider = payload?.providers?.maxkb ?? payload?.providerStatus?.maxkb ?? payload?.maxkb ?? payload?.data ?? payload;
+  const statusValue = normalizeProviderStatus(proxyProvider?.status ?? payload?.status, "degraded");
+  const ready =
+    Boolean(options.responseOk) &&
+    proxyProvider?.ready !== false &&
+    payload?.ready !== false &&
+    payload?.ok !== false &&
+    payload?.code !== 500 &&
+    statusValue === "ready";
+  const configured = proxyProvider?.configured ?? payload?.configured ?? true;
+  const summary = normalizeProviderString(
+    proxyProvider?.summary ?? payload?.summary,
+    ready ? "MaxKB provider proxy is ready." : "MaxKB provider proxy health check is degraded.",
+    500,
+  );
+  const diagnostics = [
+    sanitizeProviderValue({
+      statusCode: responseStatus || undefined,
+      status: proxyProvider?.status ?? payload?.status ?? payload?.code,
+      message: proxyProvider?.message ?? payload?.message ?? `Provider proxy returned HTTP ${responseStatus || "unknown"}.`,
+    }),
+  ].filter((item) => Object.keys(item).length > 0);
+
+  return buildProviderHealthSummary({
+    provider: "maxkb",
+    configured: Boolean(configured),
+    ready,
+    status: ready ? "ready" : "degraded",
+    source: ready ? "maxkb-proxy" : "local-fallback",
+    summary,
+    diagnostics,
+    metadata: sanitizeProviderValue({
+      ...fallbackMetadata,
+      workspaceId: proxyProvider?.workspaceId ?? payload?.workspaceId,
+      defaultKnowledgeId: proxyProvider?.defaultKnowledgeId ?? payload?.defaultKnowledgeId,
+      capabilities: proxyProvider?.capabilities ?? payload?.capabilities,
+    }),
+  });
+}
+
 export function createMockKnowledgeBaseProvider() {
   return {
     provider: "mock",
@@ -522,73 +581,38 @@ export function createMaxkbKnowledgeBaseProvider() {
           status: maxkb.enabled ? "degraded" : "disabled",
           source: "local-fallback",
           summary: maxkb.enabled
-            ? "MaxKB provider is enabled but missing base URL or server-side credentials."
+            ? "MaxKB provider proxy is enabled but missing base URL or server-side Bearer credentials."
             : "MaxKB provider is disabled.",
-          metadata: {
-            selected: config.knowledgeProvider === "maxkb",
-            baseURL: Boolean(maxkb.baseURL),
-            apiKey: Boolean(maxkb.apiKey),
-            username: Boolean(maxkb.username),
-            password: Boolean(maxkb.password),
-            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
-            timeoutMs: maxkb.timeoutMs,
-          },
+          metadata: buildMaxkbMetadata(maxkb),
         });
       }
 
-      if (!maxkb.healthPath) {
+      const readinessPath = maxkb.statusPath || maxkb.healthPath;
+      if (!readinessPath) {
         return buildProviderHealthSummary({
           provider: "maxkb",
           configured: true,
           ready: true,
           status: "ready",
-          source: "maxkb",
-          summary: "MaxKB provider is configured.",
-          metadata: {
-            selected: config.knowledgeProvider === "maxkb",
-            baseURL: Boolean(maxkb.baseURL),
-            apiKey: Boolean(maxkb.apiKey),
-            username: Boolean(maxkb.username),
-            password: Boolean(maxkb.password),
-            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
-            timeoutMs: maxkb.timeoutMs,
-          },
+          source: "maxkb-proxy",
+          summary: "MaxKB provider proxy is configured.",
+          metadata: buildMaxkbMetadata(maxkb),
         });
       }
 
       try {
         const { response, payload } = await fetchJsonWithTimeout(
-          `${maxkb.baseURL}${maxkb.healthPath}`,
+          `${maxkb.baseURL}${readinessPath}`,
           {
             method: "GET",
             headers: buildMaxkbHeaders(maxkb, { Accept: "application/json" }),
           },
           maxkb.timeoutMs,
         );
-        const ready = response.ok && payload?.ok !== false && payload?.code !== 500;
-        return buildProviderHealthSummary({
-          provider: "maxkb",
-          configured: true,
-          ready,
-          status: ready ? "ready" : "degraded",
-          source: ready ? "maxkb" : "local-fallback",
-          summary: ready ? "MaxKB provider is ready." : "MaxKB provider health check is degraded.",
-          diagnostics: [
-            sanitizeProviderValue({
-              statusCode: response.status,
-              status: payload?.status ?? payload?.code,
-              message: payload?.message ?? `Health check returned HTTP ${response.status}.`,
-            }),
-          ],
-          metadata: {
-            selected: config.knowledgeProvider === "maxkb",
-            baseURL: Boolean(maxkb.baseURL),
-            apiKey: Boolean(maxkb.apiKey),
-            username: Boolean(maxkb.username),
-            password: Boolean(maxkb.password),
-            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
-            timeoutMs: maxkb.timeoutMs,
-          },
+        return normalizeMaxkbReadinessPayload(payload, {
+          responseOk: response.ok,
+          responseStatus: response.status,
+          metadata: buildMaxkbMetadata(maxkb),
         });
       } catch (error) {
         return buildProviderHealthSummary({
@@ -597,22 +621,14 @@ export function createMaxkbKnowledgeBaseProvider() {
           ready: false,
           status: "degraded",
           source: "local-fallback",
-          summary: "MaxKB provider health check failed.",
+          summary: "MaxKB provider proxy health check failed.",
           diagnostics: [
             sanitizeProviderValue({
               status: error?.name === "AbortError" ? "timeout" : "request_failed",
-              message: error instanceof Error ? error.message : "MaxKB health check failed.",
+              message: error instanceof Error ? error.message : "MaxKB provider proxy health check failed.",
             }),
           ],
-          metadata: {
-            selected: config.knowledgeProvider === "maxkb",
-            baseURL: Boolean(maxkb.baseURL),
-            apiKey: Boolean(maxkb.apiKey),
-            username: Boolean(maxkb.username),
-            password: Boolean(maxkb.password),
-            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
-            timeoutMs: maxkb.timeoutMs,
-          },
+          metadata: buildMaxkbMetadata(maxkb),
         });
       }
     },

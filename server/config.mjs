@@ -96,6 +96,11 @@ export const config = {
     password: process.env.MAXKB_PASSWORD || "",
     defaultKnowledgeId: normalizeProviderString(process.env.MAXKB_DEFAULT_KNOWLEDGE_ID || "", "", 180),
     healthPath: normalizeProviderString(process.env.MAXKB_HEALTH_PATH || "", "/api/health", 180),
+    statusPath: normalizeProviderString(
+      process.env.MAXKB_STATUS_PATH || "",
+      "/api/knowledge-base/provider/status",
+      220,
+    ),
     knowledgePath: normalizeProviderString(process.env.MAXKB_KNOWLEDGE_PATH || "", "/api/knowledge", 180),
     documentPath: normalizeProviderString(
       process.env.MAXKB_DOCUMENT_PATH || "",
@@ -179,6 +184,7 @@ export function getSafeProviderStatus() {
       hasPassword: Boolean(config.maxkb.password),
       defaultKnowledgeId: config.maxkb.defaultKnowledgeId || null,
       healthPath: config.maxkb.healthPath,
+      statusPath: config.maxkb.statusPath,
       retrievalPath: config.maxkb.retrievalPath,
       status: normalizeProviderStatus(
         maxkbConfigured ? "ready" : config.maxkb.enabled ? "degraded" : "disabled",

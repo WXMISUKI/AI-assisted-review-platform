@@ -52,25 +52,26 @@ RAGFLOW_RETRIEVAL_PATH=/api/v1/retrieval
 
 ## MaxKB 配置项
 
-MaxKB 默认也是可选 provider。当前前置平台联调推荐显式选择 MaxKB：
+MaxKB 默认也是可选 provider。当前前置平台联调推荐显式选择 MaxKB，但平台侧连接对象是 **OCR Worker / MaxKB Provider Proxy**，不是 MaxKB 容器本身。平台不保存 MaxKB 管理员账号密码，也不让浏览器接触任何 provider token。
 
 ```env
 KNOWLEDGE_PROVIDER=maxkb
 MAXKB_ENABLED=true
-MAXKB_BASE_URL=http://127.0.0.1:8080
-MAXKB_API_KEY=your-server-side-token
+MAXKB_BASE_URL=http://192.168.0.235:8091
+MAXKB_API_KEY=your-platform-to-proxy-bearer-token
 MAXKB_DEFAULT_KNOWLEDGE_ID=019f787c-644e-7162-bfe5-f4ee02a91539
 MAXKB_TIMEOUT_MS=5000
 ```
 
-如果 MaxKB 部署 API 路径与默认值不同，可以显式覆盖：
+如果 Worker/Proxy API 路径与默认值不同，可以显式覆盖：
 
 ```env
 MAXKB_HEALTH_PATH=/api/health
-MAXKB_KNOWLEDGE_PATH=/api/knowledge
-MAXKB_DOCUMENT_PATH=/api/knowledge/:knowledgeId/document
+MAXKB_STATUS_PATH=/api/knowledge-base/provider/status
 MAXKB_RETRIEVAL_PATH=/api/knowledge/:knowledgeId/search
 ```
+
+`MAXKB_API_KEY` 在本平台中表示调用 Worker/Proxy 的 Bearer key；`MAXKB_USERNAME` / `MAXKB_PASSWORD` 应留在 Worker/Proxy 运行环境内，由 Proxy 内部登录或转发 MaxKB。
 
 更详细的 MaxKB 对接约束见 [preflight-maxkb-provider-integration.md](./preflight-maxkb-provider-integration.md)。
 

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { getSafeProviderStatus } from "./config.mjs";
-import { createMaxkbKnowledgeBaseProvider, createMockKnowledgeBaseProvider } from "./knowledgeBaseProvider.mjs";
+import {
+  createMaxkbKnowledgeBaseProvider,
+  createMockKnowledgeBaseProvider,
+  normalizeMaxkbReadinessPayload,
+} from "./knowledgeBaseProvider.mjs";
 import {
   buildProviderHealthSummary,
   normalizeProviderRef,
@@ -125,15 +129,93 @@ test("exposes MaxKB safe provider status without credentials", async () => {
   assert.equal(typeof status.maxkb.enabled, "boolean");
   assert.equal(typeof status.maxkb.hasApiKey, "boolean");
   assert.equal(typeof status.maxkb.hasPassword, "boolean");
+  assert.equal(typeof status.maxkb.statusPath, "string");
   assert.equal("apiKey" in status.maxkb, false);
   assert.equal("password" in status.maxkb, false);
 
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        providers: {
+          maxkb: {
+            provider: "maxkb",
+            configured: true,
+            ready: true,
+            status: "ready",
+            summary: "MaxKB knowledge provider is configured.",
+            workspaceId: "default",
+            defaultKnowledgeId: "knowledge-1",
+            capabilities: {
+              ingestion: true,
+              retrieval: true,
+              documentStatus: false,
+            },
+            authorization: "must-redact",
+          },
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
   const provider = createMaxkbKnowledgeBaseProvider();
-  const readiness = await provider.getReadiness();
+  try {
+    const readiness = await provider.getReadiness();
+    assert.equal(readiness.provider, "maxkb");
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.source, "maxkb-proxy");
+    assert.equal(readiness.metadata.defaultKnowledgeId, "knowledge-1");
+    assert.equal("apiKey" in readiness, false);
+    assert.equal("password" in readiness, false);
+    assert.equal("authorization" in readiness, false);
+    assert.equal("authorization" in readiness.metadata, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("normalizes MaxKB proxy readiness payload safely", () => {
+  const readiness = normalizeMaxkbReadinessPayload(
+    {
+      service: "preflight-ocr-worker",
+      ready: true,
+      status: "ready",
+      providers: {
+        maxkb: {
+          provider: "maxkb",
+          configured: true,
+          ready: true,
+          status: "ready",
+          summary: "MaxKB knowledge provider is configured.",
+          workspaceId: "default",
+          defaultKnowledgeId: "019f787c-644e-7162-bfe5-f4ee02a91539",
+          capabilities: {
+            ingestion: true,
+            retrieval: true,
+            documentStatus: false,
+          },
+          token: "must-redact",
+        },
+      },
+    },
+    {
+      responseOk: true,
+      responseStatus: 200,
+      metadata: {
+        statusPath: "/api/knowledge-base/provider/status",
+        retrievalPath: "/api/knowledge/:knowledgeId/search",
+      },
+    },
+  );
+
   assert.equal(readiness.provider, "maxkb");
-  assert.equal("apiKey" in readiness, false);
-  assert.equal("password" in readiness, false);
-  assert.equal("authorization" in readiness, false);
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.status, "ready");
+  assert.equal(readiness.source, "maxkb-proxy");
+  assert.equal(readiness.metadata.workspaceId, "default");
+  assert.equal(readiness.metadata.defaultKnowledgeId, "019f787c-644e-7162-bfe5-f4ee02a91539");
+  assert.equal(readiness.metadata.capabilities.retrieval, true);
+  assert.equal("token" in readiness.metadata, false);
 });
 
 test("mock knowledge-base provider returns normalized retrieval hits", async () => {
