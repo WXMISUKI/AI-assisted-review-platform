@@ -6,11 +6,11 @@
 
 ### 近期优先准备
 
-1. **RAGFlow / RAG 知识库 provider**
+1. **MaxKB / RAGFlow / RAG 知识库 provider**
    - 用途：资料模板、历史证据、人工修正、chunk 召回和引用辅助。
    - 不做：正式事实源、任务状态机、自动通过结论。
    - 平台保存：workspace、组织、合同包、分包队伍、知识库状态、provider dataset/document/chunk refs、同步状态。
-   - 参考：RAGFlow 官方 HTTP API 文档覆盖 dataset、document、chunk 与 retrieval 能力，见 [RAGFlow HTTP API Reference](https://ragflow.io/docs/http_api_reference)。
+   - MaxKB 当前作为前置平台优先联调 provider；RAGFlow 保留为同类可选 provider。
 
 2. **Agent Worker provider**
    - 用途：资料包解压、长时间 OCR、复杂文档解析、后续可恢复智能体编排。
@@ -50,6 +50,30 @@ RAGFLOW_RETRIEVAL_PATH=/api/v1/retrieval
 
 这些路径只在服务端使用，前端不会接触 API key、Authorization header、raw text、provider trace 或私有 URL。
 
+## MaxKB 配置项
+
+MaxKB 默认也是可选 provider。当前前置平台联调推荐显式选择 MaxKB：
+
+```env
+KNOWLEDGE_PROVIDER=maxkb
+MAXKB_ENABLED=true
+MAXKB_BASE_URL=http://127.0.0.1:8080
+MAXKB_API_KEY=your-server-side-token
+MAXKB_DEFAULT_KNOWLEDGE_ID=019f787c-644e-7162-bfe5-f4ee02a91539
+MAXKB_TIMEOUT_MS=5000
+```
+
+如果 MaxKB 部署 API 路径与默认值不同，可以显式覆盖：
+
+```env
+MAXKB_HEALTH_PATH=/api/health
+MAXKB_KNOWLEDGE_PATH=/api/knowledge
+MAXKB_DOCUMENT_PATH=/api/knowledge/:knowledgeId/document
+MAXKB_RETRIEVAL_PATH=/api/knowledge/:knowledgeId/search
+```
+
+更详细的 MaxKB 对接约束见 [preflight-maxkb-provider-integration.md](./preflight-maxkb-provider-integration.md)。
+
 ## 平台记录与外部索引的关系
 
 ```text
@@ -62,14 +86,14 @@ Platform source of truth
   └─ report assets
 
 External provider support
-  └─ RAGFlow dataset/document/chunk refs
+  └─ MaxKB/RAGFlow knowledge or dataset/document/chunk refs
        ├─ safe snippet
        ├─ locator
        ├─ score
        └─ related evidence/master-data ids
 ```
 
-当 RAGFlow 召回结果与平台已发布依据或主数据冲突时，平台保留冲突并以平台事实为准。冲突项应进入人工复核或证据解释，不应自动覆盖结论。
+当 MaxKB/RAGFlow 召回结果与平台已发布依据或主数据冲突时，平台保留冲突并以平台事实为准。冲突项应进入人工复核或证据解释，不应自动覆盖结论。
 
 ## 调试入口
 
@@ -79,7 +103,7 @@ External provider support
 ## 下一步建议
 
 1. 先跑通单项目真实试点闭环：任务、依据、主数据、知识库绑定、资料包、人工复核、报告归档。
-2. 再用 RAGFlow 建一个项目/合同包/分包队伍级 dataset。
+2. 再用 MaxKB 建一个项目级 knowledge base，或用 RAGFlow 建一个项目/合同包/分包队伍级 dataset。
 3. 把合同边界、核查表模板、历史人工修正、已确认主数据摘要作为首批索引资料。
 4. 平台侧只保存 dataset/document/chunk refs 和 safe snippet。
-5. 正式核查时只把 RAGFlow 作为召回辅助，仍以平台 basis/master-data/evidence/human-decision 为准。
+5. 正式核查时只把 MaxKB/RAGFlow 作为召回辅助，仍以平台 basis/master-data/evidence/human-decision 为准。

@@ -230,6 +230,10 @@ The system SHALL persist a task-owned packet inventory manifest for opening-cond
 - **WHEN** intake/init or packet intake receives bounded inventory entries
 - **THEN** the pilot packet stores those entries as task-owned packet facts alongside checklist and source object references
 
-#### Scenario: Packet has no explicit inventory input
-- **WHEN** a packet is accepted without explicit inventory entries
-- **THEN** the backend derives a bounded default inventory manifest from the submitted source objects and records that resolution in safe diagnostics
+#### Scenario: Packet stores ZIP-derived inventory entries
+- **WHEN** a packet is accepted without explicit inventory entries and includes a readable ZIP source object
+- **THEN** the backend stores the extracted ZIP entry list in the packet inventory manifest and records that resolution in safe diagnostics
+
+#### Scenario: Packet has no usable ZIP manifest input
+- **WHEN** a packet is accepted without explicit inventory entries and ZIP manifest extraction is unavailable or fails
+- **THEN** the backend derives a bounded default inventory manifest from the submitted source objects and records the fallback reason in safe diagnostics

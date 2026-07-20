@@ -31,6 +31,10 @@ function getConfig() {
   return config.ragflow;
 }
 
+function getMaxkbConfig() {
+  return config.maxkb;
+}
+
 function buildConfiguredSummary(providerName, ready, summary) {
   return buildProviderHealthSummary({
     provider: providerName,
@@ -71,6 +75,17 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 5000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function buildMaxkbHeaders(maxkb, extra = {}) {
+  return {
+    ...(maxkb.apiKey ? { Authorization: `Bearer ${maxkb.apiKey}` } : {}),
+    ...extra,
+  };
+}
+
+function normalizeMaxkbKnowledgeId(value, fallback = "") {
+  return normalizeProviderString(value?.knowledgeId ?? value?.datasetId ?? value?.id ?? value, fallback, 180);
 }
 
 export function createMockKnowledgeBaseProvider() {
@@ -491,9 +506,340 @@ export function createRagflowKnowledgeBaseProvider() {
   };
 }
 
+export function createMaxkbKnowledgeBaseProvider() {
+  const maxkb = getMaxkbConfig();
+
+  return {
+    provider: "maxkb",
+    async getReadiness() {
+      const hasCredential = Boolean(maxkb.apiKey || (maxkb.username && maxkb.password));
+      const configured = Boolean(maxkb.enabled && maxkb.baseURL && hasCredential);
+      if (!configured) {
+        return buildProviderHealthSummary({
+          provider: "maxkb",
+          configured: false,
+          ready: false,
+          status: maxkb.enabled ? "degraded" : "disabled",
+          source: "local-fallback",
+          summary: maxkb.enabled
+            ? "MaxKB provider is enabled but missing base URL or server-side credentials."
+            : "MaxKB provider is disabled.",
+          metadata: {
+            selected: config.knowledgeProvider === "maxkb",
+            baseURL: Boolean(maxkb.baseURL),
+            apiKey: Boolean(maxkb.apiKey),
+            username: Boolean(maxkb.username),
+            password: Boolean(maxkb.password),
+            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
+            timeoutMs: maxkb.timeoutMs,
+          },
+        });
+      }
+
+      if (!maxkb.healthPath) {
+        return buildProviderHealthSummary({
+          provider: "maxkb",
+          configured: true,
+          ready: true,
+          status: "ready",
+          source: "maxkb",
+          summary: "MaxKB provider is configured.",
+          metadata: {
+            selected: config.knowledgeProvider === "maxkb",
+            baseURL: Boolean(maxkb.baseURL),
+            apiKey: Boolean(maxkb.apiKey),
+            username: Boolean(maxkb.username),
+            password: Boolean(maxkb.password),
+            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
+            timeoutMs: maxkb.timeoutMs,
+          },
+        });
+      }
+
+      try {
+        const { response, payload } = await fetchJsonWithTimeout(
+          `${maxkb.baseURL}${maxkb.healthPath}`,
+          {
+            method: "GET",
+            headers: buildMaxkbHeaders(maxkb, { Accept: "application/json" }),
+          },
+          maxkb.timeoutMs,
+        );
+        const ready = response.ok && payload?.ok !== false && payload?.code !== 500;
+        return buildProviderHealthSummary({
+          provider: "maxkb",
+          configured: true,
+          ready,
+          status: ready ? "ready" : "degraded",
+          source: ready ? "maxkb" : "local-fallback",
+          summary: ready ? "MaxKB provider is ready." : "MaxKB provider health check is degraded.",
+          diagnostics: [
+            sanitizeProviderValue({
+              statusCode: response.status,
+              status: payload?.status ?? payload?.code,
+              message: payload?.message ?? `Health check returned HTTP ${response.status}.`,
+            }),
+          ],
+          metadata: {
+            selected: config.knowledgeProvider === "maxkb",
+            baseURL: Boolean(maxkb.baseURL),
+            apiKey: Boolean(maxkb.apiKey),
+            username: Boolean(maxkb.username),
+            password: Boolean(maxkb.password),
+            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
+            timeoutMs: maxkb.timeoutMs,
+          },
+        });
+      } catch (error) {
+        return buildProviderHealthSummary({
+          provider: "maxkb",
+          configured: true,
+          ready: false,
+          status: "degraded",
+          source: "local-fallback",
+          summary: "MaxKB provider health check failed.",
+          diagnostics: [
+            sanitizeProviderValue({
+              status: error?.name === "AbortError" ? "timeout" : "request_failed",
+              message: error instanceof Error ? error.message : "MaxKB health check failed.",
+            }),
+          ],
+          metadata: {
+            selected: config.knowledgeProvider === "maxkb",
+            baseURL: Boolean(maxkb.baseURL),
+            apiKey: Boolean(maxkb.apiKey),
+            username: Boolean(maxkb.username),
+            password: Boolean(maxkb.password),
+            knowledgeId: Boolean(maxkb.defaultKnowledgeId),
+            timeoutMs: maxkb.timeoutMs,
+          },
+        });
+      }
+    },
+    async upsertDataset(input = {}) {
+      if (!maxkb.enabled || !maxkb.baseURL || !(maxkb.apiKey || (maxkb.username && maxkb.password))) {
+        return {
+          ok: false,
+          status: "not_configured",
+          message: "MaxKB provider is not configured.",
+        };
+      }
+
+      const knowledgeId = normalizeProviderString(
+        input.knowledgeId ?? input.datasetId ?? input.id ?? maxkb.defaultKnowledgeId,
+        "",
+        180,
+      );
+      if (knowledgeId) {
+        return {
+          ok: true,
+          dataset: normalizeProviderRef({
+            provider: "maxkb",
+            id: knowledgeId,
+            datasetId: knowledgeId,
+            knowledgeId,
+            syncStatus: "ready",
+            summary: normalizeProviderString(input.label ?? input.name, knowledgeId, MAX_DATASET_LABEL_LENGTH),
+            lastSyncedAt: nowIsoString(),
+          }),
+        };
+      }
+
+      const response = await fetch(`${maxkb.baseURL}${maxkb.knowledgePath}`, {
+        method: "POST",
+        headers: buildMaxkbHeaders(maxkb, {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: JSON.stringify(sanitizeProviderValue({
+          name: normalizeProviderString(input.label ?? input.name, "Opening-condition project knowledge base", MAX_DATASET_LABEL_LENGTH),
+          description: normalizeProviderString(input.summary, "", 500) || undefined,
+          metadata: sanitizeProviderValue({
+            workspaceId: input.workspaceId,
+            organizationId: input.organizationId,
+            contractPackageId: input.contractPackageId,
+            subcontractTeamId: input.subcontractTeamId,
+          }),
+        })),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          ok: false,
+          status: "failed",
+          message: payload?.message || payload?.error || "MaxKB knowledge base upsert failed.",
+        };
+      }
+
+      const resolvedKnowledgeId = normalizeMaxkbKnowledgeId(payload?.data ?? payload, createMockDatasetId("maxkb-knowledge"));
+      return {
+        ok: true,
+        dataset: normalizeProviderRef({
+          provider: "maxkb",
+          id: resolvedKnowledgeId,
+          datasetId: resolvedKnowledgeId,
+          knowledgeId: resolvedKnowledgeId,
+          syncStatus: "ready",
+          summary: normalizeProviderString(input.label ?? input.name, resolvedKnowledgeId, MAX_DATASET_LABEL_LENGTH),
+          lastSyncedAt: nowIsoString(),
+        }),
+      };
+    },
+    async upsertDocument(knowledgeId, input = {}) {
+      if (!maxkb.enabled || !maxkb.baseURL || !(maxkb.apiKey || (maxkb.username && maxkb.password))) {
+        return {
+          ok: false,
+          status: "not_configured",
+          message: "MaxKB provider is not configured.",
+        };
+      }
+
+      const resolvedKnowledgeId = normalizeProviderString(knowledgeId || maxkb.defaultKnowledgeId, "", 180);
+      if (!resolvedKnowledgeId) {
+        return {
+          ok: false,
+          status: "invalid_input",
+          message: "MaxKB knowledge id is required before document upsert.",
+        };
+      }
+
+      const path = maxkb.documentPath || "/api/knowledge/:knowledgeId/document";
+      const requestUrl = `${maxkb.baseURL}${path.replace(":knowledgeId", encodeURIComponent(resolvedKnowledgeId))}`;
+      const response = await fetch(requestUrl, {
+        method: "POST",
+        headers: buildMaxkbHeaders(maxkb, {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: JSON.stringify(sanitizeProviderValue({
+          title: normalizeProviderString(input.title, "", MAX_DOCUMENT_TITLE_LENGTH),
+          content: normalizeProviderString(input.safeSnippet ?? input.summary, "", MAX_CHUNK_TEXT_LENGTH),
+          sourceObjectId: normalizeProviderString(input.sourceObjectId, "", 180) || undefined,
+          metadata: sanitizeProviderValue(input.metadata ?? {}),
+        })),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          ok: false,
+          status: "failed",
+          message: payload?.message || payload?.error || "MaxKB document upsert failed.",
+        };
+      }
+
+      const documentId = normalizeProviderString(
+        payload?.data?.id ?? payload?.data?.documentId ?? payload?.id ?? input.documentId,
+        createMockDatasetId("maxkb-doc"),
+        180,
+      );
+      return {
+        ok: true,
+        document: normalizeProviderRef({
+          provider: "maxkb",
+          id: documentId,
+          datasetId: resolvedKnowledgeId,
+          knowledgeId: resolvedKnowledgeId,
+          documentId,
+          syncStatus: "ready",
+          summary: normalizeProviderString(input.title, documentId, MAX_DOCUMENT_TITLE_LENGTH),
+          lastSyncedAt: nowIsoString(),
+        }),
+      };
+    },
+    async upsertChunk(knowledgeId, documentId, input = {}) {
+      return {
+        ok: true,
+        chunk: normalizeProviderRef({
+          provider: "maxkb",
+          id: normalizeProviderString(input.chunkId ?? input.id, createMockDatasetId("maxkb-chunk"), 180),
+          datasetId: normalizeProviderString(knowledgeId || maxkb.defaultKnowledgeId, "", 180),
+          knowledgeId: normalizeProviderString(knowledgeId || maxkb.defaultKnowledgeId, "", 180) || undefined,
+          documentId: normalizeProviderString(documentId, "", 180) || undefined,
+          chunkId: normalizeProviderString(input.chunkId ?? input.id, createMockDatasetId("maxkb-chunk"), 180),
+          syncStatus: "provisional",
+          summary: normalizeProviderString(input.title, "", MAX_DOCUMENT_TITLE_LENGTH) || undefined,
+          lastSyncedAt: nowIsoString(),
+        }),
+      };
+    },
+    async search(input = {}) {
+      if (!maxkb.enabled || !maxkb.baseURL || !(maxkb.apiKey || (maxkb.username && maxkb.password))) {
+        return {
+          ok: false,
+          status: "not_configured",
+          message: "MaxKB provider is not configured.",
+          hits: [],
+        };
+      }
+
+      const knowledgeId = normalizeProviderString(input.knowledgeId ?? input.datasetId ?? maxkb.defaultKnowledgeId, "", 180);
+      if (!knowledgeId) {
+        return {
+          ok: false,
+          status: "invalid_input",
+          message: "MaxKB knowledge id is required before retrieval.",
+          hits: [],
+        };
+      }
+
+      const path = maxkb.retrievalPath || "/api/knowledge/:knowledgeId/search";
+      const requestUrl = `${maxkb.baseURL}${path.replace(":knowledgeId", encodeURIComponent(knowledgeId))}`;
+      const response = await fetch(requestUrl, {
+        method: "POST",
+        headers: buildMaxkbHeaders(maxkb, {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: JSON.stringify(sanitizeProviderValue({
+          query: normalizeProviderString(input.query, "", 500),
+          topK: normalizePositiveInteger(input.topK, 5, 20) || 5,
+          metadata: sanitizeProviderValue(input.filters ?? input.metadata ?? {}),
+          correlationId: normalizeProviderString(input.correlationId, "", 120) || undefined,
+        })),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          ok: false,
+          status: "failed",
+          message: payload?.message || payload?.error || "MaxKB retrieval failed.",
+          hits: [],
+        };
+      }
+
+      const rawHits = payload?.data?.hits ?? payload?.data?.records ?? payload?.hits ?? payload?.data ?? [];
+      return {
+        ok: true,
+        hits: normalizeRetrievalHits(
+          Array.isArray(rawHits)
+            ? rawHits.map((item) => ({
+                ...item,
+                provider: "maxkb",
+                knowledgeId,
+                datasetId: knowledgeId,
+                title: item.title ?? item.name ?? item.documentName ?? "MaxKB retrieval hit",
+                safeSnippet: item.safeSnippet ?? item.snippet ?? item.content ?? item.text,
+                score: item.score ?? item.similarity,
+                locator: item.locator ?? item.documentName,
+              }))
+            : [],
+          "maxkb",
+        ),
+      };
+    },
+  };
+}
+
 export function createKnowledgeBaseProvider() {
-  const ragflow = getConfig();
-  return ragflow.enabled ? createRagflowKnowledgeBaseProvider() : createMockKnowledgeBaseProvider();
+  if (config.knowledgeProvider === "maxkb") {
+    return createMaxkbKnowledgeBaseProvider();
+  }
+
+  if (config.knowledgeProvider === "ragflow" || getConfig().enabled) {
+    return createRagflowKnowledgeBaseProvider();
+  }
+
+  return createMockKnowledgeBaseProvider();
 }
 
 export async function getKnowledgeBaseProviderReadiness() {

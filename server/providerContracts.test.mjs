@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createMockKnowledgeBaseProvider } from "./knowledgeBaseProvider.mjs";
+import { getSafeProviderStatus } from "./config.mjs";
+import { createMaxkbKnowledgeBaseProvider, createMockKnowledgeBaseProvider } from "./knowledgeBaseProvider.mjs";
 import {
   buildProviderHealthSummary,
+  normalizeProviderRef,
   normalizeRetrievalHit,
   sanitizeProviderValue,
 } from "./providerContracts.mjs";
@@ -74,6 +76,64 @@ test("normalizes retrieval hits as supporting recall only", () => {
   assert.equal(hit.providerChunkId, "chunk-1");
   assert.equal(hit.safeSnippet, "专职安全员证书应与项目主数据一致。");
   assert.equal("rawText" in hit, false);
+});
+
+test("normalizes MaxKB provider refs with knowledge id support", () => {
+  const ref = normalizeProviderRef({
+    provider: "maxkb",
+    knowledgeId: "019f787c-644e-7162-bfe5-f4ee02a91539",
+    documentId: "doc-1",
+    chunkId: "chunk-1",
+    syncStatus: "ready",
+    apiKey: "must-redact",
+  });
+
+  assert.equal(ref.provider, "maxkb");
+  assert.equal(ref.id, "019f787c-644e-7162-bfe5-f4ee02a91539");
+  assert.equal(ref.datasetId, ref.id);
+  assert.equal(ref.knowledgeId, "019f787c-644e-7162-bfe5-f4ee02a91539");
+  assert.equal(ref.documentId, "doc-1");
+  assert.equal("apiKey" in ref, false);
+});
+
+test("normalizes MaxKB retrieval hits as supporting recall only", () => {
+  const hit = normalizeRetrievalHit(
+    {
+      provider: "maxkb",
+      knowledgeId: "knowledge-1",
+      documentId: "doc-1",
+      chunkId: "chunk-1",
+      score: 0.87,
+      title: "安全生产许可证",
+      content: "should not be used directly",
+      snippet: "安全生产许可证有效期应与平台主数据一致。",
+      password: "must-redact",
+    },
+    "maxkb",
+  );
+
+  assert.equal(hit.provider, "maxkb");
+  assert.equal(hit.providerDatasetId, "knowledge-1");
+  assert.equal(hit.knowledgeId, "knowledge-1");
+  assert.equal(hit.providerDocumentId, "doc-1");
+  assert.equal(hit.safeSnippet, "安全生产许可证有效期应与平台主数据一致。");
+  assert.equal("password" in hit, false);
+});
+
+test("exposes MaxKB safe provider status without credentials", async () => {
+  const status = getSafeProviderStatus();
+  assert.equal(typeof status.maxkb.enabled, "boolean");
+  assert.equal(typeof status.maxkb.hasApiKey, "boolean");
+  assert.equal(typeof status.maxkb.hasPassword, "boolean");
+  assert.equal("apiKey" in status.maxkb, false);
+  assert.equal("password" in status.maxkb, false);
+
+  const provider = createMaxkbKnowledgeBaseProvider();
+  const readiness = await provider.getReadiness();
+  assert.equal(readiness.provider, "maxkb");
+  assert.equal("apiKey" in readiness, false);
+  assert.equal("password" in readiness, false);
+  assert.equal("authorization" in readiness, false);
 });
 
 test("mock knowledge-base provider returns normalized retrieval hits", async () => {

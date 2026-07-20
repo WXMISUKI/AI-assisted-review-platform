@@ -39,6 +39,15 @@ function normalizeBaseURL(value) {
   return typeof value === "string" ? value.trim().replace(/\/$/, "") : "";
 }
 
+function normalizeKnowledgeProvider(value) {
+  const normalized = normalizeProviderString(value, "", 40).toLowerCase();
+  return ["mock", "ragflow", "maxkb"].includes(normalized) ? normalized : "";
+}
+
+const selectedKnowledgeProvider =
+  normalizeKnowledgeProvider(process.env.KNOWLEDGE_PROVIDER || "") ||
+  (process.env.MAXKB_ENABLED === "true" ? "maxkb" : process.env.RAGFLOW_ENABLED === "true" ? "ragflow" : "mock");
+
 export const config = {
   port: Number(process.env.BACKEND_PORT || 8787),
   openai: {
@@ -79,6 +88,24 @@ export const config = {
     retrievalPath: normalizeProviderString(process.env.RAGFLOW_RETRIEVAL_PATH || "", "/api/v1/retrieval", 180),
     timeoutMs: normalizePositiveInteger(process.env.RAGFLOW_TIMEOUT_MS, 5000, 60_000),
   },
+  maxkb: {
+    enabled: process.env.MAXKB_ENABLED === "true" || selectedKnowledgeProvider === "maxkb",
+    baseURL: normalizeBaseURL(process.env.MAXKB_BASE_URL || ""),
+    apiKey: process.env.MAXKB_API_KEY || "",
+    username: process.env.MAXKB_USERNAME || "",
+    password: process.env.MAXKB_PASSWORD || "",
+    defaultKnowledgeId: normalizeProviderString(process.env.MAXKB_DEFAULT_KNOWLEDGE_ID || "", "", 180),
+    healthPath: normalizeProviderString(process.env.MAXKB_HEALTH_PATH || "", "/api/health", 180),
+    knowledgePath: normalizeProviderString(process.env.MAXKB_KNOWLEDGE_PATH || "", "/api/knowledge", 180),
+    documentPath: normalizeProviderString(
+      process.env.MAXKB_DOCUMENT_PATH || "",
+      "/api/knowledge/:knowledgeId/document",
+      220,
+    ),
+    retrievalPath: normalizeProviderString(process.env.MAXKB_RETRIEVAL_PATH || "", "/api/knowledge/:knowledgeId/search", 220),
+    timeoutMs: normalizePositiveInteger(process.env.MAXKB_TIMEOUT_MS, 5000, 60_000),
+  },
+  knowledgeProvider: selectedKnowledgeProvider,
   agentService: {
     baseURL: normalizeBaseURL(process.env.AGENT_SERVICE_BASE_URL || ""),
     timeoutMs: normalizePositiveInteger(process.env.AGENT_SERVICE_TIMEOUT_MS, 5000, 60_000),
@@ -92,6 +119,15 @@ export function getSafeProviderStatus() {
     config.minio.endpoint && config.minio.accessKey && config.minio.secretKey && config.minio.bucket,
   );
   const ragflowConfigured = Boolean(config.ragflow.enabled && config.ragflow.baseURL && config.ragflow.apiKey);
+  const maxkbConfigured = Boolean(
+    config.maxkb.enabled && config.maxkb.baseURL && (config.maxkb.apiKey || (config.maxkb.username && config.maxkb.password)),
+  );
+  const knowledgeProviderConfigured =
+    config.knowledgeProvider === "maxkb"
+      ? maxkbConfigured
+      : config.knowledgeProvider === "ragflow"
+        ? ragflowConfigured
+        : false;
   const readyCount = [openaiConfigured, paddleConfigured, minioConfigured].filter(Boolean).length;
 
   return {
@@ -133,6 +169,41 @@ export function getSafeProviderStatus() {
           ? "RAGFlow provider is enabled but not fully configured."
           : "RAGFlow provider is disabled.",
     },
+    maxkb: {
+      configured: maxkbConfigured,
+      enabled: config.maxkb.enabled,
+      selected: config.knowledgeProvider === "maxkb",
+      hasBaseURL: Boolean(config.maxkb.baseURL),
+      hasApiKey: Boolean(config.maxkb.apiKey),
+      hasUsername: Boolean(config.maxkb.username),
+      hasPassword: Boolean(config.maxkb.password),
+      defaultKnowledgeId: config.maxkb.defaultKnowledgeId || null,
+      healthPath: config.maxkb.healthPath,
+      retrievalPath: config.maxkb.retrievalPath,
+      status: normalizeProviderStatus(
+        maxkbConfigured ? "ready" : config.maxkb.enabled ? "degraded" : "disabled",
+        "disabled",
+      ),
+      summary: maxkbConfigured
+        ? "MaxKB provider is configured for project-level knowledge retrieval support."
+        : config.maxkb.enabled
+          ? "MaxKB provider is enabled but not fully configured."
+          : "MaxKB provider is disabled.",
+    },
+    knowledgeProvider: {
+      selected: config.knowledgeProvider,
+      configured: knowledgeProviderConfigured,
+      status: normalizeProviderStatus(
+        config.knowledgeProvider === "mock" ? "disabled" : knowledgeProviderConfigured ? "ready" : "degraded",
+        "disabled",
+      ),
+      summary:
+        config.knowledgeProvider === "maxkb"
+          ? "MaxKB is selected as the knowledge-base provider."
+          : config.knowledgeProvider === "ragflow"
+            ? "RAGFlow is selected as the knowledge-base provider."
+            : "Mock knowledge-base provider is selected for local development.",
+    },
     agentService: {
       configured: Boolean(config.agentService.baseURL),
       timeoutMs: config.agentService.timeoutMs,
@@ -142,8 +213,8 @@ export function getSafeProviderStatus() {
       ready: readyCount,
       overall: readyCount === 3 ? "ready" : readyCount > 0 ? "degraded" : "unconfigured",
       optional: {
-        total: 1,
-        ready: ragflowConfigured ? 1 : 0,
+        total: 2,
+        ready: [ragflowConfigured, maxkbConfigured].filter(Boolean).length,
       },
     },
   };

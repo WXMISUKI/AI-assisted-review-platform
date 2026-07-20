@@ -2,7 +2,6 @@
 
 ## Purpose
 Define evidence-grounded opening-condition material review behavior for a real single-project pilot, including layered outcomes, contract-bounded resource authorization, visual assertion review, and auxiliary report wording.
-
 ## Requirements
 ### Requirement: Evidence-grounded material review layers
 The system SHALL represent each in-scope opening-condition material checklist item with layered review outcomes for scope, document presence, relevance, content compliance, visual assertions, and final disposition.
@@ -66,9 +65,9 @@ The system SHALL use published preflight facts and bound subcontract-team knowle
 ### Requirement: Inventory-first evidence matching
 The system SHALL use packet inventory entries as the preferred deterministic candidate source for opening-condition material matching.
 
-#### Scenario: Matching runs with packet inventory entries
-- **WHEN** a pilot packet has inventory entries
-- **THEN** deterministic matching evaluates checklist hints against those entry names and summaries before falling back to coarser packet object references
+#### Scenario: Matching runs with ZIP-derived packet inventory entries
+- **WHEN** a pilot packet has inventory entries derived from a ZIP manifest
+- **THEN** deterministic matching evaluates checklist hints against those entry names, relative paths, and summaries before falling back to coarser packet object references
 
 #### Scenario: Evidence points back to packet entry support
 - **WHEN** a checklist item matches a packet inventory entry that is linked to a source object

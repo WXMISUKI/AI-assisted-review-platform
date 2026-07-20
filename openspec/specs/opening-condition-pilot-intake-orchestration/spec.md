@@ -2,7 +2,6 @@
 
 ## Purpose
 Define the domain-owned intake/init entry for the opening-condition single-project pilot so uploaded checklist and material-packet object references can initialize a formal pilot task without duplicating the generic upload channel.
-
 ## Requirements
 ### Requirement: Pilot intake initialization API
 The system SHALL expose a domain-owned intake/init API that initializes an opening-condition pilot task from workspace context and uploaded object references without duplicating file-upload endpoints.
@@ -71,6 +70,10 @@ The system SHALL resolve packet inventory manifest entries during intake/init.
 - **WHEN** intake/init includes bounded inventory entries for the packet
 - **THEN** the backend stores them and reports that packet inventory resolution came from direct input
 
-#### Scenario: Packet inventory is derived from source objects
+#### Scenario: Packet inventory is derived from a ZIP source object
+- **WHEN** intake/init omits packet inventory entries and the packet includes a readable ZIP source object with a storage key
+- **THEN** the backend extracts a bounded ZIP manifest, stores the resulting inventory entries on the packet, and reports that resolution came from ZIP manifest extraction
+
+#### Scenario: Packet inventory falls back to source objects
 - **WHEN** intake/init omits packet inventory entries
-- **THEN** the backend derives a default inventory manifest from source objects, stores it on the packet, and reports the derived resolution and entry count
+- **THEN** the backend safely falls back to deriving a default inventory manifest from source objects, stores it on the packet, and reports the fallback reason when ZIP manifest extraction was unavailable

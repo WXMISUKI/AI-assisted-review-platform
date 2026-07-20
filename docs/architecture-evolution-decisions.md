@@ -248,3 +248,31 @@ The chosen direction is:
 - keep real ZIP traversal, OCR batch execution, and richer document metadata as later slices feeding the same manifest contract.
 
 This keeps the project moving toward a real trial loop while preserving a clean seam for future archive parsing and evidence-grounding upgrades.
+
+## Opening Condition ZIP Manifest Extraction Decision
+
+After packet inventory became task-owned, the next highest-value slice is to replace coarse object-level inventory with real ZIP entry manifests where possible.
+
+The chosen direction is:
+
+- keep `inventoryEntries` as the single packet-owned manifest contract;
+- let explicit inventory input remain the highest-priority override;
+- when no explicit inventory is provided, read ZIP objects from object storage and extract bounded entry manifests directly from the archive central directory;
+- fall back to source-object-derived inventory when ZIP storage keys are missing, extraction fails, or no ZIP source exists;
+- keep OCR, file-content extraction, and entry-level independent evidence objects as later slices that build on the same manifest seam.
+
+This moves the pilot from “packet object has been uploaded” to “platform can see the real file list inside the packet” without prematurely expanding into heavy asynchronous extraction architecture.
+
+## Opening Condition MaxKB Provider Decision
+
+After the external MaxKB project knowledge base and OCR Worker local loop were validated, the next platform step is to integrate MaxKB as an optional knowledge-base provider, not as a business source of truth.
+
+The chosen direction is:
+
+- select knowledge providers through `KNOWLEDGE_PROVIDER=mock|ragflow|maxkb`;
+- keep MaxKB configuration server-side through `MAXKB_*` environment variables;
+- store MaxKB `knowledgeId`, document refs, chunk refs, sync status, and safe snippets as provider support metadata;
+- keep Project, ContractPackage, Section, SubcontractTeam, ReviewTask, Evidence, OcrIngestionLink, human decisions, and report status owned by the platform;
+- treat MaxKB retrieval-check and retrieval hits as supporting recall only.
+
+This lets the current MaxKB work become useful for the single-project pilot while preserving the enterprise boundary needed for later database migration, audit, permissions, and production review records.

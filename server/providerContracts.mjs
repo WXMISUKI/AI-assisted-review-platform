@@ -72,15 +72,21 @@ export function normalizeProviderRef(value, fallbackProvider = "ragflow") {
   }
 
   const provider = normalizeProviderString(value.provider, fallbackProvider, 80);
-  const id = normalizeProviderString(value.id ?? value.providerDatasetId ?? value.datasetId, "", 180);
+  const id = normalizeProviderString(
+    value.id ?? value.providerDatasetId ?? value.datasetId ?? value.knowledgeId,
+    "",
+    180,
+  );
   if (!provider || !id) {
     return null;
   }
 
+  const knowledgeId = normalizeProviderString(value.knowledgeId, "", 180) || undefined;
   return sanitizeProviderValue({
     provider,
     id,
     datasetId: normalizeProviderString(value.datasetId, id, 180),
+    knowledgeId,
     documentId: normalizeProviderString(value.documentId, "", 180) || undefined,
     chunkId: normalizeProviderString(value.chunkId, "", 180) || undefined,
     syncStatus: ["ready", "provisional", "stale", "unreachable", "disabled"].includes(value.syncStatus)
@@ -103,7 +109,11 @@ export function normalizeRetrievalHit(value, fallbackProvider = "ragflow") {
   }
 
   const provider = normalizeProviderString(value.provider, fallbackProvider, 80);
-  const providerDatasetId = normalizeProviderString(value.providerDatasetId ?? value.datasetId, "", 180);
+  const providerDatasetId = normalizeProviderString(
+    value.providerDatasetId ?? value.datasetId ?? value.knowledgeId,
+    "",
+    180,
+  );
   const title = normalizeProviderString(value.title, "", 240);
   const safeSnippet = normalizeProviderString(value.safeSnippet ?? value.snippet, "", 1000);
   if (!provider || !providerDatasetId || !title || !safeSnippet) {
@@ -113,6 +123,7 @@ export function normalizeRetrievalHit(value, fallbackProvider = "ragflow") {
   return sanitizeProviderValue({
     provider,
     providerDatasetId,
+    knowledgeId: normalizeProviderString(value.knowledgeId, "", 180) || undefined,
     providerDocumentId: normalizeProviderString(value.providerDocumentId ?? value.documentId, "", 180) || undefined,
     providerChunkId: normalizeProviderString(value.providerChunkId ?? value.chunkId, "", 180) || undefined,
     score: Number.isFinite(Number(value.score)) ? Number(value.score) : undefined,

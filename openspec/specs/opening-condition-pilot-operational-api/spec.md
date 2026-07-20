@@ -2,7 +2,6 @@
 
 ## Purpose
 Define the backend API and frontend contract needed to operate the single-project opening-condition pilot through task readiness, subcontract-team knowledge-base management, and task knowledge-base binding.
-
 ## Requirements
 ### Requirement: Pilot operational task API
 The system SHALL expose opening-condition pilot task operations that allow the frontend to list, create or update, inspect, and evaluate readiness for single-project pilot tasks.
@@ -96,6 +95,6 @@ The system SHALL expose bounded packet inventory fields and diagnostics through 
 - **WHEN** the portal initializes or updates a pilot packet
 - **THEN** the typed contract may include bounded packet inventory entries in addition to checklist and source object references
 
-#### Scenario: Intake or packet result returns inventory diagnostics
+#### Scenario: Intake or packet result returns ZIP manifest diagnostics
 - **WHEN** the backend accepts packet intake
-- **THEN** the response or task event includes safe packet inventory diagnostics such as resolution, entry count, and bounded entry-name samples
+- **THEN** the response or task event includes safe packet inventory diagnostics such as resolution, entry count, bounded entry-name samples, and fallback reason when ZIP manifest extraction was unavailable

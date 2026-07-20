@@ -49,7 +49,7 @@
 5. 报告归档可用：报告只输出内部辅助意见，必须保留证据摘要、人工决策和免责声明。
 6. 后续再做生产化：PostgreSQL schema、正式 RBAC、队列/worker、RAGFlow 检索编排、ZIP 解包与 OCR 批处理。
 
-RAGFlow 或其他知识库 provider 的需求规范是：服务端配置、平台保存 provider refs、前端只看安全摘要、召回结果只能作为支持证据，不能覆盖依据、主数据、人工决策或最终结论。
+MaxKB、RAGFlow 或其他知识库 provider 的需求规范是：服务端配置、平台保存 provider refs、前端只看安全摘要、召回结果只能作为支持证据，不能覆盖依据、主数据、人工决策或最终结论。当前前置平台联调优先按 MaxKB 项目级知识库推进。
 
 ## 任务状态
 
@@ -78,12 +78,13 @@ draft
 - 正式核查前，工作区应绑定组织/分包队伍知识库，用于召回历史资料模板、已确认字段、人工修正记录和可复用证据摘要。
 - 领域正式入口为 `POST /api/opening-condition/pilot-tasks/intake-init`；该入口只接收已上传对象的安全引用，并在一次编排中完成任务初始化、资料包绑定、依据/主数据/知识库解析和 readiness 返回。
 - `intake/init` 优先使用后端受控 checklist adapter：若请求未显式提供 checklist definition，后端会先根据 `checklistObject` 的已知模板派生任务内 checklist definition；若模板未识别且任务也没有既有定义，则返回“需人工补定义”的安全诊断，而不是伪造正式核查输入。
-- packet 在任务内不仅保存 `sourceObjects`，还保存一份 `inventoryEntries` 清单事实：若前端或后续解包能力显式提供资料条目清单，平台优先持久化该清单；否则先由 `sourceObjects` 默认派生一份 bounded inventory，供 formal match、人工复核说明和后续 ZIP/OCR 能力统一复用。
+- packet 在任务内不仅保存 `sourceObjects`，还保存一份 `inventoryEntries` 清单事实：若前端显式提供资料条目清单，平台优先持久化该清单；否则若资料对象是可读取 ZIP，后端会优先提取真实 ZIP manifest 条目；再不满足时才由 `sourceObjects` 默认派生一份 bounded inventory，供 formal match、人工复核说明和后续 OCR 能力统一复用。
 - 工作区页面加载和上下文切换只允许同步业务事实与已有任务状态，不得隐式触发正式核查；正式资料包接入和正式匹配必须由操作员显式发起。
 - 任务在 intake/init 阶段应持有一份规范化 checklist definition；正式核查优先复用任务内 checklist definition，而不是依赖前端每次重新临时拼装并传入全部核查项。
 - 资料包 intake 会保存核查表对象引用和资料对象清单，并写入 `packet_uploaded` 安全事件。
 - 核查匹配优先使用确定性规则：核查表条目先匹配资料包文件名/摘要和已发布主数据，再为缺失、歧义、主数据缺口或视觉断言不确定创建人工复核项。
 - 正式核查优先匹配 `packet.inventoryEntries` 的条目名、相对路径和摘要；若 inventory entry 绑定了上传对象，证据继续安全回指该对象，但操作员看到的是更贴近真实资料内容的条目级名称。
+- 当 ZIP manifest 提取不可用时，intake/init 和 packet 事件会返回安全的 fallback reason，帮助操作员区分“已读到真实清单”与“当前仍是对象级兜底清单”。
 - 合同、补充协议等依据记录用于确认参与机构和合同工作范围；人员、设备核查项必须通过该工作区内已发布或人工批准的项目主数据确认，不能仅凭上传文件名或证书文本自动通过。
 - 当前试点只核查资料核查范围；现场核查、应急响应、现场观测等无资料证据的条目应标记为 `out_of_scope` 或 `not_applicable`，不计为资料缺失失败。
 - 签名、盖章、勾选、手写日期等视觉要素记录为 `visualAssertions`，只能说明检测或人工确认的存在性、清晰度和证据位置，不证明实体签章或签名真实有效。

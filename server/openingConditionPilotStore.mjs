@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { readDocumentObjectBuffer } from "./minioClient.mjs";
 import { deriveOpeningConditionPilotChecklistDefinition } from "./openingConditionChecklistAdapter.mjs";
+import { extractOpeningConditionZipManifestEntries } from "./openingConditionZipManifest.mjs";
 import { normalizeProviderRefs } from "./providerContracts.mjs";
 
 const STORAGE_VERSION = 1;
@@ -175,17 +177,19 @@ function normalizePacketInventoryEntry(value, index = 0, sourceObjectIds = new S
   });
 }
 
+function derivePacketInventoryEntryFromSourceObject(objectRef, index = 0) {
+  return sanitizeOpeningConditionPilotValue({
+    id: `packet-entry-${index + 1}`,
+    sourceObjectId: objectRef.objectId,
+    fileName: objectRef.fileName,
+    relativePath: objectRef.fileName,
+    summary: objectRef.summary,
+    sizeBytes: objectRef.sizeBytes,
+  });
+}
+
 function derivePacketInventoryEntriesFromSourceObjects(sourceObjects = []) {
-  return sourceObjects.map((objectRef, index) =>
-    sanitizeOpeningConditionPilotValue({
-      id: `packet-entry-${index + 1}`,
-      sourceObjectId: objectRef.objectId,
-      fileName: objectRef.fileName,
-      relativePath: objectRef.fileName,
-      summary: objectRef.summary,
-      sizeBytes: objectRef.sizeBytes,
-    }),
-  );
+  return sourceObjects.map((objectRef, index) => derivePacketInventoryEntryFromSourceObject(objectRef, index));
 }
 
 function normalizeBasisVersion(value) {
@@ -448,7 +452,7 @@ function normalizeVisualAssertion(value, fallbackEvidenceIds = []) {
   });
 }
 
-function normalizePacket(value, taskId, workspaceId) {
+function normalizePacket(value, taskId, workspaceId, options = {}) {
   if (!isPlainObject(value)) {
     return undefined;
   }
@@ -464,7 +468,9 @@ function normalizePacket(value, taskId, workspaceId) {
         .map((item, index) => normalizePacketInventoryEntry(item, index, sourceObjectIds))
         .filter(Boolean)
         .slice(0, MAX_PACKET_INVENTORY_ENTRIES)
-    : derivePacketInventoryEntriesFromSourceObjects(sourceObjects).slice(0, MAX_PACKET_INVENTORY_ENTRIES);
+    : options.skipDefaultInventoryResolution
+      ? []
+      : derivePacketInventoryEntriesFromSourceObjects(sourceObjects).slice(0, MAX_PACKET_INVENTORY_ENTRIES);
 
   if (!id || !checklistObject) {
     return undefined;
@@ -658,7 +664,7 @@ function buildPacketMatchCandidates(packet) {
           kind: "evidence",
         }),
         fileName: entry.fileName,
-        summary: entry.summary ?? sourceObject?.summary,
+        summary: entry.summary ?? entry.relativePath ?? sourceObject?.summary,
         sizeBytes: entry.sizeBytes ?? sourceObject?.sizeBytes,
       }),
     };
@@ -1553,19 +1559,102 @@ function resolveChecklistDefinitionForIntake(input, packet, basisVersion, requir
   };
 }
 
-function buildPilotPacketFromIntakeInput(taskId, context, input = {}) {
-  return normalizePacket(
-    {
-      id: input.packetId ?? `${taskId}-packet`,
-      checklistObject: input.checklistObject,
-      sourceObjects: Array.isArray(input.sourceObjects) ? input.sourceObjects : [],
-      inventoryEntries: Array.isArray(input.inventoryEntries) ? input.inventoryEntries : undefined,
-      submittedBy: input.submittedBy,
-      submittedAt: input.submittedAt,
-    },
-    taskId,
-    context.workspaceId,
-  );
+function isZipSourceObject(objectRef) {
+  const fileName = String(objectRef?.fileName ?? "").toLowerCase();
+  const contentType = String(objectRef?.contentType ?? "").toLowerCase();
+  return fileName.endsWith(".zip") || contentType.includes("zip") || contentType.includes("compressed");
+}
+
+async function resolvePacketInventoryFromSourceObjects(sourceObjects = [], options = {}) {
+  const maxEntries = normalizeNumber(options.maxEntries, MAX_PACKET_INVENTORY_ENTRIES, MAX_PACKET_INVENTORY_ENTRIES);
+  const readObjectBuffer = options.readObjectBuffer ?? readDocumentObjectBuffer;
+  const inventoryEntries = [];
+  let usedZipManifest = false;
+  let fallbackReason;
+
+  for (const sourceObject of sourceObjects) {
+    if (inventoryEntries.length >= maxEntries) {
+      break;
+    }
+
+    if (!isZipSourceObject(sourceObject)) {
+      inventoryEntries.push(derivePacketInventoryEntryFromSourceObject(sourceObject, inventoryEntries.length));
+      continue;
+    }
+
+    if (!sourceObject.storageKey) {
+      fallbackReason ||= "zip_storage_key_missing";
+      inventoryEntries.push(derivePacketInventoryEntryFromSourceObject(sourceObject, inventoryEntries.length));
+      continue;
+    }
+
+    try {
+      const loadedObject = await readObjectBuffer(sourceObject.storageKey);
+      const remainingSlots = maxEntries - inventoryEntries.length;
+      const zipEntries = await extractOpeningConditionZipManifestEntries(loadedObject.buffer, {
+        sourceObjectId: sourceObject.objectId,
+        maxEntries: remainingSlots,
+      });
+
+      if (zipEntries.length > 0) {
+        inventoryEntries.push(...zipEntries);
+        usedZipManifest = true;
+        continue;
+      }
+
+      fallbackReason ||= "zip_manifest_empty";
+    } catch (error) {
+      fallbackReason ||= "zip_manifest_extract_failed";
+    }
+
+    inventoryEntries.push(derivePacketInventoryEntryFromSourceObject(sourceObject, inventoryEntries.length));
+  }
+
+  return {
+    inventoryEntries: inventoryEntries.slice(0, maxEntries),
+    inventoryResolution: usedZipManifest ? "derived_from_zip_manifest" : "derived_from_source_objects",
+    inventoryFallbackReason: usedZipManifest ? undefined : fallbackReason,
+  };
+}
+
+async function buildPilotPacketFromIntakeInput(taskId, context, input = {}, options = {}) {
+  const rawPacket = {
+    id: input.packetId ?? `${taskId}-packet`,
+    checklistObject: input.checklistObject,
+    sourceObjects: Array.isArray(input.sourceObjects) ? input.sourceObjects : [],
+    submittedBy: input.submittedBy,
+    submittedAt: input.submittedAt,
+  };
+  const basePacket = normalizePacket(rawPacket, taskId, context.workspaceId, { skipDefaultInventoryResolution: true });
+  if (!basePacket) {
+    return {
+      packet: undefined,
+      inventoryResolution: "derived_from_source_objects",
+      inventoryFallbackReason: undefined,
+    };
+  }
+
+  const resolvedInventory = Array.isArray(input.inventoryEntries)
+    ? {
+        inventoryEntries: input.inventoryEntries,
+        inventoryResolution: "direct_input",
+        inventoryFallbackReason: undefined,
+      }
+    : await resolvePacketInventoryFromSourceObjects(basePacket.sourceObjects, options);
+
+  return {
+    packet: normalizePacket(
+      {
+        ...rawPacket,
+        inventoryEntries: resolvedInventory.inventoryEntries,
+      },
+      taskId,
+      context.workspaceId,
+      { skipDefaultInventoryResolution: true },
+    ),
+    inventoryResolution: resolvedInventory.inventoryResolution,
+    inventoryFallbackReason: resolvedInventory.inventoryFallbackReason,
+  };
 }
 
 function createPilotIntakeEvent(taskId, sequence, type, state, message, progress, safeDiagnostics = {}) {
@@ -1599,7 +1688,8 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
     errors.push("workspace context with workspaceId, tenantId, projectId, contractPackageId, and participatingOrganizationId is required");
   }
 
-  const packet = context ? buildPilotPacketFromIntakeInput(taskId, context, input) : undefined;
+  const packetResolution = context ? await buildPilotPacketFromIntakeInput(taskId, context, input, options) : undefined;
+  const packet = packetResolution?.packet;
   if (!packet) {
     errors.push("intake packet must include checklistObject with objectId and fileName");
   }
@@ -1653,7 +1743,8 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       existingTask,
     );
     const checklistDefinition = checklistResolution.checklistDefinition;
-    const inventoryResolution = Array.isArray(input.inventoryEntries) ? "direct_input" : "derived_from_source_objects";
+    const inventoryResolution = packetResolution?.inventoryResolution ?? "derived_from_source_objects";
+    const inventoryFallbackReason = packetResolution?.inventoryFallbackReason;
 
     const nextTaskState = deriveInitialState(
       {
@@ -1684,6 +1775,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       packetObjectCount: packet.sourceObjects.length,
       inventoryResolution,
       inventoryEntryCount: packet.inventoryEntries.length,
+      inventoryFallbackReason,
       checklistDefinitionCount: checklistDefinition.length,
       checklistDefinitionResolution: checklistResolution.resolution,
       selectedChecklistTemplateId: checklistResolution.templateId,
@@ -1702,6 +1794,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         missingMasterDataIds: masterDataResolution.missingIds,
         inventoryResolution,
         inventoryEntryCount: packet.inventoryEntries.length,
+        inventoryFallbackReason,
         checklistDefinitionCount: checklistDefinition.length,
         checklistDefinitionResolution: checklistResolution.resolution,
         checklistTemplateId: checklistResolution.templateId,
@@ -1719,6 +1812,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         sourceObjectCount: packet.sourceObjects.length,
         inventoryResolution,
         inventoryEntryCount: packet.inventoryEntries.length,
+        inventoryFallbackReason,
         inventoryFileNames: packet.inventoryEntries.map((item) => item.fileName).slice(0, 30),
         sourceFileNames: packet.sourceObjects.map((item) => item.fileName).slice(0, 30),
       },
@@ -1872,7 +1966,7 @@ export async function transitionOpeningConditionPilotTask(taskId, toState, event
 }
 
 export async function intakeOpeningConditionPilotPacket(taskId, input = {}, options = {}) {
-  return mutateSnapshot((snapshot) => {
+  return mutateSnapshot(async (snapshot) => {
     const index = snapshot.tasks.findIndex((task) => task.id === taskId);
     if (index < 0) {
       return {
@@ -1886,10 +1980,15 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
     }
 
     const existingTask = snapshot.tasks[index];
-    const packet = normalizePacket(input.packet ?? input, taskId, existingTask.context.workspaceId);
-    const inventoryResolution = Array.isArray((input.packet ?? input).inventoryEntries)
-      ? "direct_input"
-      : "derived_from_source_objects";
+    const packetResolution = await buildPilotPacketFromIntakeInput(
+      taskId,
+      existingTask.context,
+      input.packet ?? input,
+      options,
+    );
+    const packet = packetResolution.packet;
+    const inventoryResolution = packetResolution.inventoryResolution;
+    const inventoryFallbackReason = packetResolution.inventoryFallbackReason;
     if (!packet) {
       return {
         snapshot,
@@ -1929,6 +2028,7 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
           sourceObjectCount: packet.sourceObjects.length,
           inventoryResolution,
           inventoryEntryCount: packet.inventoryEntries.length,
+          inventoryFallbackReason,
           inventoryFileNames: packet.inventoryEntries.map((item) => item.fileName).slice(0, 30),
           sourceFileNames: packet.sourceObjects.map((item) => item.fileName).slice(0, 30),
         },

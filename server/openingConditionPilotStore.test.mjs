@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { extractOpeningConditionZipManifestEntries } from "./openingConditionZipManifest.mjs";
 import {
   archiveOpeningConditionPilotTask,
   bindOpeningConditionPilotKnowledgeBase,
@@ -30,6 +31,10 @@ import {
   upsertOpeningConditionPilotTask,
   validateOpeningConditionPilotTaskInput,
 } from "./openingConditionPilotStore.mjs";
+
+const zipFixtureBase64 =
+  "UEsDBBQAAAgIAFqN8VxOe43fEAAAAA4AAAAgAAAA5Lq65ZGYXOS4k+iBjOWuieWFqOWRmOivgeS5pi50eHR7v3t/WmZFSWlRqm4iLxcAUEsDBBQAAAgIAFqN8VwXxcvdEAAAAA4AAAAgAAAA6K6+5aSHXOaxvei9puWQiuajgOmqjOaKpeWRii50eHR7v3t/WmZFSWlRqm4SLxcAUEsBAhQAFAAACAgAWo3xXE57jd8QAAAADgAAACAAAAAAAAAAAAAAAAAAAAAAAOS6uuWRmFzkuJPogYzlronlhajlkZjor4HkuaYudHh0UEsBAhQAFAAACAgAWo3xXBfFy90QAAAADgAAACAAAAAAAAAAAAAAAAAATgAAAOiuvuWkh1zmsb3ovablkIrmo4DpqozmiqXlkYoudHh0UEsFBgAAAAACAAIAnAAAAJwAAAAAAA==";
+const zipFixtureBuffer = Buffer.from(zipFixtureBase64, "base64");
 
 function validTaskInput() {
   return {
@@ -467,6 +472,106 @@ test("initializes intake from workspace facts in one orchestration flow", async 
   }
 });
 
+test("extracts bounded ZIP manifest entries from a real archive buffer", async () => {
+  const entries = await extractOpeningConditionZipManifestEntries(zipFixtureBuffer, {
+    sourceObjectId: "archive-1",
+  });
+
+  assert.equal(entries.length, 2);
+  assert.deepEqual(
+    entries.map((item) => item.relativePath),
+    ["人员/专职安全员证书.txt", "设备/汽车吊检验报告.txt"],
+  );
+  assert.equal(entries[0].sourceObjectId, "archive-1");
+  assert.equal(entries[0].fileName, "专职安全员证书.txt");
+});
+
+test("initializes packet inventory from ZIP manifest when a readable ZIP source object is provided", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-zip-init-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "承台施工分包合同",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "专职安全员",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+        summary: "已确认分包资料模板。",
+      },
+      { storePath },
+    );
+
+    const initialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-init-zip",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistItems: [
+          {
+            id: "item-person",
+            name: "专职安全员证书",
+            expectedEvidenceHints: ["专职安全员", "证书"],
+            masterDataIds: ["md-1"],
+          },
+        ],
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "承台施工条件核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "archive-1",
+            kind: "source_archive",
+            fileName: "承台开工资料包.zip",
+            storageKey: "uploads/archive-1.zip",
+          },
+        ],
+      },
+      {
+        storePath,
+        readObjectBuffer: async () => ({ buffer: zipFixtureBuffer }),
+      },
+    );
+
+    assert.equal(initialized.ok, true);
+    assert.equal(initialized.intake.inventoryResolution, "derived_from_zip_manifest");
+    assert.equal(initialized.intake.inventoryEntryCount, 2);
+    assert.equal(initialized.intake.inventoryFallbackReason, undefined);
+    assert.equal(initialized.task.packet.inventoryEntries[0].relativePath, "人员/专职安全员证书.txt");
+
+    const matchResult = await runOpeningConditionPilotChecklistMatch("task-init-zip", {}, { storePath });
+    assert.equal(matchResult.ok, true);
+    assert.equal(matchResult.checkItems[0].verdict, "pass");
+    assert.equal(matchResult.evidence[0].locator, "人员/专职安全员证书.txt");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("reuses existing checklist definition when the new checklist object is not recognized", async () => {
   const directory = await mkdtemp(join(tmpdir(), "oc-pilot-checklist-fallback-"));
   const storePath = join(directory, "tasks.json");
@@ -794,6 +899,42 @@ test("intakes a packet as bounded object summaries and records an event", async 
     assert.equal(intake.event.safeDiagnostics.inventoryResolution, "direct_input");
     assert.equal(intake.event.safeDiagnostics.inventoryEntryCount, 2);
     assert.deepEqual(intake.event.safeDiagnostics.sourceFileNames, ["人员证书.zip", "设备资料.zip"]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("falls back to source-object inventory when ZIP manifest extraction cannot start", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-zip-fallback-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-1", validTaskInput(), { storePath });
+
+    const intake = await intakeOpeningConditionPilotPacket(
+      "task-1",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "archive-1",
+            kind: "source_archive",
+            fileName: "承台开工资料包.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(intake.ok, true);
+    assert.equal(intake.task.packet.inventoryEntries.length, 1);
+    assert.equal(intake.event.safeDiagnostics.inventoryResolution, "derived_from_source_objects");
+    assert.equal(intake.event.safeDiagnostics.inventoryFallbackReason, "zip_storage_key_missing");
+    assert.equal(intake.task.packet.inventoryEntries[0].fileName, "承台开工资料包.zip");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

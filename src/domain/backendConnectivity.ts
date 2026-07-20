@@ -57,6 +57,26 @@ export interface BackendHealthResult {
       status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
       summary: string;
     };
+    maxkb?: {
+      configured: boolean;
+      enabled: boolean;
+      selected: boolean;
+      hasBaseURL: boolean;
+      hasApiKey: boolean;
+      hasUsername: boolean;
+      hasPassword: boolean;
+      defaultKnowledgeId: string | null;
+      healthPath: string;
+      retrievalPath: string;
+      status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
+      summary: string;
+    };
+    knowledgeProvider?: {
+      selected: "mock" | "ragflow" | "maxkb" | string;
+      configured: boolean;
+      status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
+      summary: string;
+    };
     summary?: {
       total: number;
       ready: number;

@@ -147,9 +147,10 @@ export interface OpeningConditionKnowledgeBaseRecord {
   masterDataRefs: string[];
   summary: string;
   providerRefs?: {
-    provider: "mock" | "ragflow";
-    id: string;
-    datasetId: string;
+  provider: "mock" | "ragflow" | "maxkb";
+  id: string;
+  datasetId: string;
+  knowledgeId?: string;
     documentId?: string;
     chunkId?: string;
     syncStatus: "ready" | "provisional" | "stale" | "unreachable" | "disabled";

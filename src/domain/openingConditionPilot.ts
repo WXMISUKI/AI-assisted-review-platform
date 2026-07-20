@@ -73,9 +73,10 @@ export interface OpeningConditionMasterDataRef {
 }
 
 export interface OpeningConditionPilotKnowledgeBaseProviderRef {
-  provider: "mock" | "ragflow";
+  provider: "mock" | "ragflow" | "maxkb";
   id: string;
   datasetId: string;
+  knowledgeId?: string;
   documentId?: string;
   chunkId?: string;
   syncStatus: "ready" | "provisional" | "stale" | "unreachable" | "disabled";
@@ -291,8 +292,9 @@ export interface OpeningConditionPilotIntakeDiagnostics {
     | "not_requested";
   selectedKnowledgeBaseId?: string;
   packetObjectCount: number;
-  inventoryResolution?: "direct_input" | "derived_from_source_objects";
+  inventoryResolution?: "direct_input" | "derived_from_zip_manifest" | "derived_from_source_objects";
   inventoryEntryCount?: number;
+  inventoryFallbackReason?: "zip_storage_key_missing" | "zip_manifest_extract_failed" | "zip_manifest_empty";
   checklistDefinitionCount?: number;
   checklistDefinitionResolution?:
     | "direct_input"

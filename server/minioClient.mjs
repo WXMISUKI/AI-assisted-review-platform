@@ -149,3 +149,44 @@ export async function createPresignedDocumentUrl(key, expiresIn = defaultPresign
     summary: "Presigned document URL created successfully.",
   };
 }
+
+async function readSdkBodyToBuffer(body) {
+  if (!body) {
+    return Buffer.alloc(0);
+  }
+
+  if (typeof body.transformToByteArray === "function") {
+    return Buffer.from(await body.transformToByteArray());
+  }
+
+  const chunks = [];
+  for await (const chunk of body) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+export async function readDocumentObjectBuffer(key) {
+  if (!key || typeof key !== "string") {
+    throw new Error("Object key is required.");
+  }
+
+  const client = createS3Client();
+  const result = await client.send(
+    new GetObjectCommand({
+      Bucket: config.minio.bucket,
+      Key: key,
+    }),
+  );
+
+  const buffer = await readSdkBodyToBuffer(result.Body);
+  return {
+    bucket: config.minio.bucket,
+    key,
+    buffer,
+    contentType: result.ContentType || "application/octet-stream",
+    size: Number(result.ContentLength) || buffer.length,
+    eTag: result.ETag || undefined,
+    summary: "Object read from MinIO successfully.",
+  };
+}
