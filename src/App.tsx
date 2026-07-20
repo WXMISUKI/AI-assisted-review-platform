@@ -8,9 +8,12 @@ import {
   ProductLauncherPage,
 } from "./productWorkspacePages";
 import {
+  archiveOpeningConditionPilotTask,
   bindOpeningConditionPilotKnowledgeBase,
+  decideOpeningConditionPilotHumanReview,
   fetchOpeningConditionPilotTask,
   fetchOpeningConditionPilotTaskReadiness,
+  generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotIntake,
   runOpeningConditionPilotMatch,
   upsertOpeningConditionPilotKnowledgeBase,
@@ -213,6 +216,87 @@ export function App() {
     }
   }
 
+  async function decideOpeningPilotHumanReview(
+    reviewId: string,
+    decision: "confirm" | "correct" | "reject" | "defer",
+  ) {
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    setOpeningPilotBusy(true);
+
+    try {
+      const result = await decideOpeningConditionPilotHumanReview(
+        taskId,
+        reviewId,
+        decision,
+        session?.username ?? "pilot-user",
+        "平台试点闭环操作台记录的人工复核决策。",
+      );
+      if (!result.ok || !result.task) {
+        setOpeningPilotStatus(result.message ?? "人工复核决策提交失败");
+        return;
+      }
+
+      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+      setOpeningPilotTask(result.task);
+      setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
+      setOpeningPilotStatus(
+        result.blockingCount && result.blockingCount > 0
+          ? `人工复核决策已记录，仍有 ${result.blockingCount} 项阻塞。`
+          : "人工复核阻塞项已处理完毕，可进入报告生成。",
+      );
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "人工复核决策提交失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function generateOpeningPilotReport() {
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    setOpeningPilotBusy(true);
+
+    try {
+      const result = await generateOpeningConditionPilotReport(taskId);
+      if (!result.ok || !result.task) {
+        setOpeningPilotStatus(result.message ?? "报告摘要生成失败");
+        return;
+      }
+
+      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+      setOpeningPilotTask(result.task);
+      setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
+      setOpeningPilotStatus(
+        `报告摘要已生成，共 ${result.reportAsset?.summary.total ?? result.task.checkItems.length} 项核查结果。`,
+      );
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "报告摘要生成失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function archiveOpeningPilotTask() {
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    setOpeningPilotBusy(true);
+
+    try {
+      const result = await archiveOpeningConditionPilotTask(taskId);
+      if (!result.ok || !result.task) {
+        setOpeningPilotStatus(result.message ?? "试点任务归档失败");
+        return;
+      }
+
+      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+      setOpeningPilotTask(result.task);
+      setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
+      setOpeningPilotStatus("试点任务已归档，平台已保留任务状态、复核决策和报告资产记录。");
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "试点任务归档失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
   async function ensureOpeningDefaultKnowledgeBase() {
     const workspace = openingPacket.workspaceContext;
     const taskId = getOpeningPilotTaskId(openingPacket);
@@ -336,6 +420,9 @@ export function App() {
       onInitializePilotTask={() => void initializeOpeningPilotTask()}
       onRunPilotMatch={() => void runOpeningPilotFormalMatch()}
       onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
+      onReviewDecision={(reviewId, decision) => void decideOpeningPilotHumanReview(reviewId, decision)}
+      onGenerateReport={() => void generateOpeningPilotReport()}
+      onArchivePilotTask={() => void archiveOpeningPilotTask()}
       onTrialBootstrapComplete={handleOpeningTrialBootstrapComplete}
     />
   );

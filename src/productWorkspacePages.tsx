@@ -645,6 +645,9 @@ export function OpeningConditionWorkspaceShell({
   onInitializePilotTask,
   onRunPilotMatch,
   onEnsureKnowledgeBase,
+  onReviewDecision,
+  onGenerateReport,
+  onArchivePilotTask,
   onTrialBootstrapComplete,
 }: {
   roleLabel: string;
@@ -665,6 +668,9 @@ export function OpeningConditionWorkspaceShell({
   onInitializePilotTask?: () => void;
   onRunPilotMatch?: () => void;
   onEnsureKnowledgeBase?: () => void;
+  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
+  onGenerateReport?: () => void;
+  onArchivePilotTask?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
 }) {
   const activeNav = openingWorkspaceNav.find((item) => item.id === activePage) ?? openingWorkspaceNav[0];
@@ -753,8 +759,23 @@ export function OpeningConditionWorkspaceShell({
           {activePage === "basis-sets" && <OpeningConditionBasisAndMasterDataPage packet={packet} />}
           {activePage === "master-data" && <OpeningConditionBasisAndMasterDataPage packet={packet} defaultSection="master-data" />}
           {activePage === "check-tasks" && <OpeningConditionCheckTasksPage packet={packet} pilotTask={pilotTask} />}
-          {activePage === "human-review" && <OpeningConditionHumanReviewQueuePage packet={packet} pilotTask={pilotTask} />}
-          {activePage === "reports" && <OpeningConditionReportArchivePage packet={packet} pilotTask={pilotTask} />}
+          {activePage === "human-review" && (
+            <OpeningConditionHumanReviewQueuePage
+              packet={packet}
+              pilotTask={pilotTask}
+              pilotBusy={pilotBusy}
+              onReviewDecision={onReviewDecision}
+            />
+          )}
+          {activePage === "reports" && (
+            <OpeningConditionReportArchivePage
+              packet={packet}
+              pilotTask={pilotTask}
+              pilotBusy={pilotBusy}
+              onGenerateReport={onGenerateReport}
+              onArchive={onArchivePilotTask}
+            />
+          )}
         </div>
       </section>
     </main>
@@ -962,30 +983,62 @@ function OpeningConditionCheckTasksPage({
   pilotTask?: OpeningConditionPilotTask | null;
 }) {
   const pilotItems = pilotTask?.checkItems ?? [];
+  const pilotEvidence = pilotTask?.evidence ?? [];
 
   return (
-    <section className="opening-panel opening-panel-wide">
-      <span className="eyebrow">资料核查</span>
-      <h2>只核查资料范围，现场核查先标记为不适用</h2>
-      <div className="opening-check-list">
-        {pilotItems.length > 0
-          ? pilotItems.map((item) => (
-              <article key={item.id} className={`opening-check-row verdict-${item.verdict.replace(/_/g, "-")}`}>
-                <div>
-                  <span className="eyebrow">{item.category}</span>
-                  <h3>{item.name}</h3>
-                  <p>{item.ruleExplanation}</p>
-                  {item.semanticNote && <small>{item.semanticNote}</small>}
+    <div className="opening-condition-grid">
+      <section className="opening-panel opening-panel-wide">
+        <span className="eyebrow">资料核查</span>
+        <h2>只核查资料范围，现场核查先标记为不适用</h2>
+        <div className="opening-check-list">
+          {pilotItems.length > 0
+            ? pilotItems.map((item) => (
+                <article key={item.id} className={`opening-check-row verdict-${item.verdict.replace(/_/g, "-")}`}>
+                  <div>
+                    <span className="eyebrow">{item.category}</span>
+                    <h3>{item.name}</h3>
+                    <p>{item.ruleExplanation}</p>
+                    {item.semanticNote && <small>{item.semanticNote}</small>}
+                    {item.evidenceIds.length > 0 && <small>证据 {item.evidenceIds.join(" / ")}</small>}
+                    {item.humanReviewIds.length > 0 && <small>待复核 {item.humanReviewIds.join(" / ")}</small>}
+                  </div>
+                  <div className="opening-check-meta">
+                    <span>{item.verdict}</span>
+                    <small>{item.finalDisposition ?? "not_evaluated"}</small>
+                  </div>
+                </article>
+              ))
+            : packet.checkItems.map((item) => <OpeningConditionCheckItemRow key={item.id} item={item} />)}
+        </div>
+      </section>
+
+      <section className="opening-panel opening-panel-wide">
+        <span className="eyebrow">证据链</span>
+        <h2>{pilotEvidence.length > 0 ? "来自后端试点任务的命中证据" : "本地演示证据"}</h2>
+        <div className="opening-record-list">
+          {pilotEvidence.length > 0
+            ? pilotEvidence.map((evidence) => (
+                <div key={evidence.id}>
+                  <strong>{evidence.objectRef.fileName}</strong>
+                  <span>
+                    {evidence.itemId ?? "未绑定核查项"} · {evidence.confidence}
+                  </span>
+                  <p>{evidence.extractedValue ?? evidence.objectRef.summary ?? evidence.locator ?? "后端已记录证据引用。"}</p>
+                  {evidence.locator && <small>{evidence.locator}</small>}
                 </div>
-                <div className="opening-check-meta">
-                  <span>{item.verdict}</span>
-                  <small>{item.finalDisposition ?? "not_evaluated"}</small>
+              ))
+            : packet.evidence.map((evidence) => (
+                <div key={evidence.id}>
+                  <strong>{evidence.fileName}</strong>
+                  <span>
+                    {evidence.locator} · {evidence.confidence}
+                  </span>
+                  <p>{evidence.extractedValue}</p>
                 </div>
-              </article>
-            ))
-          : packet.checkItems.map((item) => <OpeningConditionCheckItemRow key={item.id} item={item} />)}
-      </div>
-    </section>
+              ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1016,9 +1069,13 @@ function OpeningConditionCheckItemRow({ item }: { item: OpeningConditionCheckIte
 function OpeningConditionHumanReviewQueuePage({
   packet,
   pilotTask,
+  pilotBusy,
+  onReviewDecision,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
+  pilotBusy?: boolean;
+  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
 }) {
   const pilotReviewItems = pilotTask?.humanReviewQueue ?? [];
 
@@ -1036,6 +1093,22 @@ function OpeningConditionHumanReviewQueuePage({
                 </span>
                 <p>{item.reason}</p>
                 {item.safeNote && <small>{item.safeNote}</small>}
+                {onReviewDecision && (item.status === "open" || item.status === "deferred") && (
+                  <div className="dialog-actions">
+                    <button type="button" className="primary" onClick={() => onReviewDecision(item.id, "confirm")} disabled={pilotBusy}>
+                      确认
+                    </button>
+                    <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "correct")} disabled={pilotBusy}>
+                      修正
+                    </button>
+                    <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "defer")} disabled={pilotBusy}>
+                      延期
+                    </button>
+                    <button type="button" className="danger subtle" onClick={() => onReviewDecision(item.id, "reject")} disabled={pilotBusy}>
+                      驳回
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           : packet.humanReviewQueue.map((item) => (
@@ -1053,11 +1126,20 @@ function OpeningConditionHumanReviewQueuePage({
 function OpeningConditionReportArchivePage({
   packet,
   pilotTask,
+  pilotBusy,
+  onGenerateReport,
+  onArchive,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
+  pilotBusy?: boolean;
+  onGenerateReport?: () => void;
+  onArchive?: () => void;
 }) {
   const reportAsset = pilotTask?.reportAsset;
+  const blockingReviewCount =
+    pilotTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
+  const canGenerateReport = Boolean(pilotTask && blockingReviewCount === 0 && !reportAsset);
 
   return (
     <section className="opening-panel opening-panel-report opening-panel-wide">
@@ -1075,6 +1157,21 @@ function OpeningConditionReportArchivePage({
       </div>
       <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
       <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
+      {(onGenerateReport || onArchive) && (
+        <div className="dialog-actions">
+          {onGenerateReport && (
+            <button type="button" className="primary" onClick={onGenerateReport} disabled={pilotBusy || !canGenerateReport}>
+              生成报告摘要
+            </button>
+          )}
+          {onArchive && reportAsset?.status === "ready" && (
+            <button type="button" className="secondary" onClick={onArchive} disabled={pilotBusy}>
+              归档任务
+            </button>
+          )}
+        </div>
+      )}
+      {pilotTask && blockingReviewCount > 0 && <small>仍有 {blockingReviewCount} 项人工复核阻塞，处理后才能生成报告。</small>}
     </section>
   );
 }
