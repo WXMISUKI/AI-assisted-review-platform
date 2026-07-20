@@ -22,6 +22,7 @@ import {
 import { agentAssetCatalog, promptAssetRegistry } from "./domain/agentAssets";
 import type {
   BackendHealthResult,
+  OpeningConditionPilotIntakeInitResult,
   OpeningConditionPilotKnowledgeBaseResult,
   OpeningConditionPilotReadinessResult,
   MinioStatusResult,
@@ -71,7 +72,9 @@ import {
   getOcrPercent,
   getOcrStepIndex,
   MetricBlock,
+  NavButton,
   modeName,
+  openingConditionPortalPageLabels,
   pageLabels,
   resultTypeName,
   severityName,
@@ -81,7 +84,15 @@ import {
   AlertBadge,
 } from "./appShellDisplay";
 import { roleLabels } from "./appShellTypes";
-import type { Role, Session, StreamingStage, ThemeMode, UploadDraft, LibraryDocument } from "./appShellTypes";
+import type {
+  OpeningConditionPortalPage,
+  Role,
+  Session,
+  StreamingStage,
+  ThemeMode,
+  UploadDraft,
+  LibraryDocument,
+} from "./appShellTypes";
 import {
   fetchBackendHealth,
   fetchOpeningConditionPilotKnowledgeBases,
@@ -93,6 +104,7 @@ import {
   fetchOcrStatus,
   fetchReviewQueueStatus,
   bindOpeningConditionPilotKnowledgeBase,
+  bootstrapOpeningConditionPilotTrial,
   runLlmConnectivityCheck,
   runReviewStreamConnectivityCheck,
   upsertOpeningConditionPilotKnowledgeBase,
@@ -1519,6 +1531,160 @@ function OpeningConditionPilotExecutionPanel({
   );
 }
 
+function buildOpeningConditionObjectRefFromUpload(
+  result: MinioUploadResult,
+  kind: "basis" | "checklist" | "source_archive",
+  fallbackId: string,
+) {
+  const object = result.object;
+  if (!result.ok || !object) {
+    return null;
+  }
+
+  return {
+    objectId: object.key || fallbackId,
+    kind,
+    fileName: object.originalFilename || fallbackId,
+    storageKey: object.key,
+    contentType: object.contentType,
+    sizeBytes: object.size,
+    summary:
+      kind === "basis"
+        ? "单项目试点合同与资质依据"
+        : kind === "checklist"
+          ? "单项目试点资料核查表"
+          : "单项目试点资料包压缩文件",
+  };
+}
+
+function OpeningConditionRealTrialIntakePanel({
+  packet,
+  busy,
+  submittedBy,
+  onComplete,
+}: {
+  packet: OpeningConditionReviewPacket;
+  busy?: boolean;
+  submittedBy: string;
+  onComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+}) {
+  const [basisFile, setBasisFile] = useState<File | null>(null);
+  const [checklistFile, setChecklistFile] = useState<File | null>(null);
+  const [packetFile, setPacketFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("选择合同依据、核查表和资料包后，可创建一条真实试点任务。");
+
+  async function handleBootstrap() {
+    if (!basisFile || !checklistFile || !packetFile) {
+      setMessage("请先选择合同依据、核查表和资料包 ZIP。");
+      return;
+    }
+
+    setSubmitting(true);
+    setMessage("正在上传试点资料...");
+
+    try {
+      const [basisUpload, checklistUpload, packetUpload] = await Promise.all([
+        uploadMinioDocument(basisFile),
+        uploadMinioDocument(checklistFile),
+        uploadMinioDocument(packetFile),
+      ]);
+      const basisObject = buildOpeningConditionObjectRefFromUpload(basisUpload, "basis", "trial-basis");
+      const checklistObject = buildOpeningConditionObjectRefFromUpload(checklistUpload, "checklist", "trial-checklist");
+      const sourceObject = buildOpeningConditionObjectRefFromUpload(packetUpload, "source_archive", "trial-material-zip");
+      if (!basisObject || !checklistObject || !sourceObject) {
+        setMessage(
+          basisUpload.message ||
+            checklistUpload.message ||
+            packetUpload.message ||
+            "试点资料上传失败，无法初始化任务。",
+        );
+        return;
+      }
+
+      setMessage("资料已上传，正在初始化平台试点任务...");
+      const workspace = packet.workspaceContext;
+      const result = await bootstrapOpeningConditionPilotTrial({
+        taskId: `oc-pilot-${packet.workspaceId}`,
+        context: {
+          workspaceId: packet.workspaceId,
+          tenantId: workspace.tenantName || "tenant-opening-condition",
+          projectId: workspace.projectName || packet.projectName,
+          contractPackageId: workspace.contractPackage || "contract-package",
+          participatingOrganizationId: workspace.participatingOrganization || "organization",
+        },
+        basisObject,
+        checklistObject,
+        sourceObjects: [sourceObject],
+        subcontractTeamId: workspace.participatingOrganization,
+        submittedBy,
+      });
+
+      if (!result.ok || !result.task) {
+        setMessage(result.message ?? "单项目试点初始化失败。");
+        return;
+      }
+
+      const inventoryCount = result.packet?.inventoryEntries.length ?? 0;
+      setMessage(`真实试点任务已初始化，资料包清单 ${inventoryCount} 项，当前状态 ${result.task.state}。`);
+      onComplete?.(result);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "单项目试点初始化失败。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const disabled = busy || submitting;
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <div className="section-title row">
+        <div>
+          <span className="eyebrow">真实试点资料接入</span>
+          <h2>合同依据、核查表和资料包</h2>
+        </div>
+        <button type="button" className="primary" onClick={handleBootstrap} disabled={disabled}>
+          {submitting ? "接入中..." : "上传并初始化试点"}
+        </button>
+      </div>
+      <div className="opening-trial-upload-grid">
+        <label>
+          <span>合同/资质依据</span>
+          <input
+            type="file"
+            accept=".pdf,.doc,.docx"
+            disabled={disabled}
+            onChange={(event) => setBasisFile(event.target.files?.[0] ?? null)}
+          />
+          <small>{basisFile ? `${basisFile.name} · ${formatFileSize(basisFile.size)}` : "例如：结构资质报审表及附件"}</small>
+        </label>
+        <label>
+          <span>资料核查表</span>
+          <input
+            type="file"
+            accept=".doc,.docx,.pdf"
+            disabled={disabled}
+            onChange={(event) => setChecklistFile(event.target.files?.[0] ?? null)}
+          />
+          <small>{checklistFile ? `${checklistFile.name} · ${formatFileSize(checklistFile.size)}` : "例如：承台施工条件核查表"}</small>
+        </label>
+        <label>
+          <span>核查资料包</span>
+          <input
+            type="file"
+            accept=".zip"
+            disabled={disabled}
+            onChange={(event) => setPacketFile(event.target.files?.[0] ?? null)}
+          />
+          <small>{packetFile ? `${packetFile.name} · ${formatFileSize(packetFile.size)}` : "上传 ZIP 后由后端提取清单"}</small>
+        </label>
+      </div>
+      <small>{message}</small>
+    </section>
+  );
+}
+
 export function OpeningConditionReviewPage({
   roleLabel,
   packet = openingConditionReviewPacket,
@@ -1530,6 +1696,7 @@ export function OpeningConditionReviewPage({
   onInitializePilotTask,
   onRunPilotMatch,
   onEnsureKnowledgeBase,
+  onTrialBootstrapComplete,
 }: {
   roleLabel: string;
   packet?: OpeningConditionReviewPacket;
@@ -1541,6 +1708,7 @@ export function OpeningConditionReviewPage({
   onInitializePilotTask?: () => void;
   onRunPilotMatch?: () => void;
   onEnsureKnowledgeBase?: () => void;
+  onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
 }) {
   const verdictSummary = getOpeningConditionVerdictSummary(packet);
   const riskSummary = getOpeningConditionRiskSummary(packet);
@@ -1580,6 +1748,12 @@ export function OpeningConditionReviewPage({
       </section>
 
       <OpeningConditionReadinessPanel packet={packet} />
+      <OpeningConditionRealTrialIntakePanel
+        packet={packet}
+        busy={pilotBusy}
+        submittedBy={roleLabel}
+        onComplete={onTrialBootstrapComplete}
+      />
       <OpeningConditionPilotExecutionPanel
         pilotTask={pilotTask}
         readiness={pilotReadiness}

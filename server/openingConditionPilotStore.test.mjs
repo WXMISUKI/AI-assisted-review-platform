@@ -8,6 +8,7 @@ import { extractOpeningConditionZipManifestEntries } from "./openingConditionZip
 import {
   archiveOpeningConditionPilotTask,
   bindOpeningConditionPilotKnowledgeBase,
+  bootstrapOpeningConditionPilotTrial,
   canTransitionOpeningConditionPilotTask,
   decideOpeningConditionPilotHumanReviewItem,
   decideOpeningConditionPilotMasterDataRecord,
@@ -467,6 +468,71 @@ test("initializes intake from workspace facts in one orchestration flow", async 
     assert.equal(initialized.task.checklistDefinition.length, 5);
     assert.equal(initialized.task.packet.inventoryEntries.length, 1);
     assert.equal(initialized.task.checklistDefinition[0].name, "项目管理人员及专职安全员资格证书");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("bootstraps a single-project trial with MaxKB refs and ZIP manifest inventory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-trial-bootstrap-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    const result = await bootstrapOpeningConditionPilotTrial(
+      {
+        taskId: "task-trial-1",
+        context: validTaskInput().context,
+        basisObject: {
+          objectId: "basis-object-1",
+          kind: "basis",
+          fileName: "结构资质报审表及附件(1).pdf",
+          storageKey: "basis.pdf",
+          privateUrl: "must-redact",
+        },
+        checklistObject: {
+          objectId: "checklist-object-1",
+          kind: "checklist",
+          fileName: "承台施工条件核查表.docx",
+          storageKey: "checklist.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "packet-object-1",
+            kind: "source_archive",
+            fileName: "条件核查.zip",
+            storageKey: "packet.zip",
+            token: "must-redact",
+          },
+        ],
+        knowledgeBaseProviderRef: {
+          provider: "maxkb",
+          id: "019f787c-644e-7162-bfe5-f4ee02a91539",
+          datasetId: "019f787c-644e-7162-bfe5-f4ee02a91539",
+          knowledgeId: "019f787c-644e-7162-bfe5-f4ee02a91539",
+          syncStatus: "ready",
+        },
+      },
+      {
+        storePath,
+        readObjectBuffer: async () => ({
+          buffer: zipFixtureBuffer,
+        }),
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.task.id, "task-trial-1");
+    assert.equal(result.task.state, "packet_uploaded");
+    assert.equal(result.task.basisVersion.status, "published");
+    assert.equal(result.task.requiredMasterData.length, 3);
+    assert.equal(result.task.knowledgeBaseRef.providerRefs[0].provider, "maxkb");
+    assert.equal(result.task.knowledgeBaseRef.providerSyncStatus, "ready");
+    assert.equal(result.packet.inventoryEntries.length, 2);
+    assert.equal(result.intake.inventoryResolution, "derived_from_zip_manifest");
+    assert.equal(result.intake.checklistDefinitionResolution, "derived_from_template");
+    assert.equal(result.preflightReadiness.status, "ready");
+    assert.equal("privateUrl" in result.task.basisVersion.sourceObject, false);
+    assert.equal("token" in result.task.packet.sourceObjects[0], false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -1,13 +1,5 @@
-import { LucideIcon } from "lucide-react";
-import type {
-  BackendHealthResult,
-  MinioStatusResult,
-  MinioUploadResult,
-  OcrJobStatusResult,
-  ProviderCheckResult,
-  ReviewStreamEvent,
-} from "./domain/backendConnectivity";
-import { agentAssetCatalog } from "./domain/agentAssets";
+import type { LucideIcon } from "lucide-react";
+import type { OcrJobStatusResult } from "./domain/backendConnectivity";
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import type {
   DocumentStatus,
@@ -15,7 +7,6 @@ import type {
   ReviewMode,
   ReviewPipelineStageType,
   ReviewResultAsset,
-  ReviewTask,
   ReviewTaskOcrJob,
 } from "./domain/reviewTypes";
 import { roleLabels, roleModes } from "./appShellTypes";
@@ -27,12 +18,13 @@ export const pageLabels = {
 } as const;
 
 export const openingConditionPortalPageLabels = {
-  "workspace-context": "工作区",
-  "basis-sets": "依据集",
+  "workspace-context": "工作台概览",
+  "material-intake": "资料接入",
+  "basis-sets": "依据与主数据",
   "master-data": "主数据",
-  "check-tasks": "核查任务",
+  "check-tasks": "资料核查",
   "human-review": "人工复核",
-  reports: "辅助报告",
+  reports: "报告归档",
 } as const;
 
 export const statusLabels: Record<DocumentStatus, string> = {
@@ -40,7 +32,7 @@ export const statusLabels: Record<DocumentStatus, string> = {
   uploaded: "待开始",
   parsing: "OCR识别中",
   reviewing: "审查准备中",
-  ready: "待审核",
+  ready: "待审查",
   completed: "已完成",
   failed: "失败",
 };
@@ -71,9 +63,7 @@ export function formatResultTime(value: string) {
 
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate(),
-  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
-    date.getMinutes(),
-  ).padStart(2, "0")}`;
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 export function formatFileSize(value: number) {
@@ -115,9 +105,7 @@ export function formatOcrJobLabel(job: ReviewTaskOcrJob) {
   }
 
   if (job.jobId) {
-    return percent != null
-      ? `OCR已提交 #${job.jobId.slice(-8)} · ${percent}%`
-      : `OCR已提交 #${job.jobId.slice(-8)}`;
+    return percent != null ? `OCR已提交 #${job.jobId.slice(-8)} · ${percent}%` : `OCR已提交 #${job.jobId.slice(-8)}`;
   }
 
   return "OCR已提交";
@@ -218,7 +206,6 @@ export function AgentProfileBlock({ title, items }: { title: string; items: stri
 export function AlertBadge({ index }: { index: number }) {
   return <span className="streaming-issue-badge">#{index}</span>;
 }
-
 
 export function getOcrLoadingStageIndex(jobStatus?: OcrJobStatusResult | null) {
   if (!jobStatus || jobStatus.state === "submitted" || jobStatus.state === "pending") {

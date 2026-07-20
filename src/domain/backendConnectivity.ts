@@ -67,6 +67,7 @@ export interface BackendHealthResult {
       hasPassword: boolean;
       defaultKnowledgeId: string | null;
       healthPath: string;
+      statusPath?: string;
       retrievalPath: string;
       status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
       summary: string;
@@ -515,6 +516,16 @@ export interface OpeningConditionPilotIntakeInitResult {
   packet?: OpeningConditionPilotTask["packet"];
   preflightReadiness?: OpeningConditionPilotPreflightReadiness;
   intake?: OpeningConditionPilotIntakeDiagnostics;
+  bootstrap?: {
+    taskId: string;
+    workspaceId: string;
+    basisId: string;
+    knowledgeBaseId: string;
+    masterDataIds: string[];
+    sourceObjectCount: number;
+    providerRefCount: number;
+    nextHandoff?: string;
+  };
   message?: string;
   errors?: string[];
 }
@@ -746,6 +757,25 @@ export async function initializeOpeningConditionPilotIntake(input: {
   submittedBy?: string;
 }) {
   const response = await fetch("/api/opening-condition/pilot-tasks/intake-init", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  return readJson<OpeningConditionPilotIntakeInitResult>(response);
+}
+
+export async function bootstrapOpeningConditionPilotTrial(input: {
+  taskId?: string;
+  context: OpeningConditionPilotTask["context"];
+  basisObject: OpeningConditionObjectRef;
+  checklistObject: OpeningConditionObjectRef;
+  sourceObjects: OpeningConditionObjectRef[];
+  submittedBy?: string;
+  subcontractTeamId?: string;
+}) {
+  const response = await fetch("/api/opening-condition/pilot-tasks/trial-bootstrap", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

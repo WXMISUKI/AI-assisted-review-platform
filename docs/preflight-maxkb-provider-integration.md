@@ -1,5 +1,7 @@
 # MaxKB Provider Integration for Preflight Review
 
+> 资料包 ZIP、混合文件识别和 MaxKB 侧批量入库/检索验收接口要求，见 [maxkb-material-packet-coordination.md](./maxkb-material-packet-coordination.md)。
+
 更新时间：2026-07-20
 
 ## 目标定位

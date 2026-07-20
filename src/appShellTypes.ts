@@ -1,8 +1,4 @@
-import type {
-  ReviewMode,
-  ReviewStreamingStage,
-  ReviewTask,
-} from "./domain/reviewTypes";
+import type { ReviewMode, ReviewStreamingStage, ReviewTask } from "./domain/reviewTypes";
 
 export type Role = "super_admin" | "supervisor" | "contractor";
 
@@ -16,6 +12,7 @@ export type ShellPage =
 
 export type OpeningConditionPortalPage =
   | "workspace-context"
+  | "material-intake"
   | "basis-sets"
   | "master-data"
   | "check-tasks"
@@ -49,4 +46,3 @@ export const roleModes: Record<Role, ReviewMode[]> = {
   supervisor: ["review"],
   contractor: ["revise"],
 };
-

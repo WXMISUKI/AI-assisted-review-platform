@@ -29,6 +29,7 @@ import {
 } from "./reviewGenerationRunBridge.mjs";
 import {
   archiveOpeningConditionPilotTask,
+  bootstrapOpeningConditionPilotTrial,
   decideOpeningConditionPilotMasterDataRecord,
   decideOpeningConditionPilotHumanReviewItem,
   generateOpeningConditionPilotReport,
@@ -161,6 +162,36 @@ function readPositiveIntegerParam(url, name) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+function buildKnowledgeBaseProviderRefFromReadiness(readiness) {
+  const defaultKnowledgeId =
+    typeof readiness?.metadata?.defaultKnowledgeId === "string" && readiness.metadata.defaultKnowledgeId.trim()
+      ? readiness.metadata.defaultKnowledgeId.trim()
+      : config.maxkb.defaultKnowledgeId;
+
+  if (config.knowledgeProvider !== "maxkb" || !defaultKnowledgeId) {
+    return {
+      provider: "maxkb",
+      id: "maxkb-not-bound",
+      datasetId: "maxkb-not-bound",
+      syncStatus: config.knowledgeProvider === "maxkb" ? "provisional" : "disabled",
+      summary:
+        config.knowledgeProvider === "maxkb"
+          ? "MaxKB provider proxy has no default knowledge id."
+          : "MaxKB is not selected as the active knowledge provider.",
+    };
+  }
+
+  return {
+    provider: "maxkb",
+    id: defaultKnowledgeId,
+    datasetId: defaultKnowledgeId,
+    knowledgeId: defaultKnowledgeId,
+    syncStatus: readiness?.ready ? "ready" : readiness?.configured ? "provisional" : "disabled",
+    summary: readiness?.summary ?? "MaxKB provider proxy readiness was checked during trial bootstrap.",
+    lastSyncedAt: new Date().toISOString(),
+  };
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
 
@@ -190,6 +221,7 @@ const server = createServer(async (request, response) => {
           "GET /api/opening-condition/pilot-tasks/:taskId",
           "PUT /api/opening-condition/pilot-tasks/:taskId",
           "POST /api/opening-condition/pilot-tasks/intake-init",
+          "POST /api/opening-condition/pilot-tasks/trial-bootstrap",
           "POST /api/opening-condition/pilot-tasks/:taskId/packet",
           "POST /api/opening-condition/pilot-tasks/:taskId/match",
           "GET /api/opening-condition/pilot-tasks/:taskId/human-review",
@@ -297,6 +329,17 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/opening-condition/pilot-tasks/intake-init") {
       const body = await readJson(request);
       const result = await initializeOpeningConditionPilotTaskIntake(body);
+      sendJson(response, result.ok ? 200 : result.status === "invalid_state" ? 409 : 400, result);
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/opening-condition/pilot-tasks/trial-bootstrap") {
+      const body = await readJson(request);
+      const providerReadiness = await getKnowledgeBaseProviderReadiness();
+      const result = await bootstrapOpeningConditionPilotTrial({
+        ...body,
+        knowledgeBaseProviderRef: body.knowledgeBaseProviderRef ?? buildKnowledgeBaseProviderRefFromReadiness(providerReadiness),
+      });
       sendJson(response, result.ok ? 200 : result.status === "invalid_state" ? 409 : 400, result);
       return;
     }

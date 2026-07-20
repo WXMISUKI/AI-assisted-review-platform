@@ -3,6 +3,17 @@
 ## Purpose
 TBD - created by archiving change interactive-review-mvp. Update Purpose after archive.
 ## Requirements
+### Requirement: Workbench is not product landing page
+The construction-plan review workbench SHALL remain a review task/detail surface and MUST NOT be the default screen shown immediately after selecting the construction-plan product.
+
+#### Scenario: Product is selected
+- **WHEN** the user selects construction-plan review from the product launcher
+- **THEN** the system opens the construction-plan product shell at the document library instead of directly rendering the review workbench
+
+#### Scenario: Review task is opened
+- **WHEN** the user starts or opens a reviewable construction-plan task
+- **THEN** the system renders the review workbench with the selected task context
+
 ### Requirement: Workbench can reopen backend-persisted tasks
 The review workbench SHALL open tasks loaded from backend persistence the same way it opens locally persisted tasks.
 
@@ -520,3 +531,26 @@ The workbench SHALL never display unsafe generation diagnostics through activity
 #### Scenario: Activity event has diagnostics
 - **WHEN** the UI renders activity context
 - **THEN** it displays only safe labels/counts/statuses and excludes prompts, secrets, provider raw traces, raw document text, and private object URLs
+
+### Requirement: Clean construction-plan review copy
+The review workbench SHALL render readable UTF-8 Chinese copy for construction-plan review labels, actions, issue cards, dialogs, and status text.
+
+#### Scenario: User opens the construction-plan review workbench
+- **WHEN** a user enters the review workbench from the construction-plan document flow
+- **THEN** major labels, buttons, headings, dialog text, issue metadata, and status filters are readable Chinese rather than mojibake strings
+
+#### Scenario: User performs issue handling
+- **WHEN** a user accepts, rejects, edits, creates, or deletes a review issue
+- **THEN** the action labels and confirmation dialog copy remain readable and aligned with construction-plan review semantics
+
+### Requirement: Workbench remains task-scoped
+The review workbench SHALL remain a focused task/detail surface entered from construction-plan document flow rather than the default product landing page.
+
+#### Scenario: Product opens
+- **WHEN** the user selects the construction-plan review product
+- **THEN** the review workbench is not shown until a document task is opened or started
+
+#### Scenario: Workbench opens
+- **WHEN** the user opens a document task
+- **THEN** the workbench receives the selected document, role-based modes, recovered structure, issues, and task callbacks from the construction-plan product component
+

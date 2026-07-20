@@ -328,6 +328,57 @@ button {
   padding-right: 2px;
 }
 
+.opening-workspace-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.construction-workspace-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.construction-library-page {
+  display: grid;
+  gap: 18px;
+}
+
+.construction-library-hero {
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), transparent 42%),
+    var(--surface);
+}
+
+.construction-library-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.construction-upload-panel {
+  position: sticky;
+  top: 0;
+}
+
+.construction-document-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.opening-workspace-hero {
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.08), transparent 42%),
+    var(--surface);
+}
+
 .product-launcher-shell {
   min-height: 100vh;
   padding: 28px;
@@ -445,8 +496,15 @@ button {
 
 .shell-logout.light {
   border-color: var(--button-border);
+  border-radius: 8px;
   background: var(--button-bg);
   color: var(--button-foreground);
+}
+
+.shell-logout.light:hover {
+  border-color: var(--primary);
+  background: var(--button-bg-hover);
+  color: var(--primary-hover);
 }
 
 .opening-portal-shell .shell-brand-mark {
@@ -757,6 +815,17 @@ button {
   opacity: 0.62;
 }
 
+.upload-pick-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 700;
+}
+
 .upload-error {
   margin-top: 12px;
   border: 1px solid var(--status-failed-bg);
@@ -813,6 +882,74 @@ button {
   padding: 0 10px;
   background: var(--button-bg);
   color: var(--button-foreground);
+}
+
+.library-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.library-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.library-form label span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.library-form input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--button-border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.library-form input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.library-form input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.library-form button.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid var(--button-primary-bg);
+  border-radius: 8px;
+  padding: 0 14px;
+  background: var(--button-primary-bg);
+  color: var(--button-primary-foreground);
+  font-weight: 800;
+}
+
+.library-form button.primary:hover {
+  border-color: var(--button-primary-hover);
+  background: var(--button-primary-hover);
+}
+
+.library-form button.primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .table-head,
@@ -933,6 +1070,99 @@ button {
   border-color: var(--status-failed-bg);
   background: transparent;
   color: var(--status-failed-text);
+}
+
+.document-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.document-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 18px;
+  row-gap: 8px;
+  align-items: start;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(23, 35, 50, 0.04);
+}
+
+.document-card:hover {
+  border-color: var(--border);
+  box-shadow: 0 8px 20px rgba(23, 35, 50, 0.08);
+}
+
+.document-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.document-card-head h3 {
+  margin: 3px 0 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.document-card-head > div {
+  min-width: 0;
+}
+
+.document-card-head h3,
+.document-card > p,
+.document-summary {
+  overflow-wrap: anywhere;
+}
+
+.document-card > p {
+  grid-column: 1;
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.document-card-meta {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.document-summary {
+  grid-column: 1;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.document-card > .dialog-actions {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  align-self: center;
+  min-width: max-content;
+}
+
+.ghost-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+.ghost-icon:hover {
+  border-color: var(--border);
+  background: var(--surface-muted);
+  color: var(--danger);
 }
 
 .quick-preview {
@@ -2744,6 +2974,24 @@ h4 {
   color: var(--button-danger-foreground);
 }
 
+.dialog-actions button.primary {
+  border-color: var(--button-primary-bg);
+  background: var(--button-primary-bg);
+  color: var(--button-primary-foreground);
+}
+
+.dialog-actions button.primary:hover {
+  border-color: var(--button-primary-hover);
+  background: var(--button-primary-hover);
+  color: var(--button-primary-foreground);
+}
+
+.dialog-actions button.secondary {
+  border-color: var(--button-border);
+  background: var(--button-bg);
+  color: var(--button-foreground);
+}
+
 .dialog-icon.success {
   background: var(--primary-soft);
   color: var(--primary);
@@ -3066,6 +3314,12 @@ h4 {
   box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.16) inset;
 }
 
+.opening-selected-record,
+.opening-panel-emphasis {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.14) inset;
+}
+
 .opening-panel button.primary,
 .opening-workspace-card button.primary {
   display: inline-flex;
@@ -3088,6 +3342,33 @@ h4 {
   background: var(--button-bg);
   color: var(--button-foreground);
   font-weight: 700;
+}
+
+.opening-trial-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.opening-trial-upload-grid label {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.opening-trial-upload-grid span {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.opening-trial-upload-grid input {
+  width: 100%;
+  min-width: 0;
+  color: var(--text-secondary);
 }
 
 .opening-task-lane {
@@ -3213,17 +3494,26 @@ h4 {
 @media (max-width: 1100px) {
   .opening-condition-hero,
   .opening-condition-grid,
+  .construction-library-grid,
+  .opening-trial-upload-grid,
   .opening-check-row {
     grid-template-columns: 1fr;
   }
 
   .opening-metric-grid,
   .opening-task-lane,
-  .opening-risk-list {
+  .opening-risk-list,
+  .construction-document-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .opening-condition-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .construction-document-list {
     grid-template-columns: 1fr;
   }
 }
@@ -3321,9 +3611,17 @@ body {
 .row-actions button,
 .dialog-actions button,
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 0 14px;
   border: 1px solid var(--button-border);
   background: var(--button-bg);
   color: var(--button-foreground);
+  font-weight: 700;
 }
 
 .theme-toggle:hover,
@@ -3336,6 +3634,27 @@ body {
   border-color: var(--primary);
   background: var(--button-bg-hover);
   color: var(--primary-hover);
+}
+
+.dialog-actions button.primary,
+.document-card .dialog-actions button.primary {
+  border-color: var(--button-primary-bg);
+  background: var(--button-primary-bg);
+  color: var(--button-primary-foreground);
+}
+
+.dialog-actions button.primary:hover,
+.document-card .dialog-actions button.primary:hover {
+  border-color: var(--button-primary-hover);
+  background: var(--button-primary-hover);
+  color: var(--button-primary-foreground);
+}
+
+.dialog-actions button.secondary,
+.document-card .dialog-actions button.secondary {
+  border-color: var(--button-border);
+  background: var(--button-bg);
+  color: var(--button-foreground);
 }
 
 .upload-dropzone {
@@ -4172,6 +4491,37 @@ body {
 :root[data-theme="dark"] .app-shell .detail-back-button,
 :root[data-theme="dark"] .app-shell .row-actions button:not(.primary),
 :root[data-theme="dark"] .app-shell .icon-button {
+  background: var(--button-bg) !important;
+  border-color: var(--button-border) !important;
+  color: var(--button-foreground) !important;
+}
+
+:root[data-theme="dark"] .platform-shell .library-form input {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell .library-form input::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+:root[data-theme="dark"] .platform-shell .document-card,
+:root[data-theme="dark"] .platform-shell .document-card .ghost-icon {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+:root[data-theme="dark"] .platform-shell .dialog-actions button.primary,
+:root[data-theme="dark"] .platform-shell .document-card .dialog-actions button.primary,
+:root[data-theme="dark"] .platform-shell .library-form button.primary {
+  background: var(--button-primary-bg) !important;
+  border-color: var(--button-primary-bg) !important;
+  color: var(--button-primary-foreground) !important;
+}
+
+:root[data-theme="dark"] .platform-shell .dialog-actions button.secondary,
+:root[data-theme="dark"] .platform-shell .document-card .dialog-actions button.secondary {
   background: var(--button-bg) !important;
   border-color: var(--button-border) !important;
   color: var(--button-foreground) !important;

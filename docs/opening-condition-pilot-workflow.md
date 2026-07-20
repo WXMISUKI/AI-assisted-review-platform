@@ -40,6 +40,8 @@
 
 当前最能推进投产的方向是“单项目真实试点闭环”，不是先建设完整多租户权限平台、深度调优 RAGFlow、重写 Python 工作流编排，或把所有前端演示态一次性替换完。
 
+真实试点入口见 [opening-condition-single-project-trial-runbook.md](./opening-condition-single-project-trial-runbook.md)。本轮试点采用成熟工程资料平台的共性流程：先建立项目/合同包/参与机构和资料要求，再上传依据、核查表与资料包，最后进入平台审查、人工复核和报告归档；AI/OCR/MaxKB 作为支撑能力，不替代正式流程事实源。
+
 推荐任务组：
 
 1. 运营闭环可用：任务创建/读取、知识库 list/upsert/bind、readiness 检查、正式匹配前阻塞原因可见。

@@ -1675,6 +1675,58 @@ function createPilotIntakeEvent(taskId, sequence, type, state, message, progress
   );
 }
 
+function normalizeTrialMasterDataRecord(value, context, index = 0) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const id = normalizeString(value.id, `trial-master-data-${index + 1}`, 180);
+  return {
+    id,
+    workspaceId: context.workspaceId,
+    type: normalizeString(value.type, index === 1 ? "equipment" : "personnel", 100),
+    label: normalizeString(value.label, id, 240),
+    normalizedFields: sanitizeOpeningConditionPilotValue(value.normalizedFields ?? {
+      source: "single_project_trial_bootstrap",
+      projectId: context.projectId,
+      contractPackageId: context.contractPackageId,
+      participatingOrganizationId: context.participatingOrganizationId,
+    }),
+    status: ["published", "human_approved"].includes(value.status) ? value.status : "human_approved",
+    validity: normalizeString(value.validity, "试点操作员确认，生产环境需由 OCR/人工正式确认后发布。", 300),
+    confidence: ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "medium",
+    safeNote: normalizeString(
+      value.safeNote,
+      "单项目试点初始化生成的主数据，用于跑通人员/设备授权门禁；生产环境需替换为正式主数据确认流程。",
+      500,
+    ),
+  };
+}
+
+function buildDefaultTrialMasterDataRecords(context, basisObject) {
+  const basisFileName = basisObject?.fileName ?? "合同依据";
+  return [
+    {
+      id: `${context.workspaceId}-trial-personnel`,
+      type: "personnel",
+      label: "试点人员范围：项目管理人员、专职安全员、特种作业人员",
+      validity: `依据 ${basisFileName} 由操作员试点确认。`,
+    },
+    {
+      id: `${context.workspaceId}-trial-equipment`,
+      type: "equipment",
+      label: "试点设备范围：汽车吊、起重设备、泵车、检测仪器",
+      validity: `依据 ${basisFileName} 由操作员试点确认。`,
+    },
+    {
+      id: `${context.workspaceId}-trial-approval-document`,
+      type: "system_document",
+      label: "试点制度资料：开工申请审批表、签章文件",
+      validity: `依据 ${basisFileName} 由操作员试点确认。`,
+    },
+  ];
+}
+
 export async function initializeOpeningConditionPilotTaskIntake(input = {}, options = {}) {
   const taskId = normalizeString(input.taskId, "", 180);
   const context = normalizeWorkspaceContext(input.context);
@@ -1852,6 +1904,151 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       },
     };
   }, options.storePath);
+}
+
+export async function bootstrapOpeningConditionPilotTrial(input = {}, options = {}) {
+  const context = normalizeWorkspaceContext(input.context);
+  const basisObject = normalizeObjectRef(input.basisObject);
+  const checklistObject = normalizeObjectRef(input.checklistObject);
+  const sourceObjects = Array.isArray(input.sourceObjects)
+    ? input.sourceObjects.map(normalizeObjectRef).filter(Boolean).slice(0, MAX_OBJECTS_PER_PACKET)
+    : [];
+  const errors = [];
+
+  if (!context) {
+    errors.push("workspace context with workspaceId, tenantId, projectId, contractPackageId, and participatingOrganizationId is required");
+  }
+  if (!basisObject) {
+    errors.push("basisObject with objectId and fileName is required");
+  }
+  if (!checklistObject) {
+    errors.push("checklistObject with objectId and fileName is required");
+  }
+  if (sourceObjects.length === 0) {
+    errors.push("at least one material-packet source object is required");
+  }
+
+  if (errors.length > 0) {
+    return {
+      ok: false,
+      status: "invalid_input",
+      message: "A valid single-project trial bootstrap request is required.",
+      errors,
+    };
+  }
+
+  const taskId = normalizeString(input.taskId, `oc-pilot-${context.workspaceId}`, 180);
+  const basisId = normalizeString(input.basisId, `${context.workspaceId}-basis-contract`, 180);
+  const knowledgeBaseId = normalizeString(input.knowledgeBaseId, `${context.workspaceId}-subcontract-kb`, 180);
+  const submittedBy = normalizeString(input.submittedBy, "pilot-user", 160);
+  const masterDataRecords = (
+    Array.isArray(input.masterDataRecords) && input.masterDataRecords.length > 0
+      ? input.masterDataRecords
+      : buildDefaultTrialMasterDataRecords(context, basisObject)
+  )
+    .map((item, index) => normalizeTrialMasterDataRecord(item, context, index))
+    .filter(Boolean)
+    .slice(0, 20);
+
+  const upsertedBasis = await upsertOpeningConditionPilotBasisVersion(
+    context.workspaceId,
+    basisId,
+    {
+      title: normalizeString(input.basisTitle, "单项目试点合同与资质依据", 240),
+      componentType: "contract_basis",
+      version: normalizeString(input.basisVersion, "trial-published", 120),
+      status: "confirmed",
+      sourceObject: basisObject,
+      applicability: normalizeString(
+        input.basisApplicability,
+        "用于确认本次开工条件试点的合同主体、资质边界、人员设备范围和资料核查依据。",
+        500,
+      ),
+      confidence: "medium",
+      safeNote: "由单项目试点初始化入口写入，生产环境需经过正式依据确认流程。",
+    },
+    options,
+  );
+  if (!upsertedBasis.ok) {
+    return upsertedBasis;
+  }
+
+  const publishedBasis = await publishOpeningConditionPilotBasisVersion(
+    context.workspaceId,
+    basisId,
+    { actorId: submittedBy },
+    options,
+  );
+  if (!publishedBasis.ok) {
+    return publishedBasis;
+  }
+
+  const savedMasterData = [];
+  for (const record of masterDataRecords) {
+    const result = await upsertOpeningConditionPilotMasterDataRecord(context.workspaceId, record.id, record, options);
+    if (!result.ok) {
+      return result;
+    }
+    savedMasterData.push(result.masterDataRecord);
+  }
+
+  const providerRefs = normalizeProviderRefs(
+    Array.isArray(input.knowledgeBaseProviderRefs)
+      ? input.knowledgeBaseProviderRefs
+      : input.knowledgeBaseProviderRef
+        ? [input.knowledgeBaseProviderRef]
+        : [],
+  );
+  const knowledgeBase = await upsertOpeningConditionPilotKnowledgeBase(
+    context.workspaceId,
+    knowledgeBaseId,
+    {
+      workspaceId: context.workspaceId,
+      organizationId: context.participatingOrganizationId,
+      contractPackageId: context.contractPackageId,
+      subcontractTeamId: normalizeString(input.subcontractTeamId, context.participatingOrganizationId, 160),
+      label: normalizeString(input.knowledgeBaseLabel, "单项目试点分包队伍知识库", 240),
+      status: providerRefs.some((item) => item.syncStatus === "ready") ? "ready" : "needs_review",
+      summary: normalizeString(
+        input.knowledgeBaseSummary,
+        "保存本次试点资料模板、证据摘要、人工修正和 MaxKB 检索支撑引用。",
+        500,
+      ),
+      providerRefs,
+    },
+    options,
+  );
+  if (!knowledgeBase.ok) {
+    return knowledgeBase;
+  }
+
+  const intake = await initializeOpeningConditionPilotTaskIntake(
+    {
+      taskId,
+      context,
+      basisVersionId: basisId,
+      knowledgeBaseId,
+      requiredMasterDataIds: savedMasterData.map((item) => item.id),
+      checklistObject,
+      sourceObjects,
+      submittedBy,
+    },
+    options,
+  );
+
+  return {
+    ...intake,
+    bootstrap: sanitizeOpeningConditionPilotValue({
+      taskId,
+      workspaceId: context.workspaceId,
+      basisId,
+      knowledgeBaseId,
+      masterDataIds: savedMasterData.map((item) => item.id),
+      sourceObjectCount: sourceObjects.length,
+      providerRefCount: providerRefs.length,
+      nextHandoff: "OCR Worker batch ingestion and MaxKB retrieval-check can be attached to this task in the next slice.",
+    }),
+  };
 }
 
 export async function upsertOpeningConditionPilotTask(taskId, input, options = {}) {

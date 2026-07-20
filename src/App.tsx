@@ -1,9 +1,12 @@
-import { ArrowLeft, SunMoon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { LoginPage, OpeningConditionReviewPage, ProductLauncherPage } from "./appShellPages";
 import { getInitialTheme } from "./appShellDisplay";
-import { roleLabels, type Session, type ThemeMode } from "./appShellTypes";
-import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
+import { roleLabels, type OpeningConditionPortalPage, type Session, type ThemeMode } from "./appShellTypes";
+import { ConstructionPlanReviewApp } from "./ConstructionPlanReviewApp";
+import {
+  LoginPage,
+  OpeningConditionWorkspaceShell,
+  ProductLauncherPage,
+} from "./productWorkspacePages";
 import {
   bindOpeningConditionPilotKnowledgeBase,
   fetchOpeningConditionPilotTask,
@@ -11,6 +14,7 @@ import {
   initializeOpeningConditionPilotIntake,
   runOpeningConditionPilotMatch,
   upsertOpeningConditionPilotKnowledgeBase,
+  type OpeningConditionPilotIntakeInitResult,
   type OpeningConditionPilotReadinessResult,
 } from "./domain/backendConnectivity";
 import type { OpeningConditionPilotTask } from "./domain/openingConditionPilot";
@@ -18,6 +22,7 @@ import { getAccessibleProductPortals, type ProductPortalId } from "./domain/prod
 import {
   getOpeningConditionWorkspacePacket,
   openingConditionReviewPacket,
+  openingConditionWorkspaces,
   type OpeningConditionReviewPacket,
 } from "./domain/openingConditionReview";
 
@@ -72,20 +77,18 @@ export function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
   const [session, setSession] = useState<Session | null>(null);
   const [activeProduct, setActiveProduct] = useState<ProductPortalId | null>(null);
+  const [openingPage, setOpeningPage] = useState<OpeningConditionPortalPage>("workspace-context");
   const [openingPacket, setOpeningPacket] = useState<OpeningConditionReviewPacket>(() =>
     getOpeningConditionWorkspacePacket(openingConditionReviewPacket.workspaceId),
   );
   const [openingPilotTask, setOpeningPilotTask] = useState<OpeningConditionPilotTask | null>(null);
   const [openingPilotReadiness, setOpeningPilotReadiness] =
     useState<OpeningConditionPilotReadinessResult | null>(null);
-  const [openingPilotStatus, setOpeningPilotStatus] = useState("试点任务尚未初始化，可先执行资料包接入。");
+  const [openingPilotStatus, setOpeningPilotStatus] = useState("试点任务尚未初始化，可先进入资料接入页创建任务。");
   const [openingPilotBusy, setOpeningPilotBusy] = useState(false);
 
-  const roleLabel = session ? roleLabels[session.role] : "监理";
-  const availableProducts = useMemo(
-    () => (session ? getAccessibleProductPortals(session.role) : []),
-    [session],
-  );
+  const roleLabel = session ? roleLabels[session.role] : "监理单位";
+  const availableProducts = useMemo(() => (session ? getAccessibleProductPortals(session.role) : []), [session]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = themeMode;
@@ -107,6 +110,19 @@ export function App() {
   function logout() {
     setSession(null);
     setActiveProduct(null);
+    setOpeningPage("workspace-context");
+  }
+
+  function returnToProductLauncher() {
+    setActiveProduct(null);
+    setOpeningPage("workspace-context");
+  }
+
+  function selectOpeningWorkspace(workspaceId: string) {
+    setOpeningPacket(getOpeningConditionWorkspacePacket(workspaceId));
+    setOpeningPilotTask(null);
+    setOpeningPilotReadiness(null);
+    setOpeningPilotStatus("已切换工作区，请进入资料接入页同步或初始化该工作区的试点任务。");
   }
 
   async function refreshOpeningPilotTask() {
@@ -117,7 +133,7 @@ export function App() {
       if (!taskResult?.ok || !taskResult.task) {
         setOpeningPilotTask(null);
         setOpeningPilotReadiness(null);
-        setOpeningPilotStatus("试点任务尚未初始化，可先执行资料包接入。");
+        setOpeningPilotStatus("试点任务尚未初始化，可先进入资料接入页创建任务。");
         return;
       }
 
@@ -157,13 +173,8 @@ export function App() {
       );
 
       const checklistResolution = result.intake?.checklistDefinitionResolution;
-      const checklistTemplateId = result.intake?.selectedChecklistTemplateId;
       if (checklistResolution === "manual_definition_required") {
         setOpeningPilotStatus("资料包接入已完成，但当前核查表尚未纳入后端模板适配，需补充 checklist 定义后再执行正式核查。");
-      } else if (checklistResolution === "derived_from_template" && !result.preflightReadiness?.blockingReasons?.length) {
-        setOpeningPilotStatus(
-          `资料包接入已完成，后端已识别核查表模板${checklistTemplateId ? `（${checklistTemplateId}）` : ""}，可执行正式核查。`,
-        );
       } else if (result.preflightReadiness?.blockingReasons?.length) {
         setOpeningPilotStatus(`资料包接入已完成，仍有 ${result.preflightReadiness.blockingReasons.length} 项前置门禁待处理。`);
       } else {
@@ -251,6 +262,30 @@ export function App() {
     }
   }
 
+  function handleOpeningTrialBootstrapComplete(result: OpeningConditionPilotIntakeInitResult) {
+    if (!result.task) {
+      setOpeningPilotStatus(result.message ?? "真实试点任务初始化失败");
+      return;
+    }
+
+    setOpeningPilotTask(result.task);
+    setOpeningPilotReadiness(
+      result.preflightReadiness
+        ? {
+            ok: true,
+            taskId: result.task.id,
+            workspaceId: result.task.context.workspaceId,
+            state: result.task.state,
+            preflightReadiness: result.preflightReadiness,
+            knowledgeBaseRef: result.task.knowledgeBaseRef,
+          }
+        : null,
+    );
+    setOpeningPilotStatus(
+      `真实试点任务已初始化 · 清单 ${result.packet?.inventoryEntries.length ?? 0} 项 · 状态 ${result.task.state}`,
+    );
+  }
+
   if (!session) {
     return <LoginPage onSignIn={setSession} themeMode={themeMode} onToggleTheme={toggleTheme} />;
   }
@@ -271,41 +306,37 @@ export function App() {
 
   if (activeProduct === "construction-plan-review") {
     return (
-      <ReviewWorkbenchPage
-        roleLabel={roleLabel}
+      <ConstructionPlanReviewApp
+        session={session}
         themeMode={themeMode}
         onToggleTheme={toggleTheme}
-        onBack={() => setActiveProduct(null)}
+        onBackToProducts={returnToProductLauncher}
+        onLogout={logout}
       />
     );
   }
 
   return (
-    <main className="app-shell">
-      <header className="shell-topbar">
-        <div className="shell-topbar-actions">
-          <button type="button" className="theme-toggle subtle" onClick={() => setActiveProduct(null)}>
-            <ArrowLeft size={16} />
-            返回门户
-          </button>
-          <button type="button" className="theme-toggle subtle" onClick={toggleTheme}>
-            <SunMoon size={16} />
-            {themeMode === "light" ? "深色主题" : "浅色主题"}
-          </button>
-        </div>
-      </header>
-      <OpeningConditionReviewPage
-        roleLabel={roleLabel}
-        packet={openingPacket}
-        pilotTask={openingPilotTask}
-        pilotReadiness={openingPilotReadiness}
-        pilotStatus={openingPilotStatus}
-        pilotBusy={openingPilotBusy}
-        onRefreshPilotTask={() => void refreshOpeningPilotTask()}
-        onInitializePilotTask={() => void initializeOpeningPilotTask()}
-        onRunPilotMatch={() => void runOpeningPilotFormalMatch()}
-        onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
-      />
-    </main>
+    <OpeningConditionWorkspaceShell
+      roleLabel={roleLabel}
+      themeMode={themeMode}
+      activePage={openingPage}
+      workspaces={openingConditionWorkspaces}
+      selectedWorkspaceId={openingPacket.workspaceId}
+      packet={openingPacket}
+      pilotTask={openingPilotTask}
+      pilotReadiness={openingPilotReadiness}
+      pilotStatus={openingPilotStatus}
+      pilotBusy={openingPilotBusy}
+      onToggleTheme={toggleTheme}
+      onBack={returnToProductLauncher}
+      onSelectPage={setOpeningPage}
+      onSelectWorkspace={selectOpeningWorkspace}
+      onRefreshPilotTask={() => void refreshOpeningPilotTask()}
+      onInitializePilotTask={() => void initializeOpeningPilotTask()}
+      onRunPilotMatch={() => void runOpeningPilotFormalMatch()}
+      onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
+      onTrialBootstrapComplete={handleOpeningTrialBootstrapComplete}
+    />
   );
 }

@@ -4,7 +4,7 @@
 TBD - created by archiving change separate-product-portals-and-opening-basis-workflow. Update Purpose after archive.
 ## Requirements
 ### Requirement: Unified product launcher
-The system SHALL provide one authenticated entry that routes authorized users into independent business product portals.
+The system SHALL provide one authenticated business selection portal that routes authorized users into independent product workspaces.
 
 #### Scenario: User enters after login
 - **WHEN** an authenticated user has access to more than one product portal
@@ -19,7 +19,8 @@ Each product portal SHALL own an independent route namespace so business pages, 
 
 #### Scenario: Construction-plan portal opens
 - **WHEN** a user enters the construction-plan review product
-- **THEN** the active route namespace and sidebar are scoped to construction-plan review
+- **THEN** the active route namespace and sidebar are scoped to construction-plan review and default to its historical document library flow
+- **AND** the construction-plan product reuses the baseline product workspace from commit `9b4fdb378d124a1ae8b603a6dc67bccbf00bfa60` as its display source of truth
 
 #### Scenario: Opening-condition portal opens
 - **WHEN** a user enters the opening-condition review product
@@ -41,11 +42,15 @@ Each product portal SHALL expose only navigation that belongs to that product's 
 
 #### Scenario: Construction-plan sidebar renders
 - **WHEN** the construction-plan portal sidebar is shown
-- **THEN** it does not show opening-condition review as a construction-plan document-library menu item
+- **THEN** it shows construction-plan document library, knowledge base, data assets, and review task flow without opening-condition workflow pages
 
 #### Scenario: Opening-condition sidebar renders
 - **WHEN** the opening-condition portal sidebar is shown
-- **THEN** it shows opening-condition workflow pages such as workspace context, basis sets, master data, check tasks, review queue, and reports
+- **THEN** it shows opening-condition workflow pages for workspace overview, material intake, basis and master data, check tasks, human review, and reports
+
+#### Scenario: Operational pilot controls render
+- **WHEN** opening-condition pilot intake or provider readiness controls are rendered
+- **THEN** they appear inside the opening-condition workspace page that owns that workflow step and not inside construction-plan navigation
 
 ### Requirement: Product access framing
 The system SHALL distinguish product access from shared account identity.
