@@ -531,8 +531,15 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
     assert.equal(result.intake.inventoryResolution, "derived_from_zip_manifest");
     assert.equal(result.intake.checklistDefinitionResolution, "derived_from_template");
     assert.equal(result.preflightReadiness.status, "ready");
+    assert.equal(result.task.trialPackage.status, "packet_uploaded");
+    assert.equal(result.task.trialPackage.inputObjects.sourceCount, 1);
+    assert.equal(result.task.trialPackage.diagnostics.inventoryResolution, "derived_from_zip_manifest");
+    assert.equal(result.task.trialPackage.diagnostics.inventoryEntryCount, 2);
+    assert.equal(result.task.trialPackage.diagnostics.checklistDefinitionResolution, "derived_from_template");
+    assert.equal(result.task.trialPackage.providerReadiness.status, "ready");
     assert.equal("privateUrl" in result.task.basisVersion.sourceObject, false);
     assert.equal("token" in result.task.packet.sourceObjects[0], false);
+    assert.equal("token" in result.task.trialPackage, false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -1516,12 +1523,45 @@ test("generates and archives auxiliary report assets after human review is clear
     assert.equal(report.ok, true);
     assert.equal(report.reportAsset.status, "ready");
     assert.equal(report.reportAsset.summary.passed, 1);
+    assert.equal(report.reportAsset.packageDiagnostics.inputObjects.sourceCount, 1);
+    assert.equal(report.reportAsset.packageDiagnostics.matching.total, 1);
+    assert.equal(report.reportAsset.packageDiagnostics.humanReview.blockingCount, 0);
     assert.equal("privateUrl" in report.reportAsset.objectRef, false);
 
     const archived = await archiveOpeningConditionPilotTask("task-1", { message: "归档完成。" }, { storePath });
     assert.equal(archived.ok, true);
     assert.equal(archived.task.state, "archived");
     assert.equal(archived.reportAsset.status, "archived");
+    assert.equal(archived.task.trialPackage.status, "archived");
+    assert.equal(archived.reportAsset.packageDiagnostics.archiveStatus, "archived");
+
+    const regenerated = await generateOpeningConditionPilotReport("task-1", {}, { storePath });
+    assert.equal(regenerated.ok, false);
+    assert.equal(regenerated.status, "invalid_state");
+    assert.equal(regenerated.message, "Cannot generate report while task is archived.");
+
+    const reinitialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-1",
+        context: validTaskInput().context,
+        checklistObject: {
+          objectId: "checklist-2",
+          kind: "checklist",
+          fileName: "寮€宸ユ潯浠舵牳鏌ヨ〃-new.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-2",
+            kind: "source_archive",
+            fileName: "鏂拌祫鏂欏寘.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+    assert.equal(reinitialized.ok, false);
+    assert.equal(reinitialized.status, "invalid_state");
+    assert.equal(reinitialized.message, "Cannot reinitialize opening-condition pilot task while task is archived.");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

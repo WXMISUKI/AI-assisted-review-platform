@@ -33,6 +33,11 @@ function getOpeningPilotTaskId(packet: OpeningConditionReviewPacket) {
   return `oc-pilot-${packet.workspaceId}`;
 }
 
+function getOpeningPilotRunTaskId(packet: OpeningConditionReviewPacket) {
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  return `${getOpeningPilotTaskId(packet)}-run-${timestamp}`;
+}
+
 function buildOpeningPilotIntakeRequest(packet: OpeningConditionReviewPacket, submittedBy = "pilot-user") {
   const workspace = packet.workspaceContext;
   const publishedBasis = packet.basisVersions.find((basis) => basis.status === "published");
@@ -128,8 +133,7 @@ export function App() {
     setOpeningPilotStatus("已切换工作区，请进入资料接入页同步或初始化该工作区的试点任务。");
   }
 
-  async function refreshOpeningPilotTask() {
-    const taskId = getOpeningPilotTaskId(openingPacket);
+  async function refreshOpeningPilotTask(taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket)) {
 
     try {
       const taskResult = await fetchOpeningConditionPilotTask(taskId).catch(() => null);
@@ -150,11 +154,18 @@ export function App() {
   }
 
   async function initializeOpeningPilotTask() {
+    const taskId =
+      openingPilotTask?.state === "archived"
+        ? getOpeningPilotRunTaskId(openingPacket)
+        : (openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket));
     setOpeningPilotBusy(true);
 
     try {
       const result = await initializeOpeningConditionPilotIntake(
-        buildOpeningPilotIntakeRequest(openingPacket, session?.username ?? "pilot-user"),
+        {
+          ...buildOpeningPilotIntakeRequest(openingPacket, session?.username ?? "pilot-user"),
+          taskId,
+        },
       );
       if (!result.ok || !result.task) {
         setOpeningPilotStatus(result.message ?? "资料包接入初始化失败");
@@ -299,7 +310,7 @@ export function App() {
 
   async function ensureOpeningDefaultKnowledgeBase() {
     const workspace = openingPacket.workspaceContext;
-    const taskId = getOpeningPilotTaskId(openingPacket);
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
     const knowledgeBaseId = `${openingPacket.workspaceId}-subcontract-kb`;
     setOpeningPilotBusy(true);
 
@@ -401,7 +412,7 @@ export function App() {
   }
 
   return (
-    <OpeningConditionWorkspaceShell
+      <OpeningConditionWorkspaceShell
       roleLabel={roleLabel}
       themeMode={themeMode}
       activePage={openingPage}
@@ -424,6 +435,7 @@ export function App() {
       onGenerateReport={() => void generateOpeningPilotReport()}
       onArchivePilotTask={() => void archiveOpeningPilotTask()}
       onTrialBootstrapComplete={handleOpeningTrialBootstrapComplete}
+      getNextOpeningPilotRunTaskId={() => getOpeningPilotRunTaskId(openingPacket)}
     />
   );
 }

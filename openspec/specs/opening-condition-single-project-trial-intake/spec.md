@@ -54,3 +54,40 @@ The system SHALL place real single-project trial intake controls inside the open
 #### Scenario: Operator uploads a ZIP package
 - **WHEN** the operator selects a ZIP material packet during trial bootstrap
 - **THEN** the system uses the existing upload channel and passes safe object references into the pilot bootstrap API rather than sending server-local paths or browser secrets
+
+### Requirement: Repeatable real-file intake diagnostics
+The single-project trial intake SHALL make real-file intake repeatable by returning and displaying bounded diagnostics for uploaded basis, checklist, and material packet objects.
+
+#### Scenario: Real-file bootstrap returns repeatable diagnostics
+- **WHEN** the operator uploads basis, checklist, and material packet files through the portal
+- **THEN** the backend returns safe object filenames, checklist-definition resolution, packet inventory resolution, manifest entry count, bounded sample entry names, provider readiness summary, and next action
+
+#### Scenario: Checklist adaptation is unresolved
+- **WHEN** the checklist object cannot be adapted by direct input, controlled template derivation, or existing-task fallback
+- **THEN** the task remains usable but diagnostics mark manual checklist definition as required before deterministic matching
+
+#### Scenario: ZIP manifest extraction falls back
+- **WHEN** ZIP manifest extraction cannot run or produces no entries
+- **THEN** the task stores fallback inventory entries from source objects and records a bounded fallback reason
+
+### Requirement: Browser upload is authoritative for real samples
+The trial intake SHALL rely on the existing browser upload channel for real sample files and SHALL NOT accept arbitrary local filesystem paths.
+
+#### Scenario: Operator selects files in the browser
+- **WHEN** the operator chooses real sample files using the file picker
+- **THEN** the frontend uploads them to object storage and passes only safe object refs to trial bootstrap
+
+#### Scenario: Local path is provided
+- **WHEN** an intake request attempts to use a raw local path instead of an uploaded object ref
+- **THEN** the backend rejects or ignores that path and returns only safe diagnostics
+
+### Requirement: Archived retry bootstrap handling
+The single-project trial intake SHALL create a fresh pilot run when retrying real-file bootstrap after the prior run has been archived.
+
+#### Scenario: Current task is archived before upload
+- **WHEN** the browser real-file intake panel receives an archived current pilot task
+- **THEN** it generates a run-specific task id instead of reusing `oc-pilot-{workspaceId}`
+
+#### Scenario: Current task is not archived before upload
+- **WHEN** the browser real-file intake panel has no current task or a non-archived current pilot task
+- **THEN** it may use the workspace base task id or current task id for bootstrap according to the existing intake behavior

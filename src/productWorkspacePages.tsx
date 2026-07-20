@@ -649,6 +649,7 @@ export function OpeningConditionWorkspaceShell({
   onGenerateReport,
   onArchivePilotTask,
   onTrialBootstrapComplete,
+  getNextOpeningPilotRunTaskId,
 }: {
   roleLabel: string;
   themeMode: ThemeMode;
@@ -672,6 +673,7 @@ export function OpeningConditionWorkspaceShell({
   onGenerateReport?: () => void;
   onArchivePilotTask?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  getNextOpeningPilotRunTaskId?: () => string;
 }) {
   const activeNav = openingWorkspaceNav.find((item) => item.id === activePage) ?? openingWorkspaceNav[0];
 
@@ -747,14 +749,15 @@ export function OpeningConditionWorkspaceShell({
               roleLabel={roleLabel}
               pilotTask={pilotTask}
               pilotReadiness={pilotReadiness}
-              pilotStatus={pilotStatus}
-              pilotBusy={pilotBusy}
-              onRefreshPilotTask={onRefreshPilotTask}
-              onInitializePilotTask={onInitializePilotTask}
-              onRunPilotMatch={onRunPilotMatch}
-              onEnsureKnowledgeBase={onEnsureKnowledgeBase}
-              onTrialBootstrapComplete={onTrialBootstrapComplete}
-            />
+            pilotStatus={pilotStatus}
+            pilotBusy={pilotBusy}
+            onRefreshPilotTask={onRefreshPilotTask}
+            onInitializePilotTask={onInitializePilotTask}
+            onRunPilotMatch={onRunPilotMatch}
+            onEnsureKnowledgeBase={onEnsureKnowledgeBase}
+            onTrialBootstrapComplete={onTrialBootstrapComplete}
+            getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
+          />
           )}
           {activePage === "basis-sets" && <OpeningConditionBasisAndMasterDataPage packet={packet} />}
           {activePage === "master-data" && <OpeningConditionBasisAndMasterDataPage packet={packet} defaultSection="master-data" />}
@@ -883,6 +886,7 @@ function OpeningConditionMaterialIntakePage({
   onRunPilotMatch,
   onEnsureKnowledgeBase,
   onTrialBootstrapComplete,
+  getNextOpeningPilotRunTaskId,
 }: {
   packet: OpeningConditionReviewPacket;
   roleLabel: string;
@@ -895,14 +899,17 @@ function OpeningConditionMaterialIntakePage({
   onRunPilotMatch?: () => void;
   onEnsureKnowledgeBase?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  getNextOpeningPilotRunTaskId?: () => string;
 }) {
   return (
     <div className="opening-condition-page">
       <OpeningConditionRealTrialIntakePanel
         packet={packet}
+        pilotTask={pilotTask}
         busy={pilotBusy}
         submittedBy={roleLabel}
         onComplete={onTrialBootstrapComplete}
+        getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
       />
       <OpeningConditionPilotExecutionPanel
         pilotTask={pilotTask}
@@ -914,6 +921,7 @@ function OpeningConditionMaterialIntakePage({
         onRunMatch={onRunPilotMatch}
         onEnsureKnowledgeBase={onEnsureKnowledgeBase}
       />
+      <OpeningConditionTrialPackageDiagnostics pilotTask={pilotTask} />
       <section className="opening-condition-grid">
         <article className="opening-panel">
           <span className="eyebrow">资料包职责</span>
@@ -984,12 +992,20 @@ function OpeningConditionCheckTasksPage({
 }) {
   const pilotItems = pilotTask?.checkItems ?? [];
   const pilotEvidence = pilotTask?.evidence ?? [];
+  const trialPackage = pilotTask?.trialPackage;
 
   return (
     <div className="opening-condition-grid">
       <section className="opening-panel opening-panel-wide">
         <span className="eyebrow">资料核查</span>
         <h2>只核查资料范围，现场核查先标记为不适用</h2>
+        {trialPackage && (
+          <div className="opening-condition-meta">
+            <span>Manifest {trialPackage.diagnostics.inventoryEntryCount}</span>
+            <span>Evidence {trialPackage.matching.evidenceCount}</span>
+            <span>Provider {trialPackage.providerReadiness?.status ?? "unknown"}</span>
+          </div>
+        )}
         <div className="opening-check-list">
           {pilotItems.length > 0
             ? pilotItems.map((item) => (
@@ -1078,11 +1094,19 @@ function OpeningConditionHumanReviewQueuePage({
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
 }) {
   const pilotReviewItems = pilotTask?.humanReviewQueue ?? [];
+  const trialPackage = pilotTask?.trialPackage;
 
   return (
     <section className="opening-panel opening-panel-wide">
       <span className="eyebrow">人工复核</span>
       <h2>签章、签名、勾选和低置信内容由人工裁定</h2>
+      {trialPackage && (
+        <div className="opening-condition-meta">
+          <span>待处理 {trialPackage.humanReview.blockingCount}</span>
+          <span>已确认 {trialPackage.humanReview.confirmed}</span>
+          <span>报告 {trialPackage.reportStatus}</span>
+        </div>
+      )}
       <div className="opening-record-list">
         {pilotReviewItems.length > 0
           ? pilotReviewItems.map((item) => (
@@ -1137,6 +1161,7 @@ function OpeningConditionReportArchivePage({
   onArchive?: () => void;
 }) {
   const reportAsset = pilotTask?.reportAsset;
+  const packageDiagnostics = reportAsset?.packageDiagnostics;
   const blockingReviewCount =
     pilotTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
   const canGenerateReport = Boolean(pilotTask && blockingReviewCount === 0 && !reportAsset);
@@ -1157,6 +1182,40 @@ function OpeningConditionReportArchivePage({
       </div>
       <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
       <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
+      {packageDiagnostics && (
+        <div className="opening-record-list">
+          <div>
+            <strong>试点输入</strong>
+            <span>
+              {packageDiagnostics.inputObjects.basisFileName ?? "未记录依据"} ·{" "}
+              {packageDiagnostics.inputObjects.checklistFileName ?? "未记录核查表"}
+            </span>
+            <p>{packageDiagnostics.inputObjects.sourceFileNames.slice(0, 6).join(" / ") || "未记录资料包文件"}</p>
+          </div>
+          <div>
+            <strong>核查与复核</strong>
+            <span>
+              核查 {packageDiagnostics.matching.total} 项 · 证据 {packageDiagnostics.matching.evidenceCount} 条 · 阻塞{" "}
+              {packageDiagnostics.humanReview.blockingCount} 项
+            </span>
+            <p>
+              人工确认 {packageDiagnostics.humanReview.confirmed} 项，修正 {packageDiagnostics.humanReview.corrected} 项，驳回{" "}
+              {packageDiagnostics.humanReview.rejected} 项，延期 {packageDiagnostics.humanReview.deferred} 项。
+            </p>
+          </div>
+          <div>
+            <strong>交付状态</strong>
+            <span>
+              Provider {packageDiagnostics.providerReadiness?.status ?? "未记录"} · 归档 {packageDiagnostics.archiveStatus}
+            </span>
+            <p>
+              {packageDiagnostics.blockingReasons.length > 0
+                ? packageDiagnostics.blockingReasons.join(" / ")
+                : "未记录阻塞原因。"}
+            </p>
+          </div>
+        </div>
+      )}
       {(onGenerateReport || onArchive) && (
         <div className="dialog-actions">
           {onGenerateReport && (
@@ -1172,6 +1231,68 @@ function OpeningConditionReportArchivePage({
         </div>
       )}
       {pilotTask && blockingReviewCount > 0 && <small>仍有 {blockingReviewCount} 项人工复核阻塞，处理后才能生成报告。</small>}
+    </section>
+  );
+}
+
+function OpeningConditionTrialPackageDiagnostics({ pilotTask }: { pilotTask?: OpeningConditionPilotTask | null }) {
+  const trialPackage = pilotTask?.trialPackage;
+  if (!trialPackage) {
+    return null;
+  }
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <div className="section-title row">
+        <div>
+          <span className="eyebrow">真实试点诊断</span>
+          <h2>本次样本运行摘要</h2>
+        </div>
+        <span className={`status-pill ${trialPackage.archiveStatus === "archived" ? "success" : "info"}`}>
+          {trialPackage.status}
+        </span>
+      </div>
+      <div className="opening-condition-meta">
+        <span>资料 {trialPackage.inputObjects.sourceCount} 个</span>
+        <span>Manifest {trialPackage.diagnostics.inventoryEntryCount} 项</span>
+        <span>核查表 {trialPackage.diagnostics.checklistDefinitionResolution ?? "未解析"}</span>
+        <span>Provider {trialPackage.providerReadiness?.status ?? "未记录"}</span>
+        <span>报告 {trialPackage.reportStatus}</span>
+      </div>
+      <div className="opening-record-list">
+        <div>
+          <strong>输入文件</strong>
+          <span>
+            {trialPackage.inputObjects.basisFileName ?? "未记录依据"} ·{" "}
+            {trialPackage.inputObjects.checklistFileName ?? "未记录核查表"}
+          </span>
+          <p>{trialPackage.inputObjects.sourceFileNames.slice(0, 8).join(" / ") || "未记录资料包对象。"}</p>
+        </div>
+        <div>
+          <strong>清单与适配</strong>
+          <span>
+            {trialPackage.diagnostics.inventoryResolution ?? "未记录 manifest 来源"} ·{" "}
+            {trialPackage.diagnostics.checklistDefinitionCount} 个核查定义
+          </span>
+          <p>
+            {trialPackage.diagnostics.manifestSampleNames.slice(0, 8).join(" / ") ||
+              trialPackage.diagnostics.inventoryFallbackReason ||
+              "暂无 manifest 样例。"}
+          </p>
+        </div>
+        <div>
+          <strong>执行结果</strong>
+          <span>
+            通过 {trialPackage.matching.passed} · 不通过 {trialPackage.matching.failed} · 待复核{" "}
+            {trialPackage.humanReview.blockingCount}
+          </span>
+          <p>
+            {trialPackage.blockingReasons.length > 0
+              ? trialPackage.blockingReasons.join(" / ")
+              : trialPackage.providerReadiness?.summary ?? "当前未记录阻塞原因。"}
+          </p>
+        </div>
+      </div>
     </section>
   );
 }
@@ -1281,14 +1402,18 @@ function buildOpeningConditionObjectRefFromUpload(
 
 function OpeningConditionRealTrialIntakePanel({
   packet,
+  pilotTask,
   busy,
   submittedBy,
   onComplete,
+  getNextOpeningPilotRunTaskId,
 }: {
   packet: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
   busy?: boolean;
   submittedBy: string;
   onComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  getNextOpeningPilotRunTaskId?: () => string;
 }) {
   const [basisFile, setBasisFile] = useState<File | null>(null);
   const [checklistFile, setChecklistFile] = useState<File | null>(null);
@@ -1321,8 +1446,12 @@ function OpeningConditionRealTrialIntakePanel({
 
       setMessage("资料已上传，正在初始化平台试点任务...");
       const workspace = packet.workspaceContext;
+      const taskId =
+        pilotTask?.state === "archived"
+          ? (getNextOpeningPilotRunTaskId?.() ?? `oc-pilot-${packet.workspaceId}-run-${Date.now()}`)
+          : (pilotTask?.id ?? `oc-pilot-${packet.workspaceId}`);
       const result = await bootstrapOpeningConditionPilotTrial({
-        taskId: `oc-pilot-${packet.workspaceId}`,
+        taskId,
         context: {
           workspaceId: packet.workspaceId,
           tenantId: workspace.tenantName || "tenant-opening-condition",
@@ -1343,7 +1472,7 @@ function OpeningConditionRealTrialIntakePanel({
       }
 
       const inventoryCount = result.packet?.inventoryEntries.length ?? 0;
-      setMessage(`真实试点任务已初始化，资料包清单 ${inventoryCount} 项，当前状态 ${result.task.state}。`);
+      setMessage(`真实试点任务已初始化，任务 ${result.task.id}，资料包清单 ${inventoryCount} 项，当前状态 ${result.task.state}。`);
       onComplete?.(result);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "单项目试点初始化失败。");

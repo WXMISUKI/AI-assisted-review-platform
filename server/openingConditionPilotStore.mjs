@@ -510,6 +510,33 @@ function normalizeEvidence(value, taskId) {
     masterDataIds: Array.isArray(value.masterDataIds)
       ? value.masterDataIds.map((item) => normalizeString(item, "", 180)).filter(Boolean).slice(0, 50)
       : [],
+    providerHandoffs: Array.isArray(value.providerHandoffs)
+      ? value.providerHandoffs
+          .map((item) => normalizeProviderHandoff(item))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [],
+  });
+}
+
+function normalizeProviderHandoff(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const provider = normalizeString(value.provider, "", 80);
+  const state = normalizeString(value.state, "", 80);
+  if (!provider || !state) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    provider,
+    jobId: normalizeString(value.jobId, "", 180) || undefined,
+    state,
+    summary: normalizeString(value.summary, "", 500) || undefined,
+    documentRefId: normalizeString(value.documentRefId, "", 180) || undefined,
+    updatedAt: normalizeString(value.updatedAt, new Date().toISOString(), 80),
   });
 }
 
@@ -812,12 +839,108 @@ function normalizeReportAsset(value, taskId) {
       humanReview: normalizeNumber(value.summary?.humanReview, 0, 10000),
     },
     objectRef: normalizeObjectRef(value.objectRef) ?? undefined,
+    packageDiagnostics: normalizeReportPackageDiagnostics(value.packageDiagnostics),
     disclaimer: normalizeString(
       value.disclaimer,
       "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
       500,
     ),
     createdAt: normalizeString(value.createdAt, new Date().toISOString(), 80),
+  });
+}
+
+function normalizeReportPackageDiagnostics(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    inputObjects: normalizeTrialPackageInputObjects(value.inputObjects),
+    matching: {
+      total: normalizeNumber(value.matching?.total, 0, 10000),
+      passed: normalizeNumber(value.matching?.passed, 0, 10000),
+      failed: normalizeNumber(value.matching?.failed, 0, 10000),
+      warnings: normalizeNumber(value.matching?.warnings, 0, 10000),
+      humanReview: normalizeNumber(value.matching?.humanReview, 0, 10000),
+      evidenceCount: normalizeNumber(value.matching?.evidenceCount, 0, 10000),
+    },
+    humanReview: {
+      total: normalizeNumber(value.humanReview?.total, 0, 10000),
+      blockingCount: normalizeNumber(value.humanReview?.blockingCount, 0, 10000),
+      confirmed: normalizeNumber(value.humanReview?.confirmed, 0, 10000),
+      corrected: normalizeNumber(value.humanReview?.corrected, 0, 10000),
+      rejected: normalizeNumber(value.humanReview?.rejected, 0, 10000),
+      deferred: normalizeNumber(value.humanReview?.deferred, 0, 10000),
+    },
+    providerReadiness: normalizeTrialPackageProviderReadiness(value.providerReadiness),
+    blockingReasons: normalizeStringList(value.blockingReasons, 30, 240),
+    archiveStatus: ["pending", "ready", "archived"].includes(value.archiveStatus) ? value.archiveStatus : "pending",
+    generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
+  });
+}
+
+function normalizeTrialPackageInputObjects(value) {
+  const sourceFileNames = normalizeStringList(value?.sourceFileNames, 30, 240);
+  return sanitizeOpeningConditionPilotValue({
+    basisFileName: normalizeString(value?.basisFileName, "", 240) || undefined,
+    checklistFileName: normalizeString(value?.checklistFileName, "", 240) || undefined,
+    sourceFileNames,
+    sourceCount: normalizeNumber(value?.sourceCount, sourceFileNames.length, MAX_OBJECTS_PER_PACKET),
+  });
+}
+
+function normalizeTrialPackageProviderReadiness(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    provider: normalizeString(value.provider, "", 80) || undefined,
+    status: normalizeString(value.status, "missing", 80),
+    summary: normalizeString(value.summary, "", 500) || undefined,
+  });
+}
+
+function normalizeTrialPackageSummary(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    taskId: normalizeString(value.taskId, "", 180),
+    workspaceId: normalizeString(value.workspaceId, "", 160),
+    status: normalizeState(value.status, "draft"),
+    submittedBy: normalizeString(value.submittedBy, "", 160) || undefined,
+    inputObjects: normalizeTrialPackageInputObjects(value.inputObjects),
+    diagnostics: {
+      checklistDefinitionResolution: normalizeString(value.diagnostics?.checklistDefinitionResolution, "", 120) || undefined,
+      checklistDefinitionCount: normalizeNumber(value.diagnostics?.checklistDefinitionCount, 0, MAX_CHECKLIST_ITEMS),
+      inventoryResolution: normalizeString(value.diagnostics?.inventoryResolution, "", 120) || undefined,
+      inventoryEntryCount: normalizeNumber(value.diagnostics?.inventoryEntryCount, 0, MAX_PACKET_INVENTORY_ENTRIES),
+      inventoryFallbackReason: normalizeString(value.diagnostics?.inventoryFallbackReason, "", 160) || undefined,
+      manifestSampleNames: normalizeStringList(value.diagnostics?.manifestSampleNames, 30, 240),
+    },
+    providerReadiness: normalizeTrialPackageProviderReadiness(value.providerReadiness),
+    matching: {
+      total: normalizeNumber(value.matching?.total, 0, 10000),
+      passed: normalizeNumber(value.matching?.passed, 0, 10000),
+      failed: normalizeNumber(value.matching?.failed, 0, 10000),
+      warnings: normalizeNumber(value.matching?.warnings, 0, 10000),
+      humanReview: normalizeNumber(value.matching?.humanReview, 0, 10000),
+      evidenceCount: normalizeNumber(value.matching?.evidenceCount, 0, 10000),
+    },
+    humanReview: {
+      total: normalizeNumber(value.humanReview?.total, 0, 10000),
+      blockingCount: normalizeNumber(value.humanReview?.blockingCount, 0, 10000),
+      confirmed: normalizeNumber(value.humanReview?.confirmed, 0, 10000),
+      corrected: normalizeNumber(value.humanReview?.corrected, 0, 10000),
+      rejected: normalizeNumber(value.humanReview?.rejected, 0, 10000),
+      deferred: normalizeNumber(value.humanReview?.deferred, 0, 10000),
+    },
+    blockingReasons: normalizeStringList(value.blockingReasons, 30, 240),
+    reportStatus: ["missing", "draft", "ready", "archived"].includes(value.reportStatus) ? value.reportStatus : "missing",
+    archiveStatus: ["pending", "archived"].includes(value.archiveStatus) ? value.archiveStatus : "pending",
+    updatedAt: normalizeString(value.updatedAt, new Date().toISOString(), 80),
   });
 }
 
@@ -953,6 +1076,121 @@ export function deriveOpeningConditionPilotPreflightReadiness(input = {}) {
   });
 }
 
+function findLatestEventDiagnostics(task, type) {
+  const event = [...(task.events ?? [])].reverse().find((item) => item.type === type);
+  return isPlainObject(event?.safeDiagnostics) ? event.safeDiagnostics : {};
+}
+
+function summarizeHumanReviewQueue(queue = []) {
+  return queue.reduce(
+    (summary, item) => {
+      summary.total += 1;
+      if (isBlockingHumanReviewStatus(item.status)) summary.blockingCount += 1;
+      if (item.status === "confirmed") summary.confirmed += 1;
+      if (item.status === "corrected") summary.corrected += 1;
+      if (item.status === "rejected") summary.rejected += 1;
+      if (item.status === "deferred") summary.deferred += 1;
+      return summary;
+    },
+    {
+      total: 0,
+      blockingCount: 0,
+      confirmed: 0,
+      corrected: 0,
+      rejected: 0,
+      deferred: 0,
+    },
+  );
+}
+
+function deriveTrialPackageProviderReadiness(task) {
+  const providerRefs = task.knowledgeBaseRef?.providerRefs ?? [];
+  const primaryRef = providerRefs[0];
+  const status =
+    task.preflightReadiness?.knowledgeBase ??
+    task.knowledgeBaseRef?.providerSyncStatus ??
+    (task.knowledgeBaseRef?.status === "ready" ? "ready" : "missing");
+
+  return normalizeTrialPackageProviderReadiness({
+    provider: primaryRef?.provider ?? "platform",
+    status,
+    summary: primaryRef?.summary ?? task.knowledgeBaseRef?.summary ?? task.preflightReadiness?.nextAction,
+  });
+}
+
+function deriveTrialPackageSummary(task) {
+  const intakeDiagnostics = findLatestEventDiagnostics(task, "task.intake_initialized");
+  const createdDiagnostics = findLatestEventDiagnostics(task, "task.created");
+  const packetDiagnostics = findLatestEventDiagnostics(task, "packet.uploaded");
+  const diagnosticsSource = {
+    ...createdDiagnostics,
+    ...intakeDiagnostics,
+    ...packetDiagnostics,
+  };
+  const matching = summarizePilotCheckItems(task.checkItems ?? []);
+  const humanReview = summarizeHumanReviewQueue(task.humanReviewQueue ?? []);
+  const preflightReadiness = task.preflightReadiness ?? deriveOpeningConditionPilotPreflightReadiness(task);
+
+  return normalizeTrialPackageSummary({
+    taskId: task.id,
+    workspaceId: task.context?.workspaceId,
+    status: task.state,
+    submittedBy: task.packet?.submittedBy,
+    inputObjects: {
+      basisFileName: task.basisVersion?.sourceObject?.fileName,
+      checklistFileName: task.packet?.checklistObject?.fileName,
+      sourceFileNames: task.packet?.sourceObjects?.map((item) => item.fileName) ?? [],
+      sourceCount: task.packet?.sourceObjects?.length ?? 0,
+    },
+    diagnostics: {
+      checklistDefinitionResolution: diagnosticsSource.checklistDefinitionResolution,
+      checklistDefinitionCount: diagnosticsSource.checklistDefinitionCount ?? task.checklistDefinition?.length ?? 0,
+      inventoryResolution: diagnosticsSource.inventoryResolution,
+      inventoryEntryCount: diagnosticsSource.inventoryEntryCount ?? task.packet?.inventoryEntries?.length ?? 0,
+      inventoryFallbackReason: diagnosticsSource.inventoryFallbackReason,
+      manifestSampleNames: diagnosticsSource.inventoryFileNames ?? task.packet?.inventoryEntries?.map((item) => item.fileName) ?? [],
+    },
+    providerReadiness: deriveTrialPackageProviderReadiness({
+      ...task,
+      preflightReadiness,
+    }),
+    matching: {
+      ...matching,
+      evidenceCount: task.evidence?.length ?? 0,
+    },
+    humanReview,
+    blockingReasons: preflightReadiness.blockingReasons ?? [],
+    reportStatus: task.reportAsset?.status ?? "missing",
+    archiveStatus: task.state === "archived" ? "archived" : "pending",
+    updatedAt: task.updatedAt,
+  });
+}
+
+function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") {
+  const trialPackage = task.trialPackage ?? deriveTrialPackageSummary(task);
+  return normalizeReportPackageDiagnostics({
+    inputObjects: {
+      ...trialPackage.inputObjects,
+      basisFileName: trialPackage.inputObjects?.basisFileName ?? task.basisVersion?.sourceObject?.fileName,
+      checklistFileName: trialPackage.inputObjects?.checklistFileName ?? task.packet?.checklistObject?.fileName,
+      sourceFileNames:
+        trialPackage.inputObjects?.sourceFileNames?.length > 0
+          ? trialPackage.inputObjects.sourceFileNames
+          : task.packet?.sourceObjects?.map((item) => item.fileName) ?? [],
+      sourceCount: trialPackage.inputObjects?.sourceCount || task.packet?.sourceObjects?.length || 0,
+    },
+    matching: {
+      ...summary,
+      evidenceCount: task.evidence?.length ?? 0,
+    },
+    humanReview: summarizeHumanReviewQueue(task.humanReviewQueue ?? []),
+    providerReadiness: trialPackage.providerReadiness,
+    blockingReasons: trialPackage.blockingReasons,
+    archiveStatus,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
 export function normalizeOpeningConditionPilotTask(value) {
   if (!isPlainObject(value)) {
     return null;
@@ -1003,10 +1241,15 @@ export function normalizeOpeningConditionPilotTask(value) {
     createdAt: normalizeString(value.createdAt, now, 80),
     updatedAt: normalizeString(value.updatedAt, now, 80),
   };
+  const preflightReadiness = deriveOpeningConditionPilotPreflightReadiness(normalizedTask);
+  const taskWithReadiness = {
+    ...normalizedTask,
+    preflightReadiness,
+  };
 
   return sanitizeOpeningConditionPilotValue({
-    ...normalizedTask,
-    preflightReadiness: deriveOpeningConditionPilotPreflightReadiness(normalizedTask),
+    ...taskWithReadiness,
+    trialPackage: deriveTrialPackageSummary(taskWithReadiness),
   });
 }
 
@@ -2685,7 +2928,7 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
       };
     }
 
-    if (!["report_ready", "archived"].includes(existingTask.state)) {
+    if (existingTask.state !== "report_ready") {
       return {
         snapshot,
         value: {
@@ -2706,6 +2949,7 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
         status: "ready",
         summary,
         objectRef: input.objectRef,
+        packageDiagnostics: input.packageDiagnostics ?? deriveReportPackageDiagnostics(existingTask, summary, "ready"),
         disclaimer:
           input.disclaimer ??
           "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
@@ -2801,6 +3045,10 @@ export async function archiveOpeningConditionPilotTask(taskId, input = {}, optio
       {
         ...existingTask.reportAsset,
         status: "archived",
+        packageDiagnostics: {
+          ...existingTask.reportAsset.packageDiagnostics,
+          archiveStatus: "archived",
+        },
       },
       taskId,
     );

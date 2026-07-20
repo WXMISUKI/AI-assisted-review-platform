@@ -136,6 +136,16 @@ export interface OpeningConditionPilotEvidence {
   extractedValue?: string;
   confidence: "high" | "medium" | "low";
   masterDataIds: string[];
+  providerHandoffs?: OpeningConditionPilotProviderHandoff[];
+}
+
+export interface OpeningConditionPilotProviderHandoff {
+  provider: string;
+  jobId?: string;
+  state: string;
+  summary?: string;
+  documentRefId?: string;
+  updatedAt: string;
 }
 
 export type OpeningConditionPilotScopeStatus = "in_scope" | "out_of_scope";
@@ -244,8 +254,75 @@ export interface OpeningConditionPilotReportAsset {
     humanReview: number;
   };
   objectRef?: OpeningConditionObjectRef;
+  packageDiagnostics?: OpeningConditionPilotReportPackageDiagnostics;
   disclaimer: string;
   createdAt: string;
+}
+
+export interface OpeningConditionPilotTrialPackageInputObjects {
+  basisFileName?: string;
+  checklistFileName?: string;
+  sourceFileNames: string[];
+  sourceCount: number;
+}
+
+export interface OpeningConditionPilotTrialPackageDiagnostics {
+  checklistDefinitionResolution?: string;
+  checklistDefinitionCount: number;
+  inventoryResolution?: string;
+  inventoryEntryCount: number;
+  inventoryFallbackReason?: string;
+  manifestSampleNames: string[];
+}
+
+export interface OpeningConditionPilotProviderReadinessSummary {
+  provider?: string;
+  status: string;
+  summary?: string;
+}
+
+export interface OpeningConditionPilotMatchingSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  warnings: number;
+  humanReview: number;
+  evidenceCount: number;
+}
+
+export interface OpeningConditionPilotHumanReviewSummary {
+  total: number;
+  blockingCount: number;
+  confirmed: number;
+  corrected: number;
+  rejected: number;
+  deferred: number;
+}
+
+export interface OpeningConditionPilotTrialPackage {
+  taskId: string;
+  workspaceId: string;
+  status: OpeningConditionPilotTaskState;
+  submittedBy?: string;
+  inputObjects: OpeningConditionPilotTrialPackageInputObjects;
+  diagnostics: OpeningConditionPilotTrialPackageDiagnostics;
+  providerReadiness?: OpeningConditionPilotProviderReadinessSummary;
+  matching: OpeningConditionPilotMatchingSummary;
+  humanReview: OpeningConditionPilotHumanReviewSummary;
+  blockingReasons: string[];
+  reportStatus: "missing" | "draft" | "ready" | "archived";
+  archiveStatus: "pending" | "archived";
+  updatedAt: string;
+}
+
+export interface OpeningConditionPilotReportPackageDiagnostics {
+  inputObjects: OpeningConditionPilotTrialPackageInputObjects;
+  matching: OpeningConditionPilotMatchingSummary;
+  humanReview: OpeningConditionPilotHumanReviewSummary;
+  providerReadiness?: OpeningConditionPilotProviderReadinessSummary;
+  blockingReasons: string[];
+  archiveStatus: "pending" | "ready" | "archived";
+  generatedAt: string;
 }
 
 export interface OpeningConditionPilotTask {
@@ -262,6 +339,7 @@ export interface OpeningConditionPilotTask {
   evidence: OpeningConditionPilotEvidence[];
   humanReviewQueue: OpeningConditionPilotHumanReviewItem[];
   reportAsset?: OpeningConditionPilotReportAsset;
+  trialPackage?: OpeningConditionPilotTrialPackage;
   events: OpeningConditionPilotTaskEvent[];
   createdAt: string;
   updatedAt: string;
