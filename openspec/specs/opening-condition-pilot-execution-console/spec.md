@@ -111,6 +111,14 @@ The opening-condition execution console SHALL keep operator actions scoped to th
 - **WHEN** real-file bootstrap creates a new run-specific task
 - **THEN** the material-intake page displays the returned task id and state as the active pilot run
 
+#### Scenario: Refresh prefers current runnable run
+- **WHEN** the current workspace has both archived tasks and a newer non-archived run task
+- **THEN** the execution console refreshes onto the latest non-archived run instead of staying bound to an archived task
+
+#### Scenario: Archived task becomes read-only
+- **WHEN** the currently displayed backend task is archived
+- **THEN** the execution console disables formal matching and other follow-on mutation actions and guides the operator to upload and initialize a new run
+
 ### Requirement: Human-review delivery guidance
 The opening-condition execution console SHALL show task-owned human-review progress and next action guidance after formal matching.
 

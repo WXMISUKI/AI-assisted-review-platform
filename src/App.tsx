@@ -11,16 +11,22 @@ import {
   archiveOpeningConditionPilotTask,
   bindOpeningConditionPilotKnowledgeBase,
   decideOpeningConditionPilotHumanReview,
+  fetchOpeningConditionPilotBasis,
+  fetchOpeningConditionPilotKnowledgeBases,
+  fetchOpeningConditionPilotMasterData,
+  fetchOpeningConditionPilotTasks,
   fetchOpeningConditionPilotTask,
   fetchOpeningConditionPilotTaskReadiness,
   generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotIntake,
   runOpeningConditionPilotMatch,
   upsertOpeningConditionPilotKnowledgeBase,
+  type OpeningConditionPilotBasisRecord,
   type OpeningConditionPilotIntakeInitResult,
+  type OpeningConditionPilotMasterDataRecord,
   type OpeningConditionPilotReadinessResult,
 } from "./domain/backendConnectivity";
-import type { OpeningConditionPilotTask } from "./domain/openingConditionPilot";
+import type { OpeningConditionPilotKnowledgeBaseRef, OpeningConditionPilotTask } from "./domain/openingConditionPilot";
 import { getAccessibleProductPortals, type ProductPortalId } from "./domain/productPortal";
 import {
   getOpeningConditionWorkspacePacket,
@@ -36,6 +42,16 @@ function getOpeningPilotTaskId(packet: OpeningConditionReviewPacket) {
 function getOpeningPilotRunTaskId(packet: OpeningConditionReviewPacket) {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
   return `${getOpeningPilotTaskId(packet)}-run-${timestamp}`;
+}
+
+function isOpeningPilotTerminalState(state?: OpeningConditionPilotTask["state"] | null) {
+  return state === "archived" || state === "failed" || state === "canceled";
+}
+
+function compareOpeningPilotTaskRecency(left: OpeningConditionPilotTask, right: OpeningConditionPilotTask) {
+  const leftTime = Date.parse(left.updatedAt || left.createdAt || "");
+  const rightTime = Date.parse(right.updatedAt || right.createdAt || "");
+  return rightTime - leftTime;
 }
 
 function buildOpeningPilotIntakeRequest(packet: OpeningConditionReviewPacket, submittedBy = "pilot-user") {
@@ -92,6 +108,9 @@ export function App() {
   const [openingPilotTask, setOpeningPilotTask] = useState<OpeningConditionPilotTask | null>(null);
   const [openingPilotReadiness, setOpeningPilotReadiness] =
     useState<OpeningConditionPilotReadinessResult | null>(null);
+  const [openingPilotBasisRecords, setOpeningPilotBasisRecords] = useState<OpeningConditionPilotBasisRecord[]>([]);
+  const [openingPilotMasterDataRecords, setOpeningPilotMasterDataRecords] = useState<OpeningConditionPilotMasterDataRecord[]>([]);
+  const [openingPilotKnowledgeBases, setOpeningPilotKnowledgeBases] = useState<OpeningConditionPilotKnowledgeBaseRef[]>([]);
   const [openingPilotStatus, setOpeningPilotStatus] = useState("试点任务尚未初始化，可先进入资料接入页创建任务。");
   const [openingPilotBusy, setOpeningPilotBusy] = useState(false);
 
@@ -108,7 +127,7 @@ export function App() {
       return;
     }
 
-    void refreshOpeningPilotTask();
+    void refreshOpeningPilotTask(undefined, { resolveCurrentRun: true });
   }, [activeProduct, openingPacket.workspaceId]);
 
   function toggleTheme() {
@@ -130,24 +149,82 @@ export function App() {
     setOpeningPacket(getOpeningConditionWorkspacePacket(workspaceId));
     setOpeningPilotTask(null);
     setOpeningPilotReadiness(null);
+    setOpeningPilotBasisRecords([]);
+    setOpeningPilotMasterDataRecords([]);
+    setOpeningPilotKnowledgeBases([]);
     setOpeningPilotStatus("已切换工作区，请进入资料接入页同步或初始化该工作区的试点任务。");
   }
 
-  async function refreshOpeningPilotTask(taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket)) {
+  async function refreshOpeningWorkspaceFacts(workspaceId = openingPacket.workspaceId) {
+    const [basisResult, masterDataResult, knowledgeBaseResult] = await Promise.all([
+      fetchOpeningConditionPilotBasis(workspaceId).catch(() => null),
+      fetchOpeningConditionPilotMasterData(workspaceId).catch(() => null),
+      fetchOpeningConditionPilotKnowledgeBases(workspaceId).catch(() => null),
+    ]);
+
+    setOpeningPilotBasisRecords(basisResult?.ok ? basisResult.basisVersions : []);
+    setOpeningPilotMasterDataRecords(masterDataResult?.ok ? masterDataResult.masterDataRecords : []);
+    setOpeningPilotKnowledgeBases(knowledgeBaseResult?.ok ? knowledgeBaseResult.knowledgeBases ?? [] : []);
+  }
+
+  async function resolveOpeningPilotTaskId(preferredTaskId?: string) {
+    const listed = await fetchOpeningConditionPilotTasks().catch(() => null);
+    const workspaceTasks =
+      listed?.ok && Array.isArray(listed.tasks)
+        ? listed.tasks
+            .filter((task) => task.context.workspaceId === openingPacket.workspaceId)
+            .sort(compareOpeningPilotTaskRecency)
+        : [];
+
+    if (workspaceTasks.length === 0) {
+      return preferredTaskId ?? getOpeningPilotTaskId(openingPacket);
+    }
+
+    const preferredTask = preferredTaskId ? workspaceTasks.find((task) => task.id === preferredTaskId) : null;
+    if (preferredTask && !isOpeningPilotTerminalState(preferredTask.state)) {
+      return preferredTask.id;
+    }
+
+    const runnableTask = workspaceTasks.find((task) => !isOpeningPilotTerminalState(task.state));
+    if (runnableTask) {
+      return runnableTask.id;
+    }
+
+    return preferredTask?.id ?? workspaceTasks[0]?.id ?? getOpeningPilotTaskId(openingPacket);
+  }
+
+  async function refreshOpeningPilotTask(
+    taskId?: string,
+    options?: {
+      resolveCurrentRun?: boolean;
+      preserveStatus?: boolean;
+    },
+  ) {
+    const resolvedTaskId =
+      taskId ?? (options?.resolveCurrentRun ? await resolveOpeningPilotTaskId(openingPilotTask?.id) : openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket));
 
     try {
-      const taskResult = await fetchOpeningConditionPilotTask(taskId).catch(() => null);
+      await refreshOpeningWorkspaceFacts(openingPacket.workspaceId);
+      const taskResult = await fetchOpeningConditionPilotTask(resolvedTaskId).catch(() => null);
       if (!taskResult?.ok || !taskResult.task) {
         setOpeningPilotTask(null);
         setOpeningPilotReadiness(null);
-        setOpeningPilotStatus("试点任务尚未初始化，可先进入资料接入页创建任务。");
+        if (!options?.preserveStatus) {
+          setOpeningPilotStatus("试点任务尚未初始化，可先进入资料接入页创建任务。");
+        }
         return;
       }
 
-      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskResult.task.id).catch(() => null);
       setOpeningPilotTask(taskResult.task);
       setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : null);
-      setOpeningPilotStatus(`试点任务已同步 · 当前状态 ${taskResult.task.state}`);
+      if (!options?.preserveStatus) {
+        setOpeningPilotStatus(
+          taskResult.task.state === "archived"
+            ? "当前展示的是已归档任务，可查看历史结果；如需继续联调，请重新上传并初始化新 run。"
+            : `试点任务已同步 · 当前状态 ${taskResult.task.state}`,
+        );
+      }
     } catch (error) {
       setOpeningPilotStatus(error instanceof Error ? error.message : "试点任务刷新失败");
     }
@@ -202,12 +279,25 @@ export function App() {
   }
 
   async function runOpeningPilotFormalMatch() {
-    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前工作区尚未初始化试点任务，请先上传并初始化资料。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      await refreshOpeningPilotTask(undefined, { resolveCurrentRun: true, preserveStatus: true });
+      setOpeningPilotStatus("当前任务已归档，不能继续执行正式核查。请重新上传并初始化新 run，或刷新后切换到当前未归档任务。");
+      return;
+    }
+
+    const taskId = openingPilotTask.id;
     setOpeningPilotBusy(true);
 
     try {
       const result = await runOpeningConditionPilotMatch(taskId);
       if (!result.ok || !result.task) {
+        if (result.status === "invalid_state") {
+          await refreshOpeningPilotTask(undefined, { resolveCurrentRun: true, preserveStatus: true });
+        }
         setOpeningPilotStatus(result.message ?? "正式核查执行失败");
         return;
       }
@@ -231,7 +321,16 @@ export function App() {
     reviewId: string,
     decision: "confirm" | "correct" | "reject" | "defer",
   ) {
-    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可处理的人工复核任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，仅可查看历史复核记录；如需继续处理，请初始化新的试点 run。");
+      return;
+    }
+
+    const taskId = openingPilotTask.id;
     setOpeningPilotBusy(true);
 
     try {
@@ -263,7 +362,16 @@ export function App() {
   }
 
   async function generateOpeningPilotReport() {
-    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可生成报告的试点任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，报告资产只读展示；如需再次运行，请初始化新的试点 run。");
+      return;
+    }
+
+    const taskId = openingPilotTask.id;
     setOpeningPilotBusy(true);
 
     try {
@@ -287,7 +395,12 @@ export function App() {
   }
 
   async function archiveOpeningPilotTask() {
-    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可归档的试点任务。");
+      return;
+    }
+
+    const taskId = openingPilotTask.id;
     setOpeningPilotBusy(true);
 
     try {
@@ -310,7 +423,16 @@ export function App() {
 
   async function ensureOpeningDefaultKnowledgeBase() {
     const workspace = openingPacket.workspaceContext;
-    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("请先初始化试点任务，再绑定试点知识库。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，不能再绑定知识库；请初始化新的试点 run。");
+      return;
+    }
+
+    const taskId = openingPilotTask.id;
     const knowledgeBaseId = `${openingPacket.workspaceId}-subcontract-kb`;
     setOpeningPilotBusy(true);
 
@@ -336,6 +458,7 @@ export function App() {
         return;
       }
 
+      await refreshOpeningWorkspaceFacts(openingPacket.workspaceId);
       setOpeningPilotTask(bound.task ?? openingPilotTask);
       setOpeningPilotReadiness(
         bound.preflightReadiness
@@ -379,6 +502,7 @@ export function App() {
     setOpeningPilotStatus(
       `真实试点任务已初始化 · 清单 ${result.packet?.inventoryEntries.length ?? 0} 项 · 状态 ${result.task.state}`,
     );
+    void refreshOpeningWorkspaceFacts(result.task.context.workspaceId);
   }
 
   if (!session) {
@@ -420,6 +544,9 @@ export function App() {
       selectedWorkspaceId={openingPacket.workspaceId}
       packet={openingPacket}
       pilotTask={openingPilotTask}
+      pilotBasisRecords={openingPilotBasisRecords}
+      pilotMasterDataRecords={openingPilotMasterDataRecords}
+      pilotKnowledgeBases={openingPilotKnowledgeBases}
       pilotReadiness={openingPilotReadiness}
       pilotStatus={openingPilotStatus}
       pilotBusy={openingPilotBusy}

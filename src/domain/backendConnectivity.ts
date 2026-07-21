@@ -685,6 +685,11 @@ export async function upsertOpeningConditionPilotTask(taskId: string, task: Part
   return readJson<OpeningConditionPilotTaskResult>(response);
 }
 
+export async function fetchOpeningConditionPilotTasks() {
+  const response = await fetch("/api/opening-condition/pilot-tasks");
+  return readJson<OpeningConditionPilotTasksResult>(response);
+}
+
 export async function fetchOpeningConditionPilotTask(taskId: string) {
   const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}`);
   return readJson<OpeningConditionPilotTaskResult>(response);

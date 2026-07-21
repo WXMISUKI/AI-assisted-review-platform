@@ -21,7 +21,9 @@ import { ReviewWorkbenchPage } from "./ReviewWorkbenchPage";
 import {
   bootstrapOpeningConditionPilotTrial,
   uploadMinioDocument,
+  type OpeningConditionPilotBasisRecord,
   type OpeningConditionPilotIntakeInitResult,
+  type OpeningConditionPilotMasterDataRecord,
   type OpeningConditionPilotReadinessResult,
 } from "./domain/backendConnectivity";
 import type { ProductLauncherEntry, ProductPortalId } from "./domain/productPortal";
@@ -35,7 +37,7 @@ import {
   type OpeningConditionReviewPacket,
   type OpeningConditionWorkspace,
 } from "./domain/openingConditionReview";
-import type { OpeningConditionPilotTask } from "./domain/openingConditionPilot";
+import type { OpeningConditionPilotKnowledgeBaseRef, OpeningConditionPilotTask } from "./domain/openingConditionPilot";
 import { createSeedReviewTasks } from "./domain/mockReviewTaskSeeds";
 import type { ReviewTask } from "./domain/reviewTypes";
 
@@ -634,6 +636,9 @@ export function OpeningConditionWorkspaceShell({
   selectedWorkspaceId,
   packet,
   pilotTask,
+  pilotBasisRecords,
+  pilotMasterDataRecords,
+  pilotKnowledgeBases,
   pilotReadiness,
   pilotStatus,
   pilotBusy,
@@ -658,6 +663,9 @@ export function OpeningConditionWorkspaceShell({
   selectedWorkspaceId: string;
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
+  pilotBasisRecords?: OpeningConditionPilotBasisRecord[];
+  pilotMasterDataRecords?: OpeningConditionPilotMasterDataRecord[];
+  pilotKnowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
   pilotStatus: string;
   pilotBusy?: boolean;
@@ -748,6 +756,9 @@ export function OpeningConditionWorkspaceShell({
               packet={packet}
               roleLabel={roleLabel}
               pilotTask={pilotTask}
+              pilotBasisRecords={pilotBasisRecords}
+              pilotMasterDataRecords={pilotMasterDataRecords}
+              pilotKnowledgeBases={pilotKnowledgeBases}
               pilotReadiness={pilotReadiness}
             pilotStatus={pilotStatus}
             pilotBusy={pilotBusy}
@@ -759,8 +770,25 @@ export function OpeningConditionWorkspaceShell({
             getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
           />
           )}
-          {activePage === "basis-sets" && <OpeningConditionBasisAndMasterDataPage packet={packet} />}
-          {activePage === "master-data" && <OpeningConditionBasisAndMasterDataPage packet={packet} defaultSection="master-data" />}
+          {activePage === "basis-sets" && (
+            <OpeningConditionBasisAndMasterDataPage
+              packet={packet}
+              pilotTask={pilotTask}
+              basisRecords={pilotBasisRecords}
+              masterDataRecords={pilotMasterDataRecords}
+              knowledgeBases={pilotKnowledgeBases}
+            />
+          )}
+          {activePage === "master-data" && (
+            <OpeningConditionBasisAndMasterDataPage
+              packet={packet}
+              pilotTask={pilotTask}
+              basisRecords={pilotBasisRecords}
+              masterDataRecords={pilotMasterDataRecords}
+              knowledgeBases={pilotKnowledgeBases}
+              defaultSection="master-data"
+            />
+          )}
           {activePage === "check-tasks" && <OpeningConditionCheckTasksPage packet={packet} pilotTask={pilotTask} />}
           {activePage === "human-review" && (
             <OpeningConditionHumanReviewQueuePage
@@ -878,6 +906,9 @@ function OpeningConditionMaterialIntakePage({
   packet,
   roleLabel,
   pilotTask,
+  pilotBasisRecords,
+  pilotMasterDataRecords,
+  pilotKnowledgeBases,
   pilotReadiness,
   pilotStatus,
   pilotBusy,
@@ -891,6 +922,9 @@ function OpeningConditionMaterialIntakePage({
   packet: OpeningConditionReviewPacket;
   roleLabel: string;
   pilotTask?: OpeningConditionPilotTask | null;
+  pilotBasisRecords?: OpeningConditionPilotBasisRecord[];
+  pilotMasterDataRecords?: OpeningConditionPilotMasterDataRecord[];
+  pilotKnowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
   pilotStatus: string;
   pilotBusy?: boolean;
@@ -921,6 +955,13 @@ function OpeningConditionMaterialIntakePage({
         onRunMatch={onRunPilotMatch}
         onEnsureKnowledgeBase={onEnsureKnowledgeBase}
       />
+      <OpeningConditionTrialIntakeOverviewPanel
+        pilotTask={pilotTask}
+        readiness={pilotReadiness}
+        basisRecords={pilotBasisRecords}
+        masterDataRecords={pilotMasterDataRecords}
+        knowledgeBases={pilotKnowledgeBases}
+      />
       <OpeningConditionTrialPackageDiagnostics pilotTask={pilotTask} />
       <section className="opening-condition-grid">
         <article className="opening-panel">
@@ -938,13 +979,100 @@ function OpeningConditionMaterialIntakePage({
   );
 }
 
+function OpeningConditionTrialIntakeOverviewPanel({
+  pilotTask,
+  readiness,
+  basisRecords,
+  masterDataRecords,
+  knowledgeBases,
+}: {
+  pilotTask?: OpeningConditionPilotTask | null;
+  readiness?: OpeningConditionPilotReadinessResult | null;
+  basisRecords?: OpeningConditionPilotBasisRecord[];
+  masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
+  knowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
+}) {
+  if (!pilotTask) {
+    return null;
+  }
+
+  const boundBasis = basisRecords?.find((item) => item.id === pilotTask.basisVersion?.id);
+  const requiredMasterData = (masterDataRecords ?? []).filter((item) =>
+    (pilotTask.requiredMasterData ?? []).some((required) => required.id === item.id),
+  );
+  const boundKnowledgeBase = knowledgeBases?.find((item) => item.id === pilotTask.knowledgeBaseRef?.id);
+  const diagnostics = pilotTask.trialPackage?.diagnostics;
+  const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? pilotTask.trialPackage?.blockingReasons ?? [];
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <span className="eyebrow">Trial Intake Overview</span>
+      <h2>Review current run facts before formal matching</h2>
+      <div className="opening-condition-meta">
+        <span>Task {pilotTask.id}</span>
+        <span>State {pilotTask.state}</span>
+        <span>Basis {boundBasis?.version ?? pilotTask.basisVersion?.id ?? "unbound"}</span>
+        <span>Master data {requiredMasterData.length || pilotTask.requiredMasterData.length}</span>
+        <span>KB {boundKnowledgeBase?.label ?? pilotTask.knowledgeBaseRef?.label ?? "unbound"}</span>
+      </div>
+      <div className="opening-record-list">
+        <div>
+          <strong>Basis</strong>
+          <span>{boundBasis?.title ?? pilotTask.basisVersion?.id ?? "No backend basis record"}</span>
+          <p>{boundBasis?.applicability ?? "Current run keeps the bound basis version."}</p>
+        </div>
+        <div>
+          <strong>Master Data</strong>
+          <span>{requiredMasterData.length || pilotTask.requiredMasterData.length} records in scope</span>
+          <p>
+            {(requiredMasterData.length > 0
+              ? requiredMasterData.map((item) => `${item.label} (${item.status})`)
+              : pilotTask.requiredMasterData.map((item) => `${item.label} (${item.status})`)
+            ).join(" / ") || "No backend master-data record found for this run."}
+          </p>
+        </div>
+        <div>
+          <strong>Knowledge Base</strong>
+          <span>
+            {boundKnowledgeBase?.status ?? pilotTask.knowledgeBaseRef?.status ?? "draft"} /{" "}
+            {boundKnowledgeBase?.providerSyncStatus ?? pilotTask.knowledgeBaseRef?.providerSyncStatus ?? "unknown"}
+          </span>
+          <p>
+            {diagnostics
+              ? `Checklist ${diagnostics.checklistDefinitionResolution ?? "unknown"} / Manifest ${diagnostics.inventoryEntryCount}`
+              : "No trial diagnostics recorded yet."}
+          </p>
+        </div>
+      </div>
+      <small>
+        {blockingReasons.length > 0
+          ? blockingReasons.join(" / ")
+          : readiness?.preflightReadiness?.nextAction ?? "Current run has the baseline context required for formal matching."}
+      </small>
+    </section>
+  );
+}
+
 function OpeningConditionBasisAndMasterDataPage({
   packet,
+  pilotTask,
+  basisRecords,
+  masterDataRecords,
+  knowledgeBases,
   defaultSection = "basis",
 }: {
   packet: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
+  basisRecords?: OpeningConditionPilotBasisRecord[];
+  masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
+  knowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
   defaultSection?: "basis" | "master-data";
 }) {
+  const displayedBasisRecords = basisRecords && basisRecords.length > 0 ? basisRecords : packet.basisVersions;
+  const displayedMasterDataRecords = masterDataRecords && masterDataRecords.length > 0 ? masterDataRecords : packet.masterData;
+  const boundBasisId = pilotTask?.basisVersion?.id;
+  const requiredMasterDataIds = new Set((pilotTask?.requiredMasterData ?? []).map((record) => record.id));
+
   return (
     <div className="opening-condition-grid">
       <article className={`opening-panel ${defaultSection === "basis" ? "opening-panel-emphasis" : ""}`}>
