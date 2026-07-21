@@ -1147,6 +1147,85 @@ function OpeningConditionBasisAndMasterDataPage({
   );
 }
 
+type PilotHumanReviewItem = OpeningConditionPilotTask["humanReviewQueue"][number];
+type PilotCheckItem = OpeningConditionPilotTask["checkItems"][number];
+type PilotChecklistDefinitionItem = OpeningConditionPilotTask["checklistDefinition"][number];
+type PilotEvidenceItem = OpeningConditionPilotTask["evidence"][number];
+
+type OpeningConditionChecklistMatrixRow = {
+  id: string;
+  category: string;
+  subCategory?: string;
+  name: string;
+  required: boolean;
+  scopeStatus: string;
+  matchStatus: string;
+  verdict: string;
+  finalDisposition: string;
+  ruleExplanation: string;
+  semanticNote?: string;
+  expectedEvidenceHints: string[];
+  evidenceSummary: string[];
+  humanReviewSummary: string[];
+};
+
+function buildOpeningConditionChecklistMatrixRows(pilotTask?: OpeningConditionPilotTask | null) {
+  const checklistDefinitions = pilotTask?.checklistDefinition ?? [];
+  const checkItemsById = new Map((pilotTask?.checkItems ?? []).map((item) => [item.id, item]));
+  const evidenceById = new Map((pilotTask?.evidence ?? []).map((item) => [item.id, item]));
+  const reviewsByTargetId = new Map<string, PilotHumanReviewItem[]>();
+
+  for (const reviewItem of pilotTask?.humanReviewQueue ?? []) {
+    const current = reviewsByTargetId.get(reviewItem.targetId) ?? [];
+    current.push(reviewItem);
+    reviewsByTargetId.set(reviewItem.targetId, current);
+  }
+
+  const sourceItems: Array<PilotChecklistDefinitionItem | PilotCheckItem> =
+    checklistDefinitions.length > 0 ? checklistDefinitions : (pilotTask?.checkItems ?? []);
+
+  return sourceItems.map((item) => {
+    const resolvedCheckItem = checkItemsById.get(item.id);
+    const reviewItems = reviewsByTargetId.get(item.id) ?? [];
+    const evidenceSummary = (resolvedCheckItem?.evidenceIds ?? [])
+      .map((evidenceId) => evidenceById.get(evidenceId))
+      .filter((evidence): evidence is PilotEvidenceItem => Boolean(evidence))
+      .map((evidence) => `${evidence.objectRef.fileName}${evidence.locator ? ` @ ${evidence.locator}` : ""}`);
+    const humanReviewSummary = reviewItems.map(
+      (reviewItem) => `${reviewItem.status}${reviewItem.reason ? `: ${reviewItem.reason}` : ""}`,
+    );
+
+    const matchStatus = resolvedCheckItem
+      ? resolvedCheckItem.documentPresence === "present"
+        ? "matched"
+        : resolvedCheckItem.documentPresence === "missing"
+          ? "missing"
+          : resolvedCheckItem.documentPresence === "ambiguous"
+            ? "ambiguous"
+            : resolvedCheckItem.documentPresence === "not_required"
+              ? "not_required"
+              : resolvedCheckItem.verdict
+      : "pending_formal_match";
+
+    return {
+      id: item.id,
+      category: item.category,
+      subCategory: item.subCategory,
+      name: item.name,
+      required: item.required,
+      scopeStatus: resolvedCheckItem?.scopeStatus ?? item.scopeStatus ?? "in_scope",
+      matchStatus,
+      verdict: resolvedCheckItem?.verdict ?? "pending",
+      finalDisposition: resolvedCheckItem?.finalDisposition ?? "pending",
+      ruleExplanation: resolvedCheckItem?.ruleExplanation ?? "Formal matching has not run yet.",
+      semanticNote: resolvedCheckItem?.semanticNote,
+      expectedEvidenceHints: "expectedEvidenceHints" in item ? item.expectedEvidenceHints ?? [] : [],
+      evidenceSummary,
+      humanReviewSummary,
+    } satisfies OpeningConditionChecklistMatrixRow;
+  });
+}
+
 function OpeningConditionCheckTasksPage({
   packet,
   pilotTask,
@@ -1157,53 +1236,101 @@ function OpeningConditionCheckTasksPage({
   const pilotItems = pilotTask?.checkItems ?? [];
   const pilotEvidence = pilotTask?.evidence ?? [];
   const trialPackage = pilotTask?.trialPackage;
+  const checklistMatrixRows = buildOpeningConditionChecklistMatrixRows(pilotTask);
 
   return (
     <div className="opening-condition-grid">
       <section className="opening-panel opening-panel-wide">
-        <span className="eyebrow">资料核查</span>
-        <h2>只核查资料范围，现场核查先标记为不适用</h2>
+        <span className="eyebrow">Checklist Matrix</span>
+        <h2>Checklist-driven match status for the current run</h2>
         {trialPackage && (
           <div className="opening-condition-meta">
             <span>Manifest {trialPackage.diagnostics.inventoryEntryCount}</span>
             <span>Evidence {trialPackage.matching.evidenceCount}</span>
-            <span>Provider {trialPackage.providerReadiness?.status ?? "unknown"}</span>
+            <span>Human review {trialPackage.humanReview.blockingCount}</span>
           </div>
         )}
-        <div className="opening-check-list">
-          {pilotItems.length > 0
-            ? pilotItems.map((item) => (
-                <article key={item.id} className={`opening-check-row verdict-${item.verdict.replace(/_/g, "-")}`}>
-                  <div>
-                    <span className="eyebrow">{item.category}</span>
-                    <h3>{item.name}</h3>
-                    <p>{item.ruleExplanation}</p>
-                    {item.semanticNote && <small>{item.semanticNote}</small>}
-                    {item.evidenceIds.length > 0 && <small>证据 {item.evidenceIds.join(" / ")}</small>}
-                    {item.humanReviewIds.length > 0 && <small>待复核 {item.humanReviewIds.join(" / ")}</small>}
-                  </div>
-                  <div className="opening-check-meta">
-                    <span>{item.verdict}</span>
-                    <small>{item.finalDisposition ?? "not_evaluated"}</small>
-                  </div>
-                </article>
-              ))
-            : packet.checkItems.map((item) => <OpeningConditionCheckItemRow key={item.id} item={item} />)}
-        </div>
+        {checklistMatrixRows.length > 0 ? (
+          <div className="opening-check-matrix">
+            <div className="opening-check-matrix-header">
+              <span>Checklist Item</span>
+              <span>Status</span>
+              <span>Matched Files / Expected</span>
+              <span>Reason / Human Review</span>
+            </div>
+            {checklistMatrixRows.map((row) => (
+              <article
+                key={row.id}
+                className={`opening-check-matrix-row verdict-${String(row.verdict || "pending").replace(/_/g, "-")}`}
+              >
+                <div className="opening-check-matrix-cell">
+                  <strong>{row.name}</strong>
+                  <span>
+                    {row.category}
+                    {row.subCategory ? ` / ${row.subCategory}` : ""} | {row.id}
+                  </span>
+                  <small>
+                    {row.required ? "required" : "optional"} | {row.scopeStatus === "out_of_scope" ? "out_of_scope" : "in_scope"}
+                  </small>
+                </div>
+                <div className="opening-check-matrix-cell">
+                  <strong>{row.matchStatus}</strong>
+                  <span>{row.finalDisposition}</span>
+                  <small>{row.verdict}</small>
+                </div>
+                <div className="opening-check-matrix-cell">
+                  {row.evidenceSummary.length > 0 ? (
+                    row.evidenceSummary.map((entry) => <small key={entry}>{entry}</small>)
+                  ) : (
+                    <small>No matched file</small>
+                  )}
+                  {row.expectedEvidenceHints.length > 0 && (
+                    <span>Expected: {row.expectedEvidenceHints.join(" / ")}</span>
+                  )}
+                </div>
+                <div className="opening-check-matrix-cell">
+                  <p>{row.ruleExplanation}</p>
+                  {row.semanticNote && <small>{row.semanticNote}</small>}
+                  {row.humanReviewSummary.length > 0
+                    ? row.humanReviewSummary.map((entry) => <small key={entry}>Human review: {entry}</small>)
+                    : <small>No linked human review item</small>}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="opening-check-list">
+            {pilotItems.length > 0
+              ? pilotItems.map((item) => (
+                  <article key={item.id} className={`opening-check-row verdict-${item.verdict.replace(/_/g, "-")}`}>
+                    <div>
+                      <span className="eyebrow">{item.category}</span>
+                      <h3>{item.name}</h3>
+                      <p>{item.ruleExplanation}</p>
+                    </div>
+                    <div className="opening-check-meta">
+                      <span>{item.verdict}</span>
+                      <small>{item.finalDisposition ?? "not_evaluated"}</small>
+                    </div>
+                  </article>
+                ))
+              : packet.checkItems.map((item) => <OpeningConditionCheckItemRow key={item.id} item={item} />)}
+          </div>
+        )}
       </section>
 
       <section className="opening-panel opening-panel-wide">
-        <span className="eyebrow">证据链</span>
-        <h2>{pilotEvidence.length > 0 ? "来自后端试点任务的命中证据" : "本地演示证据"}</h2>
+        <span className="eyebrow">Evidence</span>
+        <h2>{pilotEvidence.length > 0 ? "Backend evidence records" : "Local demo evidence"}</h2>
         <div className="opening-record-list">
           {pilotEvidence.length > 0
             ? pilotEvidence.map((evidence) => (
                 <div key={evidence.id}>
                   <strong>{evidence.objectRef.fileName}</strong>
                   <span>
-                    {evidence.itemId ?? "未绑定核查项"} · {evidence.confidence}
+                    {evidence.itemId ?? "unbound_check_item"} | {evidence.confidence}
                   </span>
-                  <p>{evidence.extractedValue ?? evidence.objectRef.summary ?? evidence.locator ?? "后端已记录证据引用。"}</p>
+                  <p>{evidence.extractedValue ?? evidence.objectRef.summary ?? evidence.locator ?? "Backend evidence reference."}</p>
                   {evidence.locator && <small>{evidence.locator}</small>}
                 </div>
               ))
@@ -1211,7 +1338,7 @@ function OpeningConditionCheckTasksPage({
                 <div key={evidence.id}>
                   <strong>{evidence.fileName}</strong>
                   <span>
-                    {evidence.locator} · {evidence.confidence}
+                    {evidence.locator} | {evidence.confidence}
                   </span>
                   <p>{evidence.extractedValue}</p>
                 </div>
@@ -1221,7 +1348,6 @@ function OpeningConditionCheckTasksPage({
     </div>
   );
 }
-
 function OpeningConditionCheckItemRow({ item }: { item: OpeningConditionCheckItem }) {
   const visualAssertionSummary = item.visualAssertions
     ?.map((assertion) => `${assertion.type}:${assertion.status}`)
@@ -1320,11 +1446,6 @@ function OpeningConditionHumanReviewQueuePage({
     </section>
   );
 }
-
-type PilotHumanReviewItem = OpeningConditionPilotTask["humanReviewQueue"][number];
-type PilotCheckItem = OpeningConditionPilotTask["checkItems"][number];
-type PilotChecklistDefinitionItem = OpeningConditionPilotTask["checklistDefinition"][number];
-type PilotEvidenceItem = OpeningConditionPilotTask["evidence"][number];
 
 function OpeningConditionPilotHumanReviewContext({
   item,

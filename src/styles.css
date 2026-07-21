@@ -3481,6 +3481,77 @@ h4 {
   justify-items: end;
 }
 
+.opening-check-matrix {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.opening-check-matrix-header,
+.opening-check-matrix-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(140px, 0.7fr) minmax(220px, 1fr) minmax(240px, 1.1fr);
+}
+
+.opening-check-matrix-header {
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+}
+
+.opening-check-matrix-header span {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.opening-check-matrix-row {
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-muted);
+}
+
+.opening-check-matrix-row:last-child {
+  border-bottom: 0;
+}
+
+.opening-check-matrix-row.verdict-pass {
+  box-shadow: inset 4px 0 0 var(--success);
+}
+
+.opening-check-matrix-row.verdict-fail,
+.opening-check-matrix-row.verdict-blocked {
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+
+.opening-check-matrix-row.verdict-warning,
+.opening-check-matrix-row.verdict-needs-human-review,
+.opening-check-matrix-row.verdict-pending {
+  box-shadow: inset 4px 0 0 var(--warning);
+}
+
+.opening-check-matrix-cell {
+  padding: 14px;
+  border-right: 1px solid var(--border-soft);
+}
+
+.opening-check-matrix-cell:last-child {
+  border-right: 0;
+}
+
+.opening-check-matrix-cell strong,
+.opening-check-matrix-cell span,
+.opening-check-matrix-cell p,
+.opening-check-matrix-cell small {
+  display: block;
+  margin: 0;
+}
+
+.opening-check-matrix-cell span,
+.opening-check-matrix-cell small {
+  margin-top: 6px;
+}
+
 .opening-panel-report {
   display: flex;
   flex-direction: column;
@@ -3496,7 +3567,9 @@ h4 {
   .opening-condition-grid,
   .construction-library-grid,
   .opening-trial-upload-grid,
-  .opening-check-row {
+  .opening-check-row,
+  .opening-check-matrix-header,
+  .opening-check-matrix-row {
     grid-template-columns: 1fr;
   }
 
