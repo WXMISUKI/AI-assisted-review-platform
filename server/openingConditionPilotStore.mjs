@@ -556,6 +556,16 @@ function normalizeHumanReviewItem(value, taskId) {
     taskId,
     targetType: normalizeString(value.targetType, "check_item", 80),
     targetId,
+    targetLabel: normalizeString(value.targetLabel, "", 240) || undefined,
+    category: normalizeString(value.category, "", 160) || undefined,
+    subCategory: normalizeString(value.subCategory, "", 120) || undefined,
+    ruleExplanation: normalizeString(value.ruleExplanation, "", 500) || undefined,
+    expectedEvidenceHints: Array.isArray(value.expectedEvidenceHints)
+      ? value.expectedEvidenceHints
+          .map((item) => normalizeString(item, "", 120))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [],
     reason: normalizeString(value.reason, "Needs human review.", 500),
     status: ["open", "confirmed", "corrected", "rejected", "deferred"].includes(value.status)
       ? value.status
@@ -619,6 +629,7 @@ function normalizeCheckItem(value, taskId) {
     id,
     taskId,
     category: normalizeString(value.category, "资料核查", 160),
+    subCategory: normalizeString(value.subCategory, "", 120) || undefined,
     name: normalizeString(value.name ?? value.content, "未命名核查项", 240),
     required: value.required !== false,
     verdict: ["pass", "fail", "warning", "needs_human_review", "blocked"].includes(value.verdict)
@@ -872,10 +883,45 @@ function normalizeReportPackageDiagnostics(value) {
       rejected: normalizeNumber(value.humanReview?.rejected, 0, 10000),
       deferred: normalizeNumber(value.humanReview?.deferred, 0, 10000),
     },
+    decisionLedger: Array.isArray(value.decisionLedger)
+      ? value.decisionLedger.map(normalizeHumanReviewDecisionLedgerItem).filter(Boolean).slice(0, 50)
+      : [],
     providerReadiness: normalizeTrialPackageProviderReadiness(value.providerReadiness),
     blockingReasons: normalizeStringList(value.blockingReasons, 30, 240),
     archiveStatus: ["pending", "ready", "archived"].includes(value.archiveStatus) ? value.archiveStatus : "pending",
     generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
+  });
+}
+
+function normalizeHumanReviewDecisionLedgerItem(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const reviewId = normalizeString(value.reviewId, "", 180);
+  const targetId = normalizeString(value.targetId, "", 180);
+  const reason = normalizeString(value.reason, "", 500);
+  const targetType = ["basis", "master_data", "check_item", "report"].includes(value.targetType) ? value.targetType : "";
+  const status = ["confirmed", "corrected", "rejected", "deferred"].includes(value.status) ? value.status : "";
+  if (!reviewId || !targetId || !reason || !targetType || !status) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    reviewId,
+    targetType,
+    targetId,
+    targetLabel: normalizeString(value.targetLabel, "", 240) || undefined,
+    category: normalizeString(value.category, "", 160) || undefined,
+    subCategory: normalizeString(value.subCategory, "", 120) || undefined,
+    ruleExplanation: normalizeString(value.ruleExplanation, "", 500) || undefined,
+    expectedEvidenceHints: normalizeStringList(value.expectedEvidenceHints, 20, 120),
+    status,
+    reason,
+    evidenceIds: normalizeStringList(value.evidenceIds, 20, 180),
+    reviewerId: normalizeString(value.reviewerId, "", 160) || undefined,
+    decidedAt: normalizeString(value.decidedAt, "", 80) || undefined,
+    safeNote: normalizeString(value.safeNote, "", 500) || undefined,
   });
 }
 
@@ -1184,11 +1230,52 @@ function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") 
       evidenceCount: task.evidence?.length ?? 0,
     },
     humanReview: summarizeHumanReviewQueue(task.humanReviewQueue ?? []),
+    decisionLedger: deriveHumanReviewDecisionLedger(task),
     providerReadiness: trialPackage.providerReadiness,
     blockingReasons: trialPackage.blockingReasons,
     archiveStatus,
     generatedAt: new Date().toISOString(),
   });
+}
+
+function deriveHumanReviewDecisionLedger(taskOrQueue = []) {
+  const queue = Array.isArray(taskOrQueue) ? taskOrQueue : taskOrQueue.humanReviewQueue ?? [];
+  const checklistContextById = Array.isArray(taskOrQueue)
+    ? new Map()
+    : new Map(
+        [...(taskOrQueue.checkItems ?? []), ...(taskOrQueue.checklistDefinition ?? [])].map((item) => [
+          item.id,
+          {
+            targetLabel: item.name,
+            category: item.category,
+            subCategory: item.subCategory,
+            ruleExplanation: item.ruleExplanation,
+            expectedEvidenceHints: item.expectedEvidenceHints,
+          },
+        ]),
+      );
+  return queue
+    .filter((item) => item && item.status && item.status !== "open")
+    .map((item) => {
+      const context = item.targetType === "check_item" ? checklistContextById.get(item.targetId) : null;
+      return {
+        reviewId: item.id,
+        targetType: item.targetType,
+        targetId: item.targetId,
+        targetLabel: item.targetLabel ?? context?.targetLabel,
+        category: item.category ?? context?.category,
+        subCategory: item.subCategory ?? context?.subCategory,
+        ruleExplanation: item.ruleExplanation ?? context?.ruleExplanation,
+        expectedEvidenceHints:
+          item.expectedEvidenceHints?.length > 0 ? item.expectedEvidenceHints : context?.expectedEvidenceHints ?? [],
+        status: item.status,
+        reason: item.reason,
+        evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
+        reviewerId: item.reviewerId,
+        decidedAt: item.decidedAt,
+        safeNote: item.safeNote,
+      };
+    });
 }
 
 export function normalizeOpeningConditionPilotTask(value) {
@@ -1241,6 +1328,39 @@ export function normalizeOpeningConditionPilotTask(value) {
     createdAt: normalizeString(value.createdAt, now, 80),
     updatedAt: normalizeString(value.updatedAt, now, 80),
   };
+  const checklistContextById = new Map(
+    [...normalizedTask.checkItems, ...normalizedTask.checklistDefinition].map((item) => [
+      item.id,
+      {
+        targetLabel: item.name,
+        category: item.category,
+        subCategory: item.subCategory,
+        ruleExplanation: item.ruleExplanation,
+        expectedEvidenceHints: item.expectedEvidenceHints,
+      },
+    ]),
+  );
+  normalizedTask.humanReviewQueue = normalizedTask.humanReviewQueue.map((item) => {
+    if (item.targetType !== "check_item") {
+      return item;
+    }
+    const context = checklistContextById.get(item.targetId);
+    if (!context) {
+      return item;
+    }
+    return normalizeHumanReviewItem(
+      {
+        ...item,
+        targetLabel: item.targetLabel ?? context.targetLabel,
+        category: item.category ?? context.category,
+        subCategory: item.subCategory ?? context.subCategory,
+        ruleExplanation: item.ruleExplanation ?? context.ruleExplanation,
+        expectedEvidenceHints:
+          item.expectedEvidenceHints?.length > 0 ? item.expectedEvidenceHints : context.expectedEvidenceHints,
+      },
+      id,
+    );
+  });
   const preflightReadiness = deriveOpeningConditionPilotPreflightReadiness(normalizedTask);
   const taskWithReadiness = {
     ...normalizedTask,
@@ -2659,6 +2779,11 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           taskId,
           targetType: "check_item",
           targetId: item.id,
+          targetLabel: item.name,
+          category: item.category,
+          subCategory: item.subCategory,
+          ruleExplanation: item.ruleExplanation ?? `正式核查项：${item.name}`,
+          expectedEvidenceHints: item.expectedEvidenceHints,
           reason: missing
             ? "资料包中未找到稳定匹配文件。"
             : masterDataAuthorizationMissing
@@ -2940,7 +3065,8 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
     }
 
     const now = new Date().toISOString();
-    const summary = summarizePilotCheckItems(existingTask.checkItems);
+    const reportTask = normalizeOpeningConditionPilotTask(existingTask) ?? existingTask;
+    const summary = summarizePilotCheckItems(reportTask.checkItems);
     const reportAsset = normalizeReportAsset(
       {
         id: input.id ?? `report-${taskId}`,
@@ -2949,7 +3075,7 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
         status: "ready",
         summary,
         objectRef: input.objectRef,
-        packageDiagnostics: input.packageDiagnostics ?? deriveReportPackageDiagnostics(existingTask, summary, "ready"),
+        packageDiagnostics: input.packageDiagnostics ?? deriveReportPackageDiagnostics(reportTask, summary, "ready"),
         disclaimer:
           input.disclaimer ??
           "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
@@ -2971,18 +3097,18 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
         safeDiagnostics: {
           reportId: reportAsset.id,
           summary,
-          basisVersionId: existingTask.basisVersion?.id,
+          basisVersionId: reportTask.basisVersion?.id,
         },
       },
       taskId,
       sequence,
     );
     const nextTask = normalizeOpeningConditionPilotTask({
-      ...existingTask,
+      ...reportTask,
       state: "report_ready",
       reportAsset,
       updatedAt: now,
-      events: [...existingTask.events, event],
+      events: [...reportTask.events, event],
     });
     const nextTasks = [...snapshot.tasks];
     nextTasks[index] = nextTask;

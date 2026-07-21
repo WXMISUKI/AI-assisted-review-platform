@@ -36,10 +36,16 @@ The system SHALL generate a report package summary that includes real trial inpu
 - **WHEN** the operator archives a report package
 - **THEN** the archived task and report package cannot be mutated by later report-generation requests
 
+### Requirement: Report package decision traceability
+The real-sample trial report package SHALL preserve bounded human-review decision traceability for archived replay.
+
+#### Scenario: Report package contains decision ledger
+- **WHEN** a report package is generated for a real-sample pilot task
+- **THEN** the package diagnostics include bounded human-review decision ledger entries in addition to aggregate human-review counts
+
 ### Requirement: Operator runbook support
 The system SHALL document operator steps and developer observation points for real sample trial runs.
 
 #### Scenario: Operator follows the runbook
 - **WHEN** the operator runs a real sample through the portal
 - **THEN** the runbook tells them which page to open, which files to select, which buttons to press, what status text to expect, and what logs or blockers to report
-

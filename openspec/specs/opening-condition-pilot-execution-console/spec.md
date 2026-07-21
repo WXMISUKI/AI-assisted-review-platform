@@ -38,7 +38,7 @@ The opening-condition pilot execution console SHALL expose backend-backed human-
 
 #### Scenario: Human review blockers are displayed
 - **WHEN** a backend pilot task has human-review queue items
-- **THEN** the portal displays those task-owned items ahead of local demo review items and provides bounded decision actions for open or deferred items
+- **THEN** the portal displays those task-owned items ahead of local demo review items, including category, optional subcategory, checklist name, target ID, reason, rule explanation, evidence references, and bounded decision actions for open or deferred items
 
 #### Scenario: Operator decides a human review item
 - **WHEN** the operator confirms, corrects, rejects, or defers a backend human-review item
@@ -89,6 +89,13 @@ The report archive page SHALL display backend report package diagnostics for rep
 - **WHEN** the backend task is archived
 - **THEN** the report page keeps the package visible, disables report generation, and hides archive action when the report asset is already archived
 
+### Requirement: Report decision ledger rendering
+The report archive page SHALL render task-owned human-review decision ledger entries when the backend report package provides them.
+
+#### Scenario: Report package has decision ledger entries
+- **WHEN** a backend report asset includes bounded human-review decision ledger entries
+- **THEN** the report page shows each entry's checklist name and category when available, target ID, final status, reason, safe note, reviewer, and decided time as part of the delivery summary
+
 ### Requirement: Current trial run tracking
 The opening-condition execution console SHALL keep operator actions scoped to the currently selected or newly bootstrapped pilot run.
 
@@ -103,3 +110,25 @@ The opening-condition execution console SHALL keep operator actions scoped to th
 #### Scenario: Real upload reports new run id
 - **WHEN** real-file bootstrap creates a new run-specific task
 - **THEN** the material-intake page displays the returned task id and state as the active pilot run
+
+### Requirement: Human-review delivery guidance
+The opening-condition execution console SHALL show task-owned human-review progress and next action guidance after formal matching.
+
+#### Scenario: Human-review blockers exist
+- **WHEN** the backend pilot task has open or deferred human-review items
+- **THEN** the console displays blocking count, closed count, task state, and guidance to close blockers before generating the report
+
+#### Scenario: Human-review blockers are closed
+- **WHEN** the backend pilot task has no open or deferred human-review items
+- **THEN** the console displays that report generation is the next delivery action
+
+### Requirement: Report action gating follows backend state
+The report archive page SHALL require backend `report_ready` state before enabling report generation.
+
+#### Scenario: Queue is empty but task is not report ready
+- **WHEN** the human-review queue is empty but the backend task state is not `report_ready`
+- **THEN** the report generation action remains disabled
+
+#### Scenario: Report ready without existing report
+- **WHEN** the backend task state is `report_ready` and no report asset exists
+- **THEN** the report generation action is enabled

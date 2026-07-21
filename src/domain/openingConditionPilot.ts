@@ -199,6 +199,7 @@ export interface OpeningConditionPilotCheckItem {
   id: string;
   taskId: string;
   category: string;
+  subCategory?: string;
   name: string;
   required: boolean;
   verdict: "pass" | "fail" | "warning" | "needs_human_review" | "blocked";
@@ -221,6 +222,11 @@ export interface OpeningConditionPilotHumanReviewItem {
   taskId: string;
   targetType: "basis" | "master_data" | "check_item" | "report";
   targetId: string;
+  targetLabel?: string;
+  category?: string;
+  subCategory?: string;
+  ruleExplanation?: string;
+  expectedEvidenceHints?: string[];
   reason: string;
   status: "open" | "confirmed" | "corrected" | "rejected" | "deferred";
   evidenceIds: string[];
@@ -299,6 +305,23 @@ export interface OpeningConditionPilotHumanReviewSummary {
   deferred: number;
 }
 
+export interface OpeningConditionPilotHumanReviewDecisionLedgerItem {
+  reviewId: string;
+  targetType: "basis" | "master_data" | "check_item" | "report";
+  targetId: string;
+  targetLabel?: string;
+  category?: string;
+  subCategory?: string;
+  ruleExplanation?: string;
+  expectedEvidenceHints?: string[];
+  status: "confirmed" | "corrected" | "rejected" | "deferred";
+  reason: string;
+  evidenceIds: string[];
+  reviewerId?: string;
+  decidedAt?: string;
+  safeNote?: string;
+}
+
 export interface OpeningConditionPilotTrialPackage {
   taskId: string;
   workspaceId: string;
@@ -319,6 +342,7 @@ export interface OpeningConditionPilotReportPackageDiagnostics {
   inputObjects: OpeningConditionPilotTrialPackageInputObjects;
   matching: OpeningConditionPilotMatchingSummary;
   humanReview: OpeningConditionPilotHumanReviewSummary;
+  decisionLedger: OpeningConditionPilotHumanReviewDecisionLedgerItem[];
   providerReadiness?: OpeningConditionPilotProviderReadinessSummary;
   blockingReasons: string[];
   archiveStatus: "pending" | "ready" | "archived";

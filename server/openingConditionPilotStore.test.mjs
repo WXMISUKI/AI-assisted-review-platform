@@ -1445,6 +1445,9 @@ test("records human-review decisions and gates report readiness", async () => {
     const listed = await listOpeningConditionPilotHumanReviewItems("task-1", { storePath });
     assert.equal(listed.ok, true);
     assert.equal(listed.blockingCount, 1);
+    assert.equal(listed.humanReviewQueue[0].targetLabel, "开工申请审批表");
+    assert.equal(listed.humanReviewQueue[0].category, "资料核查");
+    assert.equal(listed.humanReviewQueue[0].expectedEvidenceHints[0], "审批表");
 
     const decision = await decideOpeningConditionPilotHumanReviewItem(
       "task-1",
@@ -1463,6 +1466,12 @@ test("records human-review decisions and gates report readiness", async () => {
     assert.equal(decision.blockingCount, 0);
     assert.equal(decision.task.state, "report_ready");
     assert.equal("token" in decision.event.safeDiagnostics, false);
+
+    const report = await generateOpeningConditionPilotReport("task-1", {}, { storePath });
+    const ledgerItem = report.reportAsset.packageDiagnostics.decisionLedger[0];
+    assert.equal(report.ok, true);
+    assert.equal(ledgerItem.targetLabel, "开工申请审批表");
+    assert.equal(ledgerItem.category, "资料核查");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

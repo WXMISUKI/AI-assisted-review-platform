@@ -1094,6 +1094,11 @@ function OpeningConditionHumanReviewQueuePage({
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
 }) {
   const pilotReviewItems = pilotTask?.humanReviewQueue ?? [];
+  const checkItemsById = new Map((pilotTask?.checkItems ?? []).map((checkItem) => [checkItem.id, checkItem]));
+  const checklistDefinitionsById = new Map(
+    (pilotTask?.checklistDefinition ?? []).map((checkItem) => [checkItem.id, checkItem]),
+  );
+  const evidenceById = new Map((pilotTask?.evidence ?? []).map((evidence) => [evidence.id, evidence]));
   const trialPackage = pilotTask?.trialPackage;
 
   return (
@@ -1111,7 +1116,12 @@ function OpeningConditionHumanReviewQueuePage({
         {pilotReviewItems.length > 0
           ? pilotReviewItems.map((item) => (
               <div key={item.id}>
-                <strong>{item.targetId}</strong>
+                <OpeningConditionPilotHumanReviewContext
+                  item={item}
+                  checkItemsById={checkItemsById}
+                  checklistDefinitionsById={checklistDefinitionsById}
+                  evidenceById={evidenceById}
+                />
                 <span>
                   {item.targetType} · {item.status}
                 </span>
@@ -1147,6 +1157,53 @@ function OpeningConditionHumanReviewQueuePage({
   );
 }
 
+type PilotHumanReviewItem = OpeningConditionPilotTask["humanReviewQueue"][number];
+type PilotCheckItem = OpeningConditionPilotTask["checkItems"][number];
+type PilotChecklistDefinitionItem = OpeningConditionPilotTask["checklistDefinition"][number];
+type PilotEvidenceItem = OpeningConditionPilotTask["evidence"][number];
+
+function OpeningConditionPilotHumanReviewContext({
+  item,
+  checkItemsById,
+  checklistDefinitionsById,
+  evidenceById,
+}: {
+  item: PilotHumanReviewItem;
+  checkItemsById: Map<string, PilotCheckItem>;
+  checklistDefinitionsById: Map<string, PilotChecklistDefinitionItem>;
+  evidenceById: Map<string, PilotEvidenceItem>;
+}) {
+  const fallbackContext = checkItemsById.get(item.targetId) ?? checklistDefinitionsById.get(item.targetId);
+  const targetLabel = item.targetLabel ?? fallbackContext?.name;
+  const category = item.category ?? fallbackContext?.category;
+  const subCategory = item.subCategory ?? fallbackContext?.subCategory;
+  const ruleExplanation =
+    item.ruleExplanation ?? (fallbackContext && "ruleExplanation" in fallbackContext ? fallbackContext.ruleExplanation : undefined);
+  const fallbackEvidenceHints =
+    fallbackContext && "expectedEvidenceHints" in fallbackContext ? fallbackContext.expectedEvidenceHints : [];
+  const evidenceHints = item.expectedEvidenceHints ?? fallbackEvidenceHints;
+  const evidenceSummary = item.evidenceIds
+    .map((evidenceId) => {
+      const evidence = evidenceById.get(evidenceId);
+      return evidence ? `${evidence.objectRef.fileName}${evidence.locator ? ` @ ${evidence.locator}` : ""}` : evidenceId;
+    })
+    .join(" / ");
+
+  return (
+    <>
+      <strong>{targetLabel ?? item.targetId}</strong>
+      <span>
+        {category ?? "未解析分类"}
+        {subCategory ? ` / ${subCategory}` : ""} · {item.targetId}
+      </span>
+      {ruleExplanation && <small>核查规则：{ruleExplanation}</small>}
+      {evidenceHints.length > 0 && <small>期望资料：{evidenceHints.join(" / ")}</small>}
+      {evidenceSummary && <small>证据：{evidenceSummary}</small>}
+      {!targetLabel && <small>未找到该核查项的历史快照，请结合任务清单确认。</small>}
+    </>
+  );
+}
+
 function OpeningConditionReportArchivePage({
   packet,
   pilotTask,
@@ -1165,6 +1222,13 @@ function OpeningConditionReportArchivePage({
   const blockingReviewCount =
     pilotTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
   const canGenerateReport = Boolean(pilotTask && blockingReviewCount === 0 && !reportAsset);
+  const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
+  const decisionLedgerContextSummary = decisionLedger.map(
+    (item) =>
+      `${item.targetLabel ?? item.targetId}${item.category ? ` · ${item.category}` : ""} · ${item.targetId} · ${item.status}${
+        item.safeNote ? ` · ${item.safeNote}` : ""
+      }`,
+  );
 
   return (
     <section className="opening-panel opening-panel-report opening-panel-wide">
@@ -1182,6 +1246,13 @@ function OpeningConditionReportArchivePage({
       </div>
       <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
       <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
+      {decisionLedgerContextSummary.length > 0 && (
+        <div className="opening-condition-meta">
+          {decisionLedgerContextSummary.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      )}
       {packageDiagnostics && (
         <div className="opening-record-list">
           <div>
