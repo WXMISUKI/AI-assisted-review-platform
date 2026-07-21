@@ -1,5 +1,8 @@
-## ADDED Requirements
+# opening-condition-report-findings-delivery Specification
 
+## Purpose
+TBD - created by archiving change opening-condition-rectification-rerun-and-report-delivery. Update Purpose after archive.
+## Requirements
 ### Requirement: Findings-oriented auxiliary report
 The system SHALL render the opening-condition auxiliary report as a findings-oriented delivery view rather than a statistics-only summary.
 
@@ -17,3 +20,12 @@ The report SHALL provide a concise handoff summary for the next rectification ro
 #### Scenario: Current round is not approved
 - **WHEN** the report concludes that work should not proceed or requires supplementation
 - **THEN** the report view shows the outstanding item count, major blockers, and the expected next operator action for re-submission
+
+### Requirement: Human-readable delivery semantics
+The report SHALL present review outcomes in operator-facing language rather than raw internal enum values.
+
+#### Scenario: Findings are rendered for supervisors
+- **WHEN** the report view displays findings, risk levels, or handling outcomes
+- **THEN** the system shows readable Chinese labels for category, risk level, handling conclusion, and current status
+- **AND** the report visually distinguishes blocked, failed, pending-human-review, and not-in-scope items so the operator can scan priorities quickly
+

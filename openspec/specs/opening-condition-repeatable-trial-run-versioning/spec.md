@@ -2,10 +2,9 @@
 
 ## Purpose
 Define repeatable same-workspace real-sample trial runs while preserving archived opening-condition pilot task immutability.
-
 ## Requirements
 ### Requirement: Repeatable trial run identity
-The system SHALL support repeated real-file opening-condition trial runs in the same workspace without mutating archived tasks.
+The system SHALL support repeated real-file opening-condition trial runs in the same workspace without mutating archived tasks, and SHALL treat those runs as an ordered rectification-review history.
 
 #### Scenario: Archived run remains immutable
 - **WHEN** a pilot task is archived
@@ -18,3 +17,8 @@ The system SHALL support repeated real-file opening-condition trial runs in the 
 #### Scenario: Follow-on actions use current run
 - **WHEN** a real-file bootstrap returns a run-specific task
 - **THEN** refresh, formal matching, human review, report generation, and archive actions target that current run id until the operator changes workspace or another bootstrap completes
+
+#### Scenario: Workspace shows ordered rerun history
+- **WHEN** the workspace contains multiple archived runs from earlier rectification rounds
+- **THEN** the portal can list them in recency order without altering their archived content
+

@@ -1,7 +1,11 @@
 ## MODIFIED Requirements
 
-### Requirement: Current runnable run discovery
+### Requirement: Current workspace task discovery contract
 The pilot operational API SHALL allow the frontend to discover the current runnable task for a workspace without mutating archived tasks, and SHALL expose sufficient run history metadata for repeatable rectification review.
+
+#### Scenario: Task list can be used to resolve current run
+- **WHEN** the frontend requests the pilot task list
+- **THEN** the response includes task state, workspace context, and timestamps sufficient to select the latest non-archived task for a workspace
 
 #### Scenario: Multiple runs exist in a workspace
 - **WHEN** the frontend requests the pilot task list for a workspace
@@ -14,10 +18,14 @@ The pilot operational API SHALL allow the frontend to discover the current runna
 ### Requirement: Report package diagnostics contract
 The report API SHALL include bounded package diagnostics in generated report assets and SHALL support findings-oriented delivery fields.
 
+#### Scenario: Report response includes package diagnostics
+- **WHEN** report generation succeeds for a real trial task
+- **THEN** the response contains report asset diagnostics covering input object filenames, checklist/evidence/human-review counts, provider readiness, blocking reasons, and disclaimer
+
 #### Scenario: Report response includes findings delivery
 - **WHEN** report generation succeeds for a real trial task
 - **THEN** the response contains report asset diagnostics covering input object filenames, checklist/evidence/human-review counts, provider readiness, blocking reasons, disclaimer, and structured finding summaries
 
 #### Scenario: Archived task rejects report regeneration
 - **WHEN** a report-generation request targets an archived task
-- **THEN** the API rejects the mutation and preserves the archived report package
+- **THEN** the API returns a safe `invalid_state` response and does not mutate the task

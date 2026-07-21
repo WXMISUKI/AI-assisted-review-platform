@@ -137,22 +137,30 @@ The pilot operational API SHALL return bounded trial package summary fields on t
 - **THEN** the returned task contains an updated trial package summary consistent with the new task state
 
 ### Requirement: Report package diagnostics contract
-The report API SHALL include bounded package diagnostics in generated report assets.
+The report API SHALL include bounded package diagnostics in generated report assets and SHALL support findings-oriented delivery fields.
 
 #### Scenario: Report response includes package diagnostics
 - **WHEN** report generation succeeds for a real trial task
 - **THEN** the response contains report asset diagnostics covering input object filenames, checklist/evidence/human-review counts, provider readiness, blocking reasons, and disclaimer
+
+#### Scenario: Report response includes findings delivery
+- **WHEN** report generation succeeds for a real trial task
+- **THEN** the response contains report asset diagnostics covering input object filenames, checklist/evidence/human-review counts, provider readiness, blocking reasons, disclaimer, and structured finding summaries
 
 #### Scenario: Archived task rejects report regeneration
 - **WHEN** a report-generation request targets an archived task
 - **THEN** the API returns a safe `invalid_state` response and does not mutate the task
 
 ### Requirement: Current workspace task discovery contract
-The pilot operational API SHALL allow the frontend to discover the current runnable task for a workspace without mutating archived tasks.
+The pilot operational API SHALL allow the frontend to discover the current runnable task for a workspace without mutating archived tasks, and SHALL expose sufficient run history metadata for repeatable rectification review.
 
 #### Scenario: Task list can be used to resolve current run
 - **WHEN** the frontend requests the pilot task list
 - **THEN** the response includes task state, workspace context, and timestamps sufficient to select the latest non-archived task for a workspace
+
+#### Scenario: Multiple runs exist in a workspace
+- **WHEN** the frontend requests the pilot task list for a workspace
+- **THEN** the response includes task state, workspace context, timestamps, and report availability sufficient to select the latest runnable run and render archived history
 
 #### Scenario: Archived task rejects formal matching
 - **WHEN** a formal-match request targets an archived task
@@ -164,3 +172,4 @@ The pilot operational API SHALL include bounded human-review decision ledger ent
 #### Scenario: Report response includes decision ledger
 - **WHEN** report generation succeeds for a pilot task with human-review decisions
 - **THEN** the response contains bounded ledger entries suitable for frontend rendering, including target type and ID, checklist name/category when available, reason, status, evidence IDs, reviewer, decided time, and safe note
+

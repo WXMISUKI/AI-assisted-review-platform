@@ -585,6 +585,11 @@ export function App() {
     }
   }
 
+  function startOpeningRectificationRerun() {
+    setOpeningPage("material-intake");
+    setOpeningPilotStatus("已进入整改复审接入，请上传本轮补正后的合同依据、资料核查表和资料包；归档历史将保持只读。");
+  }
+
   async function ensureOpeningDefaultKnowledgeBase() {
     const workspace = openingPacket.workspaceContext;
     if (!openingPilotTask) {
@@ -728,6 +733,7 @@ export function App() {
       onReviewDecision={(reviewId, decision) => void decideOpeningPilotHumanReview(reviewId, decision)}
       onGenerateReport={() => void generateOpeningPilotReport()}
       onArchivePilotTask={() => void archiveOpeningPilotTask()}
+      onStartRectificationRerun={startOpeningRectificationRerun}
       onTrialBootstrapComplete={handleOpeningTrialBootstrapComplete}
       getNextOpeningPilotRunTaskId={() => getOpeningPilotRunTaskId(openingPacket)}
     />

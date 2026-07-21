@@ -4,8 +4,10 @@ import {
   Archive,
   BookOpen,
   ClipboardCheck,
+  EyeOff,
   FileSearch,
   LogOut,
+  RotateCcw,
   ShieldCheck,
   SunMoon,
   Upload,
@@ -67,7 +69,12 @@ type ReportFinding = {
   title: string;
   category: string;
   severity: "high" | "medium" | "low";
+  severityLabel: string;
+  severityTone: "danger" | "warning" | "info";
   disposition: string;
+  dispositionLabel: string;
+  dispositionTone: "danger" | "warning" | "success" | "muted";
+  statusLabel: string;
   description: string;
   basis: string;
   rectification: string;
@@ -234,6 +241,7 @@ export function OpeningConditionWorkspaceShell({
   onReviewDecision,
   onGenerateReport,
   onArchivePilotTask,
+  onStartRectificationRerun,
   onTrialBootstrapComplete,
   getNextOpeningPilotRunTaskId,
 }: {
@@ -264,6 +272,7 @@ export function OpeningConditionWorkspaceShell({
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
   onGenerateReport?: () => void;
   onArchivePilotTask?: () => void;
+  onStartRectificationRerun?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
   getNextOpeningPilotRunTaskId?: () => string;
 }) {
@@ -395,6 +404,7 @@ export function OpeningConditionWorkspaceShell({
               pilotBusy={pilotBusy}
               onGenerateReport={onGenerateReport}
               onArchive={onArchivePilotTask}
+              onStartRectificationRerun={onStartRectificationRerun}
             />
           )}
         </div>
@@ -978,33 +988,43 @@ function buildReportFindings(pilotTask?: OpeningConditionPilotTask | null): Repo
 
   return pilotTask.checkItems
     .filter((item) => ["fail", "warning", "needs_human_review", "blocked"].includes(item.verdict))
-    .map((item) => ({
-      id: item.id,
-      title: item.name,
-      category: item.subCategory ? `${item.category} / ${item.subCategory}` : item.category,
-      severity:
+    .map((item) => {
+      const severity =
         item.finalDisposition === "blocked" || (item.required && item.verdict === "fail")
           ? "high"
           : item.verdict === "fail" || item.verdict === "needs_human_review"
             ? "medium"
-            : "low",
-      disposition: item.finalDisposition ?? item.verdict,
-      description: item.semanticNote ?? item.ruleExplanation,
-      basis: item.basisVersionId,
-      rectification:
-        item.documentPresence === "missing"
-          ? "补齐对应资料后重新提交复审。"
-          : item.verdict === "blocked"
-            ? "先解决前置依据或授权边界阻塞，再重新发起复审。"
-            : "按核查依据补正资料内容后重新提交。",
-      evidence: item.evidenceIds
-        .map((evidenceId) => {
-          const evidence = evidenceById.get(evidenceId);
-          return evidence ? `${evidence.objectRef.fileName}${evidence.locator ? ` @ ${evidence.locator}` : ""}` : evidenceId;
-        })
-        .slice(0, 3),
-      humanReview: (reviewByTargetId.get(item.id) ?? []).map((review) => `${review.status}: ${review.reason}`),
-    }));
+            : "low";
+      const disposition = item.finalDisposition ?? item.verdict;
+      return {
+        id: item.id,
+        title: item.name,
+        category: item.subCategory ? `${item.category} / ${item.subCategory}` : item.category,
+        severity,
+        severityLabel:
+          severity === "high" ? "高风险" : severity === "medium" ? "中风险" : "提示项",
+        severityTone: severity === "high" ? "danger" : severity === "medium" ? "warning" : "info",
+        disposition,
+        dispositionLabel: getFindingDispositionLabel(disposition),
+        dispositionTone: getFindingDispositionTone(disposition),
+        statusLabel: item.required ? "必查项" : "补充关注项",
+        description: item.semanticNote ?? item.ruleExplanation,
+        basis: item.basisVersionId,
+        rectification:
+          item.documentPresence === "missing"
+            ? "补齐对应资料后重新提交复审。"
+            : item.verdict === "blocked"
+              ? "先解决前置依据或授权边界阻塞，再重新发起复审。"
+              : "按核查依据补正资料内容后重新提交。",
+        evidence: item.evidenceIds
+          .map((evidenceId) => {
+            const evidence = evidenceById.get(evidenceId);
+            return evidence ? `${evidence.objectRef.fileName}${evidence.locator ? ` @ ${evidence.locator}` : ""}` : evidenceId;
+          })
+          .slice(0, 3),
+        humanReview: (reviewByTargetId.get(item.id) ?? []).map((review) => `${getHumanReviewStatusLabel(review.status)}：${review.reason}`),
+      };
+    });
 }
 
 function compareTaskByUpdatedAtDesc(left: OpeningConditionPilotTask, right: OpeningConditionPilotTask) {
@@ -1048,6 +1068,118 @@ function summarizePreviousRun(currentTask: OpeningConditionPilotTask | null | un
   };
 }
 
+function getFindingDispositionLabel(disposition: string) {
+  switch (disposition) {
+    case "blocked":
+      return "阻塞，暂不能放行";
+    case "fail":
+      return "不通过，需补件整改";
+    case "needs_human_review":
+      return "待人工判断";
+    case "warning":
+      return "提示关注";
+    case "pass":
+      return "通过";
+    case "not_applicable":
+      return "本轮不适用";
+    case "confirm":
+      return "人工确认";
+    case "correct":
+      return "人工修正";
+    case "reject":
+      return "人工驳回";
+    case "defer":
+      return "延期处理";
+    default:
+      return disposition;
+  }
+}
+
+function getFindingDispositionTone(disposition: string): ReportFinding["dispositionTone"] {
+  switch (disposition) {
+    case "blocked":
+    case "fail":
+    case "reject":
+      return "danger";
+    case "needs_human_review":
+    case "warning":
+    case "defer":
+      return "warning";
+    case "pass":
+    case "confirm":
+    case "correct":
+      return "success";
+    default:
+      return "muted";
+  }
+}
+
+function getHumanReviewStatusLabel(status: string) {
+  switch (status) {
+    case "confirmed":
+      return "人工确认";
+    case "corrected":
+      return "人工修正";
+    case "rejected":
+      return "人工驳回";
+    case "deferred":
+      return "延期处理";
+    case "open":
+      return "待处理";
+    default:
+      return status;
+  }
+}
+
+function getTaskConclusionLabel(task?: OpeningConditionPilotTask | null) {
+  if (!task) {
+    return "暂无任务";
+  }
+  if (task.reportAsset?.status === "ready") {
+    return "已形成报告";
+  }
+  if (task.state === "archived") {
+    return "已归档";
+  }
+  if (task.state === "awaiting_human_review") {
+    return "待人工复核";
+  }
+  if (task.state === "report_ready") {
+    return "可生成报告";
+  }
+  return task.state;
+}
+
+type HiddenPilotRunAudit = {
+  taskId: string;
+  hiddenAt: string;
+  reason: string;
+};
+
+function getHiddenRunStorageKey(workspaceId: string) {
+  return `opening-condition.hidden-runs.${workspaceId}`;
+}
+
+function readHiddenPilotRunAudits(workspaceId: string): HiddenPilotRunAudit[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const rawValue = window.localStorage.getItem(getHiddenRunStorageKey(workspaceId));
+    const parsed = rawValue ? JSON.parse(rawValue) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item?.taskId === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeHiddenPilotRunAudits(workspaceId: string, audits: HiddenPilotRunAudit[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(getHiddenRunStorageKey(workspaceId), JSON.stringify(audits));
+}
+
 function OpeningConditionReportArchivePage({
   packet,
   pilotTask,
@@ -1055,6 +1187,7 @@ function OpeningConditionReportArchivePage({
   pilotBusy,
   onGenerateReport,
   onArchive,
+  onStartRectificationRerun,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
@@ -1062,17 +1195,57 @@ function OpeningConditionReportArchivePage({
   pilotBusy?: boolean;
   onGenerateReport?: () => void;
   onArchive?: () => void;
+  onStartRectificationRerun?: () => void;
 }) {
-  const reportAsset = pilotTask?.reportAsset;
+  const [hiddenRunAudits, setHiddenRunAudits] = useState<HiddenPilotRunAudit[]>(() =>
+    readHiddenPilotRunAudits(packet.workspaceId),
+  );
+  const hiddenRunIds = new Set(hiddenRunAudits.map((item) => item.taskId));
+  const historyTasks = [...(workspaceTasks ?? [])]
+    .filter((task) => !hiddenRunIds.has(task.id) || task.id === pilotTask?.id)
+    .sort(compareTaskByUpdatedAtDesc);
+  const [selectedHistoryTaskId, setSelectedHistoryTaskId] = useState<string | null>(null);
+  const selectedTask =
+    historyTasks.find((task) => task.id === selectedHistoryTaskId) ??
+    pilotTask ??
+    historyTasks[0] ??
+    null;
+  const reportAsset = selectedTask?.reportAsset;
   const packageDiagnostics = reportAsset?.packageDiagnostics;
-  const blockingReviewCount = pilotTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
-  const canGenerateReport = Boolean(pilotTask && pilotTask.state === "report_ready" && blockingReviewCount === 0 && !reportAsset);
-  const findings = buildReportFindings(pilotTask);
-  const historyTasks = [...(workspaceTasks ?? [])].sort(compareTaskByUpdatedAtDesc);
+  const blockingReviewCount =
+    selectedTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
+  const canGenerateReport = Boolean(
+    pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && blockingReviewCount === 0 && !reportAsset,
+  );
+  const findings = buildReportFindings(selectedTask);
   const runRoundMap = buildRunRoundMap(historyTasks);
-  const currentRound = pilotTask ? runRoundMap.get(pilotTask.id) : undefined;
-  const previousRun = summarizePreviousRun(pilotTask, historyTasks);
+  const currentRound = selectedTask ? runRoundMap.get(selectedTask.id) : undefined;
+  const previousRun = summarizePreviousRun(selectedTask, historyTasks);
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
+  const isCurrentRun = Boolean(selectedTask && pilotTask && selectedTask.id === pilotTask.id);
+  const currentRunArchived = pilotTask?.state === "archived";
+  const findingSummary = {
+    blocked: findings.filter((item) => item.disposition === "blocked").length,
+    failed: findings.filter((item) => item.disposition === "fail").length,
+    pendingHuman: findings.filter((item) => item.disposition === "needs_human_review").length,
+    warning: findings.filter((item) => item.disposition === "warning").length,
+  };
+
+  function hideHistoryRun(taskId: string) {
+    const nextAudits = [
+      ...hiddenRunAudits.filter((item) => item.taskId !== taskId),
+      {
+        taskId,
+        hiddenAt: new Date().toISOString(),
+        reason: "operator_hidden_test_or_mistaken_run",
+      },
+    ];
+    setHiddenRunAudits(nextAudits);
+    writeHiddenPilotRunAudits(packet.workspaceId, nextAudits);
+    if (selectedHistoryTaskId === taskId) {
+      setSelectedHistoryTaskId(null);
+    }
+  }
 
   return (
     <section className="opening-panel opening-panel-report opening-panel-wide">
@@ -1090,7 +1263,41 @@ function OpeningConditionReportArchivePage({
       </div>
       <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
       <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
-      {currentRound ? <small>当前为同工作区第 {currentRound} 轮核查/整改复审。</small> : null}
+      {currentRound ? <small>{isCurrentRun ? "当前" : "所选"}为同工作区第 {currentRound} 轮核查/整改复审。</small> : null}
+
+      {selectedTask && (
+        <div className="opening-report-detail-card">
+          <div>
+            <span className="eyebrow">当前查看</span>
+            <h3>{isCurrentRun ? "本轮运行详情" : "历史轮次详情"}</h3>
+          </div>
+          <div className="opening-report-chip-row">
+            <span className={`opening-report-chip tone-${isCurrentRun ? "info" : "muted"}`}>{isCurrentRun ? "当前运行" : "历史只读"}</span>
+            <span className={`opening-report-chip tone-${selectedTask.state === "archived" ? "success" : "warning"}`}>{getTaskConclusionLabel(selectedTask)}</span>
+            <span className="opening-report-chip tone-muted">任务 {selectedTask.id}</span>
+          </div>
+          <p>
+            创建 {selectedTask.createdAt}，最近更新 {selectedTask.updatedAt}。
+            {selectedTask.state === "archived" ? " 该轮已归档，只用于复盘和对比。" : " 该轮仍可继续推进后续处理。"}
+          </p>
+          {selectedTask.state === "archived" && (
+            <div className="dialog-actions compact">
+              {onStartRectificationRerun && currentRunArchived && (
+                <button type="button" className="primary" onClick={onStartRectificationRerun} disabled={pilotBusy}>
+                  <RotateCcw size={16} />
+                  发起下一轮整改复审
+                </button>
+              )}
+              {!isCurrentRun && (
+                <button type="button" className="secondary" onClick={() => hideHistoryRun(selectedTask.id)} disabled={pilotBusy}>
+                  <EyeOff size={16} />
+                  隐藏测试轮次
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {previousRun && (
         <div className="opening-record-list">
@@ -1098,6 +1305,31 @@ function OpeningConditionReportArchivePage({
             <strong>整改复审对比</strong>
             <span>上一轮不通过 {previousRun.previousFailed} 项 · 当前不通过 {previousRun.currentFailed} 项</span>
             <p>仍延续到本轮的待整改项 {previousRun.carried} 项，可据此判断补件效果。</p>
+          </div>
+        </div>
+      )}
+
+      {findings.length > 0 && (
+        <div className="opening-report-summary-grid">
+          <div className="opening-report-summary-card tone-danger">
+            <strong>阻塞项</strong>
+            <span>{findingSummary.blocked} 项</span>
+            <p>需要先解除前置依据或边界阻塞。</p>
+          </div>
+          <div className="opening-report-summary-card tone-warning">
+            <strong>不通过项</strong>
+            <span>{findingSummary.failed} 项</span>
+            <p>需补件或整改后重新提交。</p>
+          </div>
+          <div className="opening-report-summary-card tone-info">
+            <strong>待人工判断</strong>
+            <span>{findingSummary.pendingHuman} 项</span>
+            <p>需要监理进一步确认是否放行。</p>
+          </div>
+          <div className="opening-report-summary-card tone-muted">
+            <strong>提示关注</strong>
+            <span>{findingSummary.warning} 项</span>
+            <p>不直接阻塞，但建议在下轮同步补齐。</p>
           </div>
         </div>
       )}
@@ -1131,13 +1363,38 @@ function OpeningConditionReportArchivePage({
           </div>
           {findings.map((finding) => (
             <div key={finding.id} className="opening-report-finding">
-              <strong>{finding.title}</strong>
-              <span>{finding.category} | {finding.severity} | {finding.disposition}</span>
+              <div className="opening-report-finding-header">
+                <strong>{finding.title}</strong>
+                <div className="opening-report-chip-row">
+                  <span className={`opening-report-chip tone-${finding.dispositionTone}`}>{finding.dispositionLabel}</span>
+                  <span className={`opening-report-chip tone-${finding.severityTone}`}>{finding.severityLabel}</span>
+                  <span className="opening-report-chip tone-muted">{finding.statusLabel}</span>
+                </div>
+              </div>
+              <span>{finding.category}</span>
               <p>{finding.description}</p>
-              <small>依据：{finding.basis}</small>
-              <small>整改建议：{finding.rectification}</small>
-              {finding.evidence.length > 0 && <small>证据：{finding.evidence.join(" / ")}</small>}
-              {finding.humanReview.length > 0 && <small>人工复核：{finding.humanReview.join(" / ")}</small>}
+              <div className="opening-report-detail-list">
+                <small>
+                  <strong>依据</strong>
+                  {finding.basis}
+                </small>
+                <small>
+                  <strong>整改建议</strong>
+                  {finding.rectification}
+                </small>
+                {finding.evidence.length > 0 && (
+                  <small>
+                    <strong>证据</strong>
+                    {finding.evidence.join(" / ")}
+                  </small>
+                )}
+                {finding.humanReview.length > 0 && (
+                  <small>
+                    <strong>人工复核</strong>
+                    {finding.humanReview.join(" / ")}
+                  </small>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -1166,20 +1423,42 @@ function OpeningConditionReportArchivePage({
           <div>
             <strong>历史核查轮次</strong>
             <span>{historyTasks.length} 轮记录</span>
-            <p>新一轮整改复审会生成新 run，历史 run 默认保留为只读记录。</p>
+            <p>新一轮整改复审会生成新 run，历史 run 默认保留为只读记录。已隐藏测试轮次 {hiddenRunAudits.length} 条。</p>
           </div>
           {historyTasks.map((task) => (
-            <div key={task.id}>
-              <strong>第 {runRoundMap.get(task.id) ?? "-"} 轮 · {task.id}</strong>
-              <span>
-                {task.state} | {task.reportAsset?.status ?? task.trialPackage?.reportStatus ?? "missing"}
-                {pilotTask?.id === task.id ? " | current_run" : task.state === "archived" ? " | archived_history" : ""}
-              </span>
+            <div
+              key={task.id}
+              className={
+                selectedTask?.id === task.id ? "opening-history-item opening-selected-record" : "opening-history-item"
+              }
+            >
+              <div className="opening-history-item-header">
+                <strong>第 {runRoundMap.get(task.id) ?? "-"} 轮 · {task.id}</strong>
+                <div className="opening-report-chip-row">
+                  <span className={`opening-report-chip tone-${pilotTask?.id === task.id ? "info" : "muted"}`}>
+                    {pilotTask?.id === task.id ? "当前运行" : "历史轮次"}
+                  </span>
+                  <span className={`opening-report-chip tone-${task.state === "archived" ? "success" : "warning"}`}>
+                    {getTaskConclusionLabel(task)}
+                  </span>
+                </div>
+              </div>
               <p>
                 创建 {task.createdAt} / 更新 {task.updatedAt} / 不通过{" "}
                 {task.checkItems.filter((item) => item.verdict === "fail" || item.verdict === "blocked").length} 项 / 待复核{" "}
                 {task.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length} 项
               </p>
+              <div className="dialog-actions compact">
+                <button type="button" className="secondary" onClick={() => setSelectedHistoryTaskId(task.id)}>
+                  {selectedTask?.id === task.id ? "当前查看中" : "查看该轮详情"}
+                </button>
+                {pilotTask?.id !== task.id && (
+                  <button type="button" className="secondary" onClick={() => hideHistoryRun(task.id)} disabled={pilotBusy}>
+                    <EyeOff size={16} />
+                    隐藏测试轮次
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -1195,6 +1474,12 @@ function OpeningConditionReportArchivePage({
           {onArchive && reportAsset?.status === "ready" && (
             <button type="button" className="secondary" onClick={onArchive} disabled={pilotBusy}>
               归档任务
+            </button>
+          )}
+          {onStartRectificationRerun && currentRunArchived && (
+            <button type="button" className="primary" onClick={onStartRectificationRerun} disabled={pilotBusy}>
+              <RotateCcw size={16} />
+              发起下一轮整改复审
             </button>
           )}
         </div>
@@ -1390,6 +1675,7 @@ function OpeningConditionRealTrialIntakePanel({
   const [packetFile, setPacketFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("选择合同依据、核查表和资料包后，可创建一条真实试点任务。");
+  const isRectificationRerun = pilotTask?.state === "archived";
 
   async function handleBootstrap() {
     if (!basisFile || !checklistFile || !packetFile) {
@@ -1398,7 +1684,7 @@ function OpeningConditionRealTrialIntakePanel({
     }
 
     setSubmitting(true);
-    setMessage("正在上传试点资料...");
+    setMessage(isRectificationRerun ? "正在上传整改复审资料并创建新一轮 run..." : "正在上传试点资料...");
 
     try {
       const [basisUpload, checklistUpload, packetUpload] = await Promise.all([
@@ -1441,7 +1727,11 @@ function OpeningConditionRealTrialIntakePanel({
         return;
       }
 
-      setMessage(`真实试点任务已初始化，任务 ${result.task.id}，资料包清单 ${result.packet?.inventoryEntries.length ?? 0} 项，当前状态 ${result.task.state}。`);
+      setMessage(
+        `${isRectificationRerun ? "整改复审新一轮" : "真实试点任务"}已初始化，任务 ${result.task.id}，资料包清单 ${
+          result.packet?.inventoryEntries.length ?? 0
+        } 项，当前状态 ${result.task.state}。`,
+      );
       onComplete?.(result);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "单项目试点初始化失败。");
@@ -1456,13 +1746,19 @@ function OpeningConditionRealTrialIntakePanel({
     <section className="opening-panel opening-panel-wide">
       <div className="section-title row">
         <div>
-          <span className="eyebrow">真实试点资料接入</span>
-          <h2>合同依据、核查表和资料包</h2>
+          <span className="eyebrow">{isRectificationRerun ? "整改复审资料接入" : "真实试点资料接入"}</span>
+          <h2>{isRectificationRerun ? "上传补正后的依据、核查表和资料包" : "合同依据、核查表和资料包"}</h2>
         </div>
         <button type="button" className="primary" onClick={handleBootstrap} disabled={disabled}>
-          {submitting ? "接入中..." : "上传并初始化试点"}
+          {submitting ? "接入中..." : isRectificationRerun ? "上传并创建复审 run" : "上传并初始化试点"}
         </button>
       </div>
+      {isRectificationRerun && (
+        <div className="opening-report-detail-card">
+          <strong>上一轮已归档，本次上传将创建新的整改复审 run。</strong>
+          <small>历史 run 保持只读留存，新 run 会继承当前工作区、合同段和参建单位上下文。</small>
+        </div>
+      )}
       <div className="opening-trial-upload-grid">
         <label>
           <span>合同/资质依据</span>

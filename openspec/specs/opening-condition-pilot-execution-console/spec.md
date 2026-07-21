@@ -83,11 +83,11 @@ The opening-condition pilot execution console SHALL render backend trial package
 - **THEN** the material-check, human-review, and report pages display backend counts and latest trial package state without requiring raw event inspection
 
 ### Requirement: Report package rendering
-The report archive page SHALL display backend report package diagnostics for repeatable real-sample trials.
+The report archive page SHALL display backend report package diagnostics for repeatable real-sample trials and SHALL surface findings-oriented delivery content for operator handoff.
 
 #### Scenario: Report package exists
 - **WHEN** a backend report asset includes package diagnostics
-- **THEN** the report page shows the task-owned input summary, matching summary, human-review summary, provider/readiness blockers, report status, and archive status
+- **THEN** the report page shows the task-owned input summary, matching summary, human-review summary, provider/readiness blockers, report status, archive status, and findings-oriented delivery sections
 
 #### Scenario: Archived package is shown
 - **WHEN** the backend task is archived
@@ -101,7 +101,7 @@ The report archive page SHALL render task-owned human-review decision ledger ent
 - **THEN** the report page shows each entry's checklist name and category when available, target ID, final status, reason, safe note, reviewer, and decided time as part of the delivery summary
 
 ### Requirement: Current trial run tracking
-The opening-condition execution console SHALL keep operator actions scoped to the currently selected or newly bootstrapped pilot run.
+The opening-condition execution console SHALL keep operator actions scoped to the currently selected or newly bootstrapped pilot run, while allowing archived runs to be revisited as history.
 
 #### Scenario: Refresh follows current run id
 - **WHEN** the portal has a current backend pilot task
@@ -119,9 +119,18 @@ The opening-condition execution console SHALL keep operator actions scoped to th
 - **WHEN** the current workspace has both archived tasks and a newer non-archived run task
 - **THEN** the execution console refreshes onto the latest non-archived run instead of staying bound to an archived task
 
+#### Scenario: Archived task becomes read-only history
+- **WHEN** the currently displayed backend task is archived
+- **THEN** the execution console disables follow-on mutation actions but still allows the operator to inspect the archived run and its report as history
+
 #### Scenario: Archived task becomes read-only
 - **WHEN** the currently displayed backend task is archived
 - **THEN** the execution console disables formal matching and other follow-on mutation actions and guides the operator to upload and initialize a new run
+
+#### Scenario: Start next rectification round
+- **WHEN** the operator starts a next rectification round from an archived run
+- **THEN** the execution console guides the operator to upload a fresh basis/checklist/material package for a new run-specific task id
+- **AND** the archived run is not reinitialized or mutated
 
 ### Requirement: Human-review delivery guidance
 The opening-condition execution console SHALL show task-owned human-review progress and next action guidance after formal matching.
@@ -144,3 +153,4 @@ The report archive page SHALL require backend `report_ready` state before enabli
 #### Scenario: Report ready without existing report
 - **WHEN** the backend task state is `report_ready` and no report asset exists
 - **THEN** the report generation action is enabled
+

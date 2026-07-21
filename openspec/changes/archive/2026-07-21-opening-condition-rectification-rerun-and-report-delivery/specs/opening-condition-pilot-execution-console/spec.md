@@ -33,3 +33,12 @@ The opening-condition execution console SHALL keep operator actions scoped to th
 #### Scenario: Archived task becomes read-only history
 - **WHEN** the currently displayed backend task is archived
 - **THEN** the execution console disables follow-on mutation actions but still allows the operator to inspect the archived run and its report as history
+
+#### Scenario: Archived task becomes read-only
+- **WHEN** the currently displayed backend task is archived
+- **THEN** the execution console disables formal matching and other follow-on mutation actions and guides the operator to upload and initialize a new run
+
+#### Scenario: Start next rectification round
+- **WHEN** the operator starts a next rectification round from an archived run
+- **THEN** the execution console guides the operator to upload a fresh basis/checklist/material package for a new run-specific task id
+- **AND** the archived run is not reinitialized or mutated
