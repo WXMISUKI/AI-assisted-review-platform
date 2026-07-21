@@ -10,6 +10,7 @@ import {
 import {
   archiveOpeningConditionPilotTask,
   bindOpeningConditionPilotKnowledgeBase,
+  decideOpeningConditionPilotMasterData,
   decideOpeningConditionPilotHumanReview,
   fetchOpeningConditionPilotBasis,
   fetchOpeningConditionPilotKnowledgeBases,
@@ -19,6 +20,7 @@ import {
   fetchOpeningConditionPilotTaskReadiness,
   generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotIntake,
+  publishOpeningConditionPilotBasis,
   runOpeningConditionPilotMatch,
   upsertOpeningConditionPilotKnowledgeBase,
   type OpeningConditionPilotBasisRecord,
@@ -154,6 +156,7 @@ export function App() {
     getOpeningConditionWorkspacePacket(openingConditionReviewPacket.workspaceId),
   );
   const [openingPilotTask, setOpeningPilotTask] = useState<OpeningConditionPilotTask | null>(null);
+  const [openingPilotWorkspaceTasks, setOpeningPilotWorkspaceTasks] = useState<OpeningConditionPilotTask[]>([]);
   const [openingPilotReadiness, setOpeningPilotReadiness] =
     useState<OpeningConditionPilotReadinessResult | null>(null);
   const [openingPilotBasisRecords, setOpeningPilotBasisRecords] = useState<OpeningConditionPilotBasisRecord[]>([]);
@@ -196,6 +199,7 @@ export function App() {
   function selectOpeningWorkspace(workspaceId: string) {
     setOpeningPacket(getOpeningConditionWorkspacePacket(workspaceId));
     setOpeningPilotTask(null);
+    setOpeningPilotWorkspaceTasks([]);
     setOpeningPilotReadiness(null);
     setOpeningPilotBasisRecords([]);
     setOpeningPilotMasterDataRecords([]);
@@ -215,14 +219,18 @@ export function App() {
     setOpeningPilotKnowledgeBases(knowledgeBaseResult?.ok ? knowledgeBaseResult.knowledgeBases ?? [] : []);
   }
 
-  async function resolveOpeningPilotTaskId(preferredTaskId?: string) {
+  async function refreshOpeningWorkspaceTasks(workspaceId = openingPacket.workspaceId) {
     const listed = await fetchOpeningConditionPilotTasks().catch(() => null);
     const workspaceTasks =
       listed?.ok && Array.isArray(listed.tasks)
-        ? listed.tasks
-            .filter((task) => task.context.workspaceId === openingPacket.workspaceId)
-            .sort(compareOpeningPilotTaskRecency)
+        ? listed.tasks.filter((task) => task.context.workspaceId === workspaceId).sort(compareOpeningPilotTaskRecency)
         : [];
+    setOpeningPilotWorkspaceTasks(workspaceTasks);
+    return workspaceTasks;
+  }
+
+  async function resolveOpeningPilotTaskId(preferredTaskId?: string) {
+    const workspaceTasks = await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
 
     if (workspaceTasks.length === 0) {
       return preferredTaskId ?? getOpeningPilotTaskId(openingPacket);
@@ -253,6 +261,7 @@ export function App() {
 
     try {
       await refreshOpeningWorkspaceFacts(openingPacket.workspaceId);
+      await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
       const taskResult = await fetchOpeningConditionPilotTask(resolvedTaskId).catch(() => null);
       if (!taskResult?.ok || !taskResult.task) {
         setOpeningPilotTask(null);
@@ -374,6 +383,99 @@ export function App() {
       );
     } catch (error) {
       setOpeningPilotStatus(error instanceof Error ? error.message : "正式核查执行失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function publishOpeningPilotBasisRecord() {
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可发布的依据记录，请先初始化试点任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，不能再发布依据；请初始化新的试点 run。");
+      return;
+    }
+
+    const workspaceId = openingPilotTask.context.workspaceId;
+    const actorId = session?.username ?? "pilot-user";
+    const currentBasisId =
+      openingPilotTask.basisVersion?.id ??
+      openingPilotBasisRecords.find((item) => item.status !== "published" && item.status !== "rejected")?.id;
+
+    if (!currentBasisId) {
+      setOpeningPilotStatus("当前 run 没有待发布的依据记录。");
+      return;
+    }
+
+    setOpeningPilotBusy(true);
+    try {
+      const result = await publishOpeningConditionPilotBasis(workspaceId, currentBasisId, actorId);
+      if (!result.ok) {
+        setOpeningPilotStatus(result.message ?? "依据发布失败");
+        return;
+      }
+
+      await refreshOpeningPilotTask(openingPilotTask.id, { preserveStatus: true });
+      setOpeningPilotStatus("当前 run 依据已发布，请继续确认主数据并检查知识库门禁。");
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "依据发布失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function confirmOpeningPilotMasterDataRecords() {
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可确认的主数据记录，请先初始化试点任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，不能再确认主数据；请初始化新的试点 run。");
+      return;
+    }
+
+    const workspaceId = openingPilotTask.context.workspaceId;
+    const actorId = session?.username ?? "pilot-user";
+    const currentRunMasterDataIds =
+      (openingPilotTask.requiredMasterData ?? []).map((item) => item.id).length > 0
+        ? (openingPilotTask.requiredMasterData ?? []).map((item) => item.id)
+        : openingPilotMasterDataRecords.map((item) => item.id);
+    const pendingRecords = openingPilotMasterDataRecords.filter(
+      (item) =>
+        currentRunMasterDataIds.includes(item.id) &&
+        item.status !== "published" &&
+        item.status !== "human_approved" &&
+        item.status !== "rejected" &&
+        item.status !== "expired",
+    );
+
+    if (pendingRecords.length === 0) {
+      setOpeningPilotStatus("当前 run 主数据已处于 human approved 或 published 状态。");
+      return;
+    }
+
+    setOpeningPilotBusy(true);
+    try {
+      for (const record of pendingRecords) {
+        const result = await decideOpeningConditionPilotMasterData(
+          workspaceId,
+          record.id,
+          "approve",
+          actorId,
+          "当前记录已在试点接入预览中由操作员确认，可进入正式核查门禁。",
+        );
+        if (!result.ok) {
+          setOpeningPilotStatus(result.message ?? `主数据确认失败：${record.label}`);
+          return;
+        }
+      }
+
+      await refreshOpeningPilotTask(openingPilotTask.id, { preserveStatus: true });
+      setOpeningPilotStatus(`当前 run 主数据已确认 ${pendingRecords.length} 项，可继续检查正式核查门禁。`);
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "主数据确认失败");
     } finally {
       setOpeningPilotBusy(false);
     }
@@ -606,6 +708,7 @@ export function App() {
       selectedWorkspaceId={openingPacket.workspaceId}
       packet={openingPacket}
       pilotTask={openingPilotTask}
+      pilotWorkspaceTasks={openingPilotWorkspaceTasks}
       pilotBasisRecords={openingPilotBasisRecords}
       pilotMasterDataRecords={openingPilotMasterDataRecords}
       pilotKnowledgeBases={openingPilotKnowledgeBases}
@@ -618,6 +721,8 @@ export function App() {
       onSelectWorkspace={selectOpeningWorkspace}
       onRefreshPilotTask={() => void refreshOpeningPilotTask()}
       onInitializePilotTask={() => void initializeOpeningPilotTask()}
+      onPublishPilotBasis={() => void publishOpeningPilotBasisRecord()}
+      onConfirmPilotMasterData={() => void confirmOpeningPilotMasterDataRecords()}
       onRunPilotMatch={() => void runOpeningPilotFormalMatch()}
       onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
       onReviewDecision={(reviewId, decision) => void decideOpeningPilotHumanReview(reviewId, decision)}

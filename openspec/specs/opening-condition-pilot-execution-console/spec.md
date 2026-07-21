@@ -4,7 +4,7 @@
 Define the operator-facing execution console for the opening-condition pilot so trial users can explicitly initialize intake, run formal checklist matching, and inspect blocking reasons without hidden auto-execution.
 ## Requirements
 ### Requirement: Explicit pilot execution actions
-The system SHALL expose explicit operator actions for real-file trial bootstrap, pilot intake/init, formal matching, and state refresh in the opening-condition review portal.
+The system SHALL expose explicit operator actions for real-file trial bootstrap, pilot intake/init, intake preview confirmation, basis publication, master-data confirmation, formal matching, and state refresh in the opening-condition review portal.
 
 #### Scenario: Operator initializes pilot intake
 - **WHEN** the pilot task is not yet packet-ready or the operator wants to reinitialize the task
@@ -14,8 +14,12 @@ The system SHALL expose explicit operator actions for real-file trial bootstrap,
 - **WHEN** the operator selects basis, checklist, and material ZIP files for the single-project trial
 - **THEN** the portal uploads them through the existing object-storage channel and calls the domain bootstrap API with safe object refs
 
+#### Scenario: Operator confirms intake preview gate
+- **WHEN** the current run still has unpublished basis or unconfirmed required master data
+- **THEN** the execution console provides explicit publish or confirm actions before formal matching
+
 #### Scenario: Operator starts formal matching
-- **WHEN** the pilot task has a packet-bound task context and the operator chooses to run formal matching
+- **WHEN** the pilot task has a packet-bound task context and readiness is formally ready
 - **THEN** the portal triggers backend checklist matching explicitly instead of doing so automatically during workspace sync
 
 #### Scenario: Operator refreshes execution state

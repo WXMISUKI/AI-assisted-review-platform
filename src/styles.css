@@ -2958,6 +2958,11 @@ h4 {
   margin-top: 18px;
 }
 
+.dialog-actions.compact {
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
 .dialog-actions button {
   min-height: 38px;
   border: 1px solid var(--button-border);
@@ -3251,6 +3256,15 @@ h4 {
 .opening-record-list {
   display: grid;
   gap: 10px;
+}
+
+.opening-record-list-compact {
+  grid-template-columns: 1fr;
+}
+
+.opening-report-finding {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
 }
 
 .opening-condition-meta {

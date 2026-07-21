@@ -70,6 +70,10 @@ The single-project trial intake SHALL make real-file intake repeatable by return
 - **WHEN** ZIP manifest extraction cannot run or produces no entries
 - **THEN** the task stores fallback inventory entries from source objects and records a bounded fallback reason
 
+#### Scenario: Intake result enters preview gate
+- **WHEN** a real-file intake run is created or re-initialized
+- **THEN** the material-intake page presents the returned basis, required master data, knowledge-base binding, and gate status as preview facts to be confirmed before formal matching
+
 ### Requirement: Browser upload is authoritative for real samples
 The trial intake SHALL rely on the existing browser upload channel for real sample files and SHALL NOT accept arbitrary local filesystem paths.
 
