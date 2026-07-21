@@ -1837,7 +1837,7 @@ function resolveKnowledgeBaseForIntake(snapshot, workspaceId, requestedKnowledge
 
   if (existingKnowledgeBaseId) {
     const existing = workspaceKnowledgeBases.find((item) => item.id === existingKnowledgeBaseId);
-    if (existing) {
+    if (existing && isKnowledgeBaseReadyForFormalReview(existing)) {
       return {
         knowledgeBaseRef: normalizeKnowledgeBaseRef(existing, workspaceId),
         resolution: "bound_from_existing_task",
@@ -1852,6 +1852,17 @@ function resolveKnowledgeBaseForIntake(snapshot, workspaceId, requestedKnowledge
       resolution: "auto_bound_single_ready",
       selectedKnowledgeBaseId: readyKnowledgeBases[0].id,
     };
+  }
+
+  if (existingKnowledgeBaseId) {
+    const existing = workspaceKnowledgeBases.find((item) => item.id === existingKnowledgeBaseId);
+    if (existing) {
+      return {
+        knowledgeBaseRef: normalizeKnowledgeBaseRef(existing, workspaceId),
+        resolution: "reused_existing_provisional",
+        selectedKnowledgeBaseId: existing.id,
+      };
+    }
   }
 
   if (readyKnowledgeBases.length > 1) {
@@ -2302,7 +2313,8 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
 
   const taskId = normalizeString(input.taskId, `oc-pilot-${context.workspaceId}`, 180);
   const basisId = normalizeString(input.basisId, `${context.workspaceId}-basis-contract`, 180);
-  const knowledgeBaseId = normalizeString(input.knowledgeBaseId, `${context.workspaceId}-subcontract-kb`, 180);
+  const explicitKnowledgeBaseId = normalizeString(input.knowledgeBaseId, "", 180);
+  const defaultKnowledgeBaseId = normalizeString(input.defaultKnowledgeBaseId, `${context.workspaceId}-subcontract-kb`, 180);
   const submittedBy = normalizeString(input.submittedBy, "pilot-user", 160);
   const masterDataRecords = (
     Array.isArray(input.masterDataRecords) && input.masterDataRecords.length > 0
@@ -2362,7 +2374,25 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
         ? [input.knowledgeBaseProviderRef]
         : [],
   );
-  const knowledgeBase = await upsertOpeningConditionPilotKnowledgeBase(
+  const snapshot = await readSnapshot(options.storePath);
+  const reusableKnowledgeBaseResolution = resolveKnowledgeBaseForIntake(
+    snapshot,
+    context.workspaceId,
+    explicitKnowledgeBaseId,
+    "",
+  );
+  const reusableKnowledgeBase =
+    providerRefs.length === 0 &&
+    isKnowledgeBaseReadyForFormalReview(reusableKnowledgeBaseResolution.knowledgeBaseRef)
+      ? reusableKnowledgeBaseResolution.knowledgeBaseRef
+      : undefined;
+  const knowledgeBaseId = (reusableKnowledgeBase?.id ?? explicitKnowledgeBaseId) || defaultKnowledgeBaseId;
+  const knowledgeBase = reusableKnowledgeBase
+    ? {
+        ok: true,
+        knowledgeBase: reusableKnowledgeBase,
+      }
+    : await upsertOpeningConditionPilotKnowledgeBase(
     context.workspaceId,
     knowledgeBaseId,
     {
@@ -2409,6 +2439,7 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
       masterDataIds: savedMasterData.map((item) => item.id),
       sourceObjectCount: sourceObjects.length,
       providerRefCount: providerRefs.length,
+      knowledgeBaseResolution: reusableKnowledgeBase ? "reused_ready_workspace_kb" : "upserted_trial_kb",
       nextHandoff: "OCR Worker batch ingestion and MaxKB retrieval-check can be attached to this task in the next slice.",
     }),
   };

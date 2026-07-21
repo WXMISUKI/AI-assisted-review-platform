@@ -1003,6 +1003,7 @@ function OpeningConditionTrialIntakeOverviewPanel({
   const boundKnowledgeBase = knowledgeBases?.find((item) => item.id === pilotTask.knowledgeBaseRef?.id);
   const diagnostics = pilotTask.trialPackage?.diagnostics;
   const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? pilotTask.trialPackage?.blockingReasons ?? [];
+  const knowledgeBaseReadiness = readiness?.preflightReadiness?.knowledgeBase ?? "provisional";
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -1038,9 +1039,11 @@ function OpeningConditionTrialIntakeOverviewPanel({
             {boundKnowledgeBase?.providerSyncStatus ?? pilotTask.knowledgeBaseRef?.providerSyncStatus ?? "unknown"}
           </span>
           <p>
-            {diagnostics
-              ? `Checklist ${diagnostics.checklistDefinitionResolution ?? "unknown"} / Manifest ${diagnostics.inventoryEntryCount}`
-              : "No trial diagnostics recorded yet."}
+            {knowledgeBaseReadiness !== "ready"
+              ? `Bound KB exists but is not formal-review ready yet (${knowledgeBaseReadiness}).`
+              : diagnostics
+                ? `Checklist ${diagnostics.checklistDefinitionResolution ?? "unknown"} / Manifest ${diagnostics.inventoryEntryCount}`
+                : "No trial diagnostics recorded yet."}
           </p>
         </div>
       </div>
@@ -1072,39 +1075,72 @@ function OpeningConditionBasisAndMasterDataPage({
   const displayedMasterDataRecords = masterDataRecords && masterDataRecords.length > 0 ? masterDataRecords : packet.masterData;
   const boundBasisId = pilotTask?.basisVersion?.id;
   const requiredMasterDataIds = new Set((pilotTask?.requiredMasterData ?? []).map((record) => record.id));
+  const boundKnowledgeBaseId = pilotTask?.knowledgeBaseRef?.id;
+  const displayedKnowledgeBases = knowledgeBases ?? [];
+  const formatRecordStatus = (status?: string) =>
+    (status && openingConditionRecordStatusLabels[status as keyof typeof openingConditionRecordStatusLabels]) || status || "unknown";
+  const getOptionalSafeNote = (value: unknown) =>
+    value && typeof value === "object" && "safeNote" in value && typeof value.safeNote === "string" ? value.safeNote : "";
 
   return (
     <div className="opening-condition-grid">
       <article className={`opening-panel ${defaultSection === "basis" ? "opening-panel-emphasis" : ""}`}>
-        <span className="eyebrow">判定依据</span>
-        <h2>合同、核查表与专项依据</h2>
+        <span className="eyebrow">Basis</span>
+        <h2>Current run basis and published record</h2>
         <div className="opening-record-list">
-          {packet.basisVersions.map((basis) => (
+          {displayedBasisRecords.map((basis) => (
             <div key={basis.id}>
               <strong>{basis.title}</strong>
               <span>
-                {openingConditionRecordStatusLabels[basis.status]} · {basis.componentType} · {basis.confidence}
+                {formatRecordStatus(basis.status)} | {basis.componentType} | {basis.confidence}
+                {basis.id === boundBasisId ? " | current_run" : ""}
               </span>
-              <p>{basis.applicability}</p>
+              <p>{basis.applicability || getOptionalSafeNote(basis) || "Current workspace basis has no extra note."}</p>
             </div>
           ))}
         </div>
       </article>
 
       <article className={`opening-panel ${defaultSection === "master-data" ? "opening-panel-emphasis" : ""}`}>
-        <span className="eyebrow">项目主数据</span>
-        <h2>人员和设备以平台事实为准</h2>
+        <span className="eyebrow">Master Data</span>
+        <h2>Backend facts used by this run</h2>
         <div className="opening-record-list">
-          {packet.masterData.map((record) => (
+          {displayedMasterDataRecords.map((record) => (
             <div key={record.id}>
               <strong>{record.label}</strong>
               <span>
-                {record.type} · {openingConditionRecordStatusLabels[record.status]} · {record.confidence}
+                {record.type} | {formatRecordStatus(record.status)} | {record.confidence}
+                {requiredMasterDataIds.has(record.id) ? " | current_run" : ""}
               </span>
-              <p>{record.validity}</p>
-              {record.reviewNeededReason && <small>{record.reviewNeededReason}</small>}
+              <p>{record.validity || getOptionalSafeNote(record) || "Current master-data record has no extra note."}</p>
+              {"reviewNeededReason" in record && record.reviewNeededReason && <small>{record.reviewNeededReason}</small>}
+              {"normalizedFields" in record && requiredMasterDataIds.has(record.id) && <small>trial_placeholder_or_backend_fact</small>}
             </div>
           ))}
+        </div>
+      </article>
+
+      <article className="opening-panel">
+        <span className="eyebrow">Knowledge Base</span>
+        <h2>Current run binding and readiness</h2>
+        <div className="opening-record-list">
+          {displayedKnowledgeBases.length > 0 ? (
+            displayedKnowledgeBases.map((knowledgeBase) => (
+              <div key={knowledgeBase.id}>
+                <strong>{knowledgeBase.label}</strong>
+                <span>
+                  {knowledgeBase.status} | {knowledgeBase.providerSyncStatus ?? "unknown"}
+                  {knowledgeBase.id === boundKnowledgeBaseId ? " | current_run" : ""}
+                </span>
+                <p>{knowledgeBase.summary || "??????????????"}</p>
+              </div>
+            ))
+          ) : (
+            <div>
+              <strong>No backend knowledge-base record</strong>
+              <p>?????????????????????????????????</p>
+            </div>
+          )}
         </div>
       </article>
     </div>

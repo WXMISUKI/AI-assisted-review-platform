@@ -97,6 +97,54 @@ function buildOpeningPilotIntakeRequest(packet: OpeningConditionReviewPacket, su
   };
 }
 
+type OpeningPilotPacketRef =
+  | NonNullable<NonNullable<OpeningConditionPilotTask["packet"]>["sourceObjects"]>[number]
+  | NonNullable<NonNullable<OpeningConditionPilotTask["packet"]>["checklistObject"]>;
+
+function isPersistedOpeningPilotObject(objectRef?: OpeningPilotPacketRef | null) {
+  if (!objectRef) {
+    return false;
+  }
+
+  return Boolean(objectRef.storageKey || String(objectRef.objectId || "").startsWith("uploads/"));
+}
+
+function buildOpeningPilotReinitializeRequest(
+  task: OpeningConditionPilotTask,
+  basisRecords: OpeningConditionPilotBasisRecord[],
+  masterDataRecords: OpeningConditionPilotMasterDataRecord[],
+  submittedBy = "pilot-user",
+) {
+  const checklistObject = task.packet?.checklistObject;
+  const sourceObjects = task.packet?.sourceObjects ?? [];
+  if (!checklistObject || !isPersistedOpeningPilotObject(checklistObject) || sourceObjects.length === 0) {
+    return null;
+  }
+  if (sourceObjects.some((item) => !isPersistedOpeningPilotObject(item))) {
+    return null;
+  }
+
+  const publishedBasisId =
+    task.basisVersion?.id ??
+    basisRecords.find((item) => item.status === "published")?.id;
+  const approvedMasterDataIds =
+    (task.requiredMasterData?.length ?? 0) > 0
+      ? task.requiredMasterData.map((item) => item.id)
+      : masterDataRecords
+          .filter((item) => item.status === "published" || item.status === "human_approved")
+          .map((item) => item.id);
+
+  return {
+    taskId: task.id,
+    context: task.context,
+    basisVersionId: publishedBasisId,
+    requiredMasterDataIds: approvedMasterDataIds,
+    checklistObject,
+    sourceObjects,
+    submittedBy,
+  };
+}
+
 export function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
   const [session, setSession] = useState<Session | null>(null);
@@ -238,8 +286,22 @@ export function App() {
     setOpeningPilotBusy(true);
 
     try {
+      const reinitializeRequest =
+        openingPilotTask && openingPilotTask.state !== "archived"
+          ? buildOpeningPilotReinitializeRequest(
+              openingPilotTask,
+              openingPilotBasisRecords,
+              openingPilotMasterDataRecords,
+              session?.username ?? "pilot-user",
+            )
+          : null;
+      if (openingPilotTask && openingPilotTask.state !== "archived" && !reinitializeRequest) {
+        setOpeningPilotStatus("当前 run 的真实上传对象引用已丢失或已被演示数据覆盖，不能继续安全重初始化。请通过“真实试点资料接入”重新上传并创建新的 run。");
+        return;
+      }
+
       const result = await initializeOpeningConditionPilotIntake(
-        {
+        reinitializeRequest ?? {
           ...buildOpeningPilotIntakeRequest(openingPacket, session?.username ?? "pilot-user"),
           taskId,
         },

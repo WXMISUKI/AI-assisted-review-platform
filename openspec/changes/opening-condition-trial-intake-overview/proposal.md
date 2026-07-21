@@ -17,6 +17,9 @@
   - required master data
   - 知识库与 provider readiness
   - checklist 适配结果、manifest 条数、阻塞原因与 next action
+- 真实试点 bootstrap 在未显式指定知识库时，优先复用当前工作区唯一可正式核查的 ready 知识库，避免新 run 被 provisional 占位知识库错误阻塞。
+- 资料接入重新初始化 (`intake-init`) 也遵循同一套知识库选择策略，避免已有 run 因为历史 provisional 绑定而反复自锁。
+- 前端“重新初始化资料包接入”对真实试点 run 只允许复用已持久化的真实对象引用，不再用 demo packet 覆盖真实上传 run；若真实对象引用已丢失，则明确提示操作员重新上传创建新 run。
 - 将“依据与主数据”页改为优先展示后端真实记录，而不是只看 mock packet。
 - 在总览中突出“当前 run 绑定”“已发布/人工批准”“试点占位数据”这些业务边界，帮助操作员在正式核查前做人类 sanity check。
 
