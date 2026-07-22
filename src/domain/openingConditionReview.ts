@@ -369,6 +369,132 @@ export const openingConditionRecordStatusLabels: Record<OpeningConditionRecordSt
   expired: "已过期",
 };
 
+export type OpeningConditionPublicationTone = "danger" | "warning" | "success" | "info" | "muted";
+
+export type OpeningConditionPublicationGroup =
+  | "pending_confirmation"
+  | "ready_to_publish"
+  | "published"
+  | "exception";
+
+export interface OpeningConditionPublicationStatusMeta {
+  label: string;
+  description: string;
+  tone: OpeningConditionPublicationTone;
+  group: OpeningConditionPublicationGroup;
+}
+
+export const openingConditionBasisComponentTypeLabels: Record<string, string> = {
+  contract: "合同依据",
+  "supplemental-agreement": "补充协议",
+  "checklist-template": "核查表模板",
+  regulation: "法规规范",
+  "project-rule": "项目制度",
+  "project-specific-requirement": "项目专项要求",
+};
+
+export const openingConditionMasterDataTypeLabels: Record<string, string> = {
+  personnel: "人员",
+  equipment: "设备器具",
+  certificate: "证照",
+  company: "单位资质",
+  "system-document": "制度资料",
+};
+
+export function getOpeningConditionBasisPublicationStatusMeta(status?: string): OpeningConditionPublicationStatusMeta {
+  switch (status) {
+    case "pending_confirmation":
+      return {
+        label: "待人工确认",
+        description: "识别结果已形成候选依据，但还不能作为正式核查依据使用。",
+        tone: "warning",
+        group: "pending_confirmation",
+      };
+    case "confirmed":
+      return {
+        label: "待发布",
+        description: "人工已确认依据内容，等待正式发布后供 run 绑定。",
+        tone: "info",
+        group: "ready_to_publish",
+      };
+    case "published":
+      return {
+        label: "已发布",
+        description: "该依据版本已可供当前或后续正式核查使用。",
+        tone: "success",
+        group: "published",
+      };
+    case "superseded":
+      return {
+        label: "已被替代",
+        description: "该依据版本已被更新版本替代，保留留痕但不再作为主版本。",
+        tone: "muted",
+        group: "exception",
+      };
+    case "rejected":
+      return {
+        label: "已驳回",
+        description: "该依据候选未通过人工确认，不参与正式核查。",
+        tone: "danger",
+        group: "exception",
+      };
+    default:
+      return {
+        label: "草稿",
+        description: "该依据仍处于草稿或初始化状态，尚未进入正式确认。",
+        tone: "muted",
+        group: "pending_confirmation",
+      };
+  }
+}
+
+export function getOpeningConditionMasterDataPublicationStatusMeta(status?: string): OpeningConditionPublicationStatusMeta {
+  switch (status) {
+    case "confirmed":
+      return {
+        label: "待发布",
+        description: "主数据字段已确认，可进一步发布为正式复用事实。",
+        tone: "info",
+        group: "ready_to_publish",
+      };
+    case "human_approved":
+      return {
+        label: "已人工确认",
+        description: "该主数据已被人工确认，可用于当前试点 run。",
+        tone: "success",
+        group: "ready_to_publish",
+      };
+    case "published":
+      return {
+        label: "已发布",
+        description: "该主数据已进入正式目录，可被后续核查稳定引用。",
+        tone: "success",
+        group: "published",
+      };
+    case "rejected":
+      return {
+        label: "已驳回",
+        description: "该主数据候选未通过人工确认，不参与正式核查。",
+        tone: "danger",
+        group: "exception",
+      };
+    case "expired":
+      return {
+        label: "已过期",
+        description: "该主数据存在时效性问题，需要补充新版资料。",
+        tone: "warning",
+        group: "exception",
+      };
+    default:
+      return {
+        label: "待人工确认",
+        description: "该主数据仍为候选识别结果，不能直接作为正式核查事实。",
+        tone: "warning",
+        group: "pending_confirmation",
+      };
+  }
+}
+
 export const openingConditionWorkspaces: OpeningConditionWorkspace[] = [
   {
     id: "oc-ws-g15-08-supervisor",

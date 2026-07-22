@@ -27,8 +27,12 @@ import {
 import type { ProductLauncherEntry, ProductPortalId } from "./domain/productPortal";
 import {
   buildOpeningConditionWorkspaceCatalog,
+  getOpeningConditionBasisPublicationStatusMeta,
+  getOpeningConditionMasterDataPublicationStatusMeta,
   getOpeningConditionRiskSummary,
   getOpeningConditionVerdictSummary,
+  openingConditionBasisComponentTypeLabels,
+  openingConditionMasterDataTypeLabels,
   openingConditionRecordStatusLabels,
   openingConditionRiskLabels,
   openingConditionVerdictLabels,
@@ -512,7 +516,7 @@ export function OpeningConditionWorkspaceShell({
             />
           )}
           {activePage === "basis-sets" && (
-            <OpeningConditionBasisAndMasterDataPage
+            <OpeningConditionPublicationGovernancePage
               packet={packet}
               pilotTask={pilotTask}
               basisRecords={pilotBasisRecords}
@@ -1143,6 +1147,324 @@ function OpeningConditionBasisAndMasterDataPage({
               </div>
             )}
           </div>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function OpeningConditionPublicationGovernancePage({
+  packet,
+  pilotTask,
+  basisRecords,
+  masterDataRecords,
+  knowledgeBases,
+  pilotReadiness,
+}: {
+  packet: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
+  basisRecords?: OpeningConditionPilotBasisRecord[];
+  masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
+  knowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
+  pilotReadiness?: OpeningConditionPilotReadinessResult | null;
+}) {
+  const displayedBasisRecords = basisRecords && basisRecords.length > 0 ? basisRecords : packet.basisVersions;
+  const displayedMasterDataRecords = masterDataRecords && masterDataRecords.length > 0 ? masterDataRecords : packet.masterData;
+  const displayedKnowledgeBases = knowledgeBases ?? [];
+  const boundBasisId = pilotTask?.basisVersion?.id;
+  const requiredMasterDataIds = new Set((pilotTask?.requiredMasterData ?? []).map((record) => record.id));
+  const boundKnowledgeBaseId = pilotTask?.knowledgeBaseRef?.id;
+  const readiness = pilotReadiness?.preflightReadiness;
+  const basisReady = readiness?.basis === "ready";
+  const masterDataReady = readiness?.masterData === "ready";
+  const knowledgeBaseReady = readiness?.knowledgeBase === "ready";
+  const blockingReasons = readiness?.blockingReasons ?? [];
+  const reviewObjectLabel = getReviewObjectTypeLabel(packet.workspaceContext.reviewObjectType);
+
+  const basisEntries = displayedBasisRecords.map((basis) => {
+    const meta = getOpeningConditionBasisPublicationStatusMeta(basis.status);
+    return {
+      id: basis.id,
+      title: basis.title,
+      category: openingConditionBasisComponentTypeLabels[basis.componentType] ?? basis.componentType,
+      statusLabel:
+        openingConditionRecordStatusLabels[basis.status as keyof typeof openingConditionRecordStatusLabels] ?? basis.status,
+      meta,
+      note: "applicability" in basis ? basis.applicability : "当前依据未记录附加适用说明。",
+      secondary:
+        basis.publishedAt || basis.confirmedAt
+          ? `版本 ${basis.version} · ${basis.publishedAt ? `发布于 ${basis.publishedAt}` : `确认于 ${basis.confirmedAt}`}`
+          : `版本 ${basis.version}`,
+      isBound: basis.id === boundBasisId,
+    };
+  });
+
+  const masterEntries = displayedMasterDataRecords.map((record) => {
+    const meta = getOpeningConditionMasterDataPublicationStatusMeta(record.status);
+    return {
+      id: record.id,
+      title: record.label,
+      category: openingConditionMasterDataTypeLabels[record.type] ?? record.type,
+      statusLabel:
+        openingConditionRecordStatusLabels[record.status as keyof typeof openingConditionRecordStatusLabels] ?? record.status,
+      meta,
+      note: "validity" in record ? record.validity : "当前主数据未记录有效性说明。",
+      secondary:
+        record.publishedAt || record.confirmedAt
+          ? `${openingConditionMasterDataTypeLabels[record.type] ?? record.type} · ${
+              record.publishedAt ? `发布于 ${record.publishedAt}` : `确认于 ${record.confirmedAt}`
+            }`
+          : openingConditionMasterDataTypeLabels[record.type] ?? record.type,
+      safeNote:
+        ("safeNote" in record && typeof record.safeNote === "string" ? record.safeNote : undefined) ??
+        ("rejectionReason" in record && typeof record.rejectionReason === "string" ? record.rejectionReason : undefined),
+      isCurrentRun: requiredMasterDataIds.has(record.id),
+    };
+  });
+
+  const basisSnapshot = basisEntries.find((entry) => entry.isBound) ?? null;
+  const currentRunFacts = masterEntries.filter((entry) => entry.isCurrentRun);
+  const boundKnowledgeBase =
+    displayedKnowledgeBases.find((knowledgeBase) => knowledgeBase.id === boundKnowledgeBaseId) ?? pilotTask?.knowledgeBaseRef ?? null;
+
+  const basisPending = basisEntries.filter((entry) => entry.meta.group === "pending_confirmation");
+  const basisReadyToPublish = basisEntries.filter((entry) => entry.meta.group === "ready_to_publish");
+  const basisPublished = basisEntries.filter((entry) => entry.meta.group === "published");
+  const basisExceptions = basisEntries.filter((entry) => entry.meta.group === "exception");
+
+  const masterPending = masterEntries.filter((entry) => entry.meta.group === "pending_confirmation");
+  const masterReadyToPublish = masterEntries.filter((entry) => entry.meta.group === "ready_to_publish");
+  const masterPublished = masterEntries.filter((entry) => entry.meta.group === "published");
+  const masterExceptions = masterEntries.filter((entry) => entry.meta.group === "exception");
+
+  function renderGovernanceList(
+    items: Array<{
+      id: string;
+      title: string;
+      category: string;
+      statusLabel: string;
+      meta: { label: string; description: string; tone: string };
+      secondary?: string;
+      note?: string;
+      safeNote?: string;
+      isBound?: boolean;
+      isCurrentRun?: boolean;
+    }>,
+    emptyTitle: string,
+    emptyDescription: string,
+  ) {
+    if (items.length === 0) {
+      return (
+        <div className="opening-governance-empty">
+          <strong>{emptyTitle}</strong>
+          <small>{emptyDescription}</small>
+        </div>
+      );
+    }
+
+    return (
+      <div className="opening-governance-list">
+        {items.map((item) => (
+          <div key={item.id} className="opening-governance-item">
+            <div className="opening-report-finding-header">
+              <strong>{item.title}</strong>
+              <div className="opening-report-chip-row">
+                <span className={`opening-report-chip tone-${item.meta.tone}`}>{item.meta.label}</span>
+                {item.isBound && <span className="opening-report-chip tone-info">当前 run 绑定</span>}
+                {item.isCurrentRun && <span className="opening-report-chip tone-info">当前 run 事实</span>}
+              </div>
+            </div>
+            <span>{item.category}</span>
+            {item.secondary && <small>{item.secondary}</small>}
+            <p>{item.note ?? item.meta.description}</p>
+            {item.safeNote && <small>{item.safeNote}</small>}
+            <small>后端状态：{item.statusLabel}</small>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="opening-condition-page">
+      <section className="opening-panel opening-panel-wide">
+        <span className="eyebrow">Publication Governance</span>
+        <h2>依据与主数据发布治理面</h2>
+        <p>把当前 run 正在消费的资产、待确认候选、待发布记录和异常留痕放在同一个治理面里看清楚。</p>
+        <div className="opening-governance-summary-grid">
+          <div className="opening-governance-summary-card">
+            <strong>{basisReady ? "依据已就绪" : "依据待发布"}</strong>
+            <span>{basisSnapshot ? basisSnapshot.title : "当前 run 暂未绑定正式依据版本"}</span>
+            <small>{basisReady ? "当前 run 已绑定可用依据版本。" : "先完成依据确认与发布，再进入稳定复核。"}</small>
+          </div>
+          <div className="opening-governance-summary-card">
+            <strong>{masterDataReady ? "主数据已就绪" : "主数据待确认"}</strong>
+            <span>{currentRunFacts.length} 项当前 run 事实</span>
+            <small>{masterDataReady ? "当前 run 所需主数据已具备可用状态。" : "仍有主数据候选需要人工确认或发布。"}</small>
+          </div>
+          <div className="opening-governance-summary-card">
+            <strong>{knowledgeBaseReady ? "知识库已就绪" : "知识库待完善"}</strong>
+            <span>{boundKnowledgeBase?.label ?? "当前 run 未绑定知识库"}</span>
+            <small>
+              {knowledgeBaseReady
+                ? "当前知识库已具备正式核查支撑条件。"
+                : readiness?.nextAction ?? "需要先完成知识库绑定或同步。"}
+            </small>
+          </div>
+          <div className="opening-governance-summary-card">
+            <strong>当前 run</strong>
+            <span>{pilotTask?.id ?? "unbound"}</span>
+            <small>{blockingReasons.length > 0 ? blockingReasons.join(" / ") : "当前无额外门禁阻塞说明。"}</small>
+          </div>
+        </div>
+      </section>
+
+      <section className="opening-panel opening-panel-wide">
+        <div className="section-title row">
+          <div>
+            <span className="eyebrow">Current Run Snapshot</span>
+            <h2>当前 run 绑定快照</h2>
+          </div>
+        </div>
+        <div className="opening-governance-section-grid">
+          <article className="opening-governance-card">
+            <strong>对象上下文</strong>
+            <div className="opening-report-chip-row">
+              <span className="opening-report-chip tone-info">{packet.workspaceContext.projectCode}</span>
+              <span className="opening-report-chip tone-muted">{reviewObjectLabel}</span>
+            </div>
+            <p>{packet.workspaceContext.projectName}</p>
+            <small>{packet.workspaceContext.reviewObjectName}</small>
+            <small>{packet.workspaceContext.participantEntityName}</small>
+          </article>
+
+          <article className="opening-governance-card">
+            <strong>依据快照</strong>
+            {basisSnapshot ? (
+              <>
+                <div className="opening-report-chip-row">
+                  <span className={`opening-report-chip tone-${basisSnapshot.meta.tone}`}>{basisSnapshot.meta.label}</span>
+                  <span className="opening-report-chip tone-info">{basisSnapshot.category}</span>
+                </div>
+                <p>{basisSnapshot.title}</p>
+                <small>{basisSnapshot.secondary}</small>
+                <small>{basisSnapshot.note}</small>
+              </>
+            ) : (
+              <>
+                <p>当前 run 暂未绑定正式依据版本。</p>
+                <small>请先完成依据确认与发布，再让正式核查稳定引用。</small>
+              </>
+            )}
+          </article>
+
+          <article className="opening-governance-card">
+            <strong>主数据快照</strong>
+            <p>{currentRunFacts.length} 项事实已进入当前 run</p>
+            <small>
+              {currentRunFacts.length > 0
+                ? currentRunFacts.map((item) => `${item.category}：${item.title}`).join(" / ")
+                : "当前 run 未记录明确的主数据事实，请先确认资料识别结果。"}
+            </small>
+          </article>
+
+          <article className="opening-governance-card">
+            <strong>知识库快照</strong>
+            <div className="opening-report-chip-row">
+              <span className={`opening-report-chip tone-${knowledgeBaseReady ? "success" : "warning"}`}>
+                {knowledgeBaseReady ? "已就绪" : "待完善"}
+              </span>
+              <span className="opening-report-chip tone-muted">{boundKnowledgeBase?.providerSyncStatus ?? "unknown"}</span>
+            </div>
+            <p>{boundKnowledgeBase?.label ?? "未绑定知识库"}</p>
+            <small>{boundKnowledgeBase?.summary ?? "当前 run 还没有稳定知识库摘要。"}</small>
+          </article>
+        </div>
+      </section>
+
+      <section className="opening-condition-grid">
+        <article className="opening-panel">
+          <span className="eyebrow">Basis Queue</span>
+          <h2>依据待人工确认</h2>
+          {renderGovernanceList(
+            basisPending,
+            "当前没有待人工确认的依据候选。",
+            "继续上传新依据后，新的候选会进入这里等待确认。",
+          )}
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">Basis Queue</span>
+          <h2>依据待发布</h2>
+          {renderGovernanceList(
+            basisReadyToPublish,
+            "当前没有待发布的依据版本。",
+            "人工确认后的依据版本会进入这里，发布后才能稳定供 run 使用。",
+          )}
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">Master Data Queue</span>
+          <h2>主数据待人工确认</h2>
+          {renderGovernanceList(
+            masterPending,
+            "当前没有待人工确认的主数据候选。",
+            "识别出的人员、设备、证照和制度资料候选会先进入这里。",
+          )}
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">Master Data Queue</span>
+          <h2>主数据待发布 / 已人工确认</h2>
+          {renderGovernanceList(
+            masterReadyToPublish,
+            "当前没有待发布的主数据事实。",
+            "人工确认后的主数据会进入这里，后续可发布为正式目录。",
+          )}
+        </article>
+      </section>
+
+      <section className="opening-condition-grid">
+        <article className="opening-panel">
+          <span className="eyebrow">Published Catalog</span>
+          <h2>已发布依据目录</h2>
+          {renderGovernanceList(
+            basisPublished,
+            "当前工作区还没有已发布依据版本。",
+            "完成依据确认并发布后，这里会成为当前对象可复用的依据目录。",
+          )}
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">Published Catalog</span>
+          <h2>已发布主数据目录</h2>
+          {renderGovernanceList(
+            masterPublished,
+            "当前工作区还没有已发布主数据。",
+            "完成主数据确认与发布后，这里会沉淀可复用的正式事实目录。",
+          )}
+        </article>
+      </section>
+
+      <section className="opening-condition-grid">
+        <article className="opening-panel">
+          <span className="eyebrow">Exception Records</span>
+          <h2>依据异常记录</h2>
+          {renderGovernanceList(
+            basisExceptions,
+            "当前没有依据异常记录。",
+            "被替代或驳回的依据版本会保留在这里，方便后续追溯。",
+          )}
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">Exception Records</span>
+          <h2>主数据异常记录</h2>
+          {renderGovernanceList(
+            masterExceptions,
+            "当前没有主数据异常记录。",
+            "被驳回或已过期的主数据会保留在这里，避免混入正式目录。",
+          )}
         </article>
       </section>
     </div>

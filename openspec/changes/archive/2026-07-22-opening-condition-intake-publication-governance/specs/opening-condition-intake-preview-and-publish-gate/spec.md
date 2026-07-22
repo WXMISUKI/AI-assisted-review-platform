@@ -1,8 +1,5 @@
-# opening-condition-intake-preview-and-publish-gate Specification
+## MODIFIED Requirements
 
-## Purpose
-Define the preview-and-publish gate between real-file intake and formal checklist matching for the opening-condition pilot.
-## Requirements
 ### Requirement: Current run intake preview gate
 The system SHALL present the current pilot run intake as a preview-and-publish gate before formal checklist matching.
 
@@ -33,4 +30,3 @@ The system SHALL provide explicit operator actions to publish the current run ba
 - **WHEN** the current run has unpublished basis or unconfirmed required master data
 - **THEN** the operator can identify those pending actions from both the intake gate and the publication governance page
 - **AND** the gate summary distinguishes current-run binding ready from workspace catalog still having pending records
-
