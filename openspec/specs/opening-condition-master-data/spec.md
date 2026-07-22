@@ -85,3 +85,11 @@ The opening-condition portal SHALL show which backend facts the current run is c
 - **THEN** the page shows the current-run master-data facts separately from the full workspace catalog
 - **AND** each fact includes type, confirmation state, and safe evidence note where available
 
+### Requirement: Itemized master-data intake decisions
+The opening-condition portal SHALL allow current-run master-data candidates to be individually approved or rejected from the intake preview workspace.
+
+#### Scenario: Operator rejects one candidate and keeps others
+- **WHEN** the current run includes multiple master-data candidates
+- **THEN** the operator can reject one candidate while leaving the others available for approval
+- **AND** the intake page refreshes the run state after the decision
+

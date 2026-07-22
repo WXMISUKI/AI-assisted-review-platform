@@ -660,6 +660,33 @@
   margin-top: 18px;
 }
 
+.opening-candidate-note-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.opening-candidate-note-field span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.opening-candidate-note-field textarea {
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.dialog-actions.compact .secondary.danger {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--danger);
+}
+
 .opening-check-list {
   display: grid;
   gap: 12px;

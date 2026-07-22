@@ -365,7 +365,9 @@ export function OpeningConditionWorkspaceShell({
   onRefreshPilotTask,
   onInitializePilotTask,
   onPublishPilotBasis,
+  onPublishPilotBasisDecision,
   onConfirmPilotMasterData,
+  onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
   onEnsureKnowledgeBase,
   onReviewDecision,
@@ -397,7 +399,13 @@ export function OpeningConditionWorkspaceShell({
   onRefreshPilotTask?: () => void;
   onInitializePilotTask?: () => void;
   onPublishPilotBasis?: () => void;
+  onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
   onConfirmPilotMasterData?: () => void;
+  onDecidePilotMasterDataCandidate?: (
+    recordId: string,
+    decision: "approve" | "reject" | "publish",
+    safeNote?: string,
+  ) => void;
   onRunPilotMatch?: () => void;
   onEnsureKnowledgeBase?: () => void;
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
@@ -507,7 +515,9 @@ export function OpeningConditionWorkspaceShell({
               onRefreshPilotTask={onRefreshPilotTask}
               onInitializePilotTask={onInitializePilotTask}
               onPublishPilotBasis={onPublishPilotBasis}
+              onPublishPilotBasisDecision={onPublishPilotBasisDecision}
               onConfirmPilotMasterData={onConfirmPilotMasterData}
+              onDecidePilotMasterDataCandidate={onDecidePilotMasterDataCandidate}
               onRunPilotMatch={onRunPilotMatch}
               onEnsureKnowledgeBase={onEnsureKnowledgeBase}
               onTrialBootstrapComplete={onTrialBootstrapComplete}
@@ -827,7 +837,9 @@ function OpeningConditionMaterialIntakePage({
   onRefreshPilotTask,
   onInitializePilotTask,
   onPublishPilotBasis,
+  onPublishPilotBasisDecision,
   onConfirmPilotMasterData,
+  onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
   onEnsureKnowledgeBase,
   onTrialBootstrapComplete,
@@ -847,7 +859,13 @@ function OpeningConditionMaterialIntakePage({
   onRefreshPilotTask?: () => void;
   onInitializePilotTask?: () => void;
   onPublishPilotBasis?: () => void;
+  onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
   onConfirmPilotMasterData?: () => void;
+  onDecidePilotMasterDataCandidate?: (
+    recordId: string,
+    decision: "approve" | "reject" | "publish",
+    safeNote?: string,
+  ) => void;
   onRunPilotMatch?: () => void;
   onEnsureKnowledgeBase?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
@@ -914,7 +932,9 @@ function OpeningConditionMaterialIntakePage({
         masterDataRecords={pilotMasterDataRecords}
         pilotBusy={pilotBusy}
         onPublishBasis={onPublishPilotBasis}
+        onPublishBasisDecision={onPublishPilotBasisDecision}
         onConfirmMasterData={onConfirmPilotMasterData}
+        onDecideMasterDataCandidate={onDecidePilotMasterDataCandidate}
       />
       <OpeningConditionTrialIntakeOverviewPanel
         pilotTask={pilotTask}
@@ -1067,7 +1087,9 @@ function OpeningConditionIntakeCandidatePreviewPanel({
   masterDataRecords,
   pilotBusy,
   onPublishBasis,
+  onPublishBasisDecision,
   onConfirmMasterData,
+  onDecideMasterDataCandidate,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
@@ -1077,11 +1099,20 @@ function OpeningConditionIntakeCandidatePreviewPanel({
   masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
   pilotBusy?: boolean;
   onPublishBasis?: () => void;
+  onPublishBasisDecision?: (basisId: string, safeNote?: string) => void;
   onConfirmMasterData?: () => void;
+  onDecideMasterDataCandidate?: (
+    recordId: string,
+    decision: "approve" | "reject" | "publish",
+    safeNote?: string,
+  ) => void;
 }) {
   if (!pilotTask) {
     return null;
   }
+
+  const [basisSafeNote, setBasisSafeNote] = useState("");
+  const [masterDataNotes, setMasterDataNotes] = useState<Record<string, string>>({});
 
   const boundBasis = basisRecords?.find((item) => item.id === pilotTask.basisVersion?.id);
   const requiredMasterData = (masterDataRecords ?? []).filter((item) =>
@@ -1109,6 +1140,13 @@ function OpeningConditionIntakeCandidatePreviewPanel({
         ("rejectionReason" in record && typeof record.rejectionReason === "string" ? record.rejectionReason : undefined),
     };
   });
+
+  function updateMasterDataNote(recordId: string, note: string) {
+    setMasterDataNotes((current) => ({
+      ...current,
+      [recordId]: note,
+    }));
+  }
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -1191,6 +1229,29 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                   ? `版本 ${boundBasis.version} · 后端状态：${boundBasis.status}`
                   : "发布当前 run 依据后，当前识别结果才会进入正式依据目录。"}
               </small>
+              {boundBasis && onPublishBasisDecision && (
+                <label className="opening-candidate-note-field">
+                  <span>入库备注</span>
+                  <textarea
+                    value={basisSafeNote}
+                    onChange={(event) => setBasisSafeNote(event.target.value)}
+                    placeholder="例如：页码、签章核验结论、人工确认边界。"
+                    disabled={pilotBusy || portalState.currentRunMutationLocked || boundBasis.status === "published"}
+                  />
+                </label>
+              )}
+              {boundBasis && onPublishBasisDecision && (
+                <div className="dialog-actions compact">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => onPublishBasisDecision(boundBasis.id, basisSafeNote)}
+                    disabled={pilotBusy || portalState.currentRunMutationLocked || boundBasis.status === "published"}
+                  >
+                    备注后发布当前依据
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </article>
@@ -1213,6 +1274,37 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                   <p>{item.note}</p>
                   {item.safeNote && <small>{item.safeNote}</small>}
                   <small>后端状态：{item.statusLabel}</small>
+                  {onDecideMasterDataCandidate && item.meta.group !== "published" && item.meta.group !== "exception" && (
+                    <>
+                      <label className="opening-candidate-note-field">
+                        <span>确认备注</span>
+                        <textarea
+                          value={masterDataNotes[item.id] ?? ""}
+                          onChange={(event) => updateMasterDataNote(item.id, event.target.value)}
+                          placeholder="例如：人工核验来源文件、发现问题、暂时放行原因。"
+                          disabled={pilotBusy || portalState.currentRunMutationLocked}
+                        />
+                      </label>
+                      <div className="dialog-actions compact">
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => onDecideMasterDataCandidate(item.id, "approve", masterDataNotes[item.id])}
+                          disabled={pilotBusy || portalState.currentRunMutationLocked}
+                        >
+                          逐条确认
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary danger"
+                          onClick={() => onDecideMasterDataCandidate(item.id, "reject", masterDataNotes[item.id])}
+                          disabled={pilotBusy || portalState.currentRunMutationLocked}
+                        >
+                          驳回该候选
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
