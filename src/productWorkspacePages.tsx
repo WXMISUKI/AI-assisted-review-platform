@@ -905,6 +905,17 @@ function OpeningConditionMaterialIntakePage({
         onRunMatch={onRunPilotMatch}
         onEnsureKnowledgeBase={onEnsureKnowledgeBase}
       />
+      <OpeningConditionIntakeCandidatePreviewPanel
+        packet={packet}
+        pilotTask={pilotTask}
+        portalState={portalState}
+        readiness={pilotReadiness}
+        basisRecords={pilotBasisRecords}
+        masterDataRecords={pilotMasterDataRecords}
+        pilotBusy={pilotBusy}
+        onPublishBasis={onPublishPilotBasis}
+        onConfirmMasterData={onConfirmPilotMasterData}
+      />
       <OpeningConditionTrialIntakeOverviewPanel
         pilotTask={pilotTask}
         portalState={portalState}
@@ -1042,6 +1053,204 @@ function OpeningConditionTrialIntakeOverviewPanel({
         {blockingReasons.length > 0
           ? blockingReasons.join(" / ")
           : readiness?.preflightReadiness?.nextAction ?? "Current run has the baseline context required for formal matching."}
+      </small>
+    </section>
+  );
+}
+
+function OpeningConditionIntakeCandidatePreviewPanel({
+  packet,
+  pilotTask,
+  portalState,
+  readiness,
+  basisRecords,
+  masterDataRecords,
+  pilotBusy,
+  onPublishBasis,
+  onConfirmMasterData,
+}: {
+  packet: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
+  portalState: OpeningConditionPortalViewState;
+  readiness?: OpeningConditionPilotReadinessResult | null;
+  basisRecords?: OpeningConditionPilotBasisRecord[];
+  masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
+  pilotBusy?: boolean;
+  onPublishBasis?: () => void;
+  onConfirmMasterData?: () => void;
+}) {
+  if (!pilotTask) {
+    return null;
+  }
+
+  const boundBasis = basisRecords?.find((item) => item.id === pilotTask.basisVersion?.id);
+  const requiredMasterData = (masterDataRecords ?? []).filter((item) =>
+    (pilotTask.requiredMasterData ?? []).some((required) => required.id === item.id),
+  );
+  const unresolvedMasterData = requiredMasterData.filter(
+    (item) => item.status !== "published" && item.status !== "human_approved",
+  );
+  const basisMeta = getOpeningConditionBasisPublicationStatusMeta(boundBasis?.status);
+  const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? [];
+  const reviewObjectLabel = getReviewObjectTypeLabel(packet.workspaceContext.reviewObjectType);
+
+  const masterPreviewEntries = (requiredMasterData.length > 0 ? requiredMasterData : pilotTask.requiredMasterData).map((record) => {
+    const meta = getOpeningConditionMasterDataPublicationStatusMeta(record.status);
+    return {
+      id: record.id,
+      title: record.label,
+      category: openingConditionMasterDataTypeLabels[record.type] ?? record.type,
+      statusLabel:
+        openingConditionRecordStatusLabels[record.status as keyof typeof openingConditionRecordStatusLabels] ?? record.status,
+      meta,
+      note: "validity" in record ? record.validity : "当前主数据未记录额外有效性说明。",
+      safeNote:
+        ("safeNote" in record && typeof record.safeNote === "string" ? record.safeNote : undefined) ??
+        ("rejectionReason" in record && typeof record.rejectionReason === "string" ? record.rejectionReason : undefined),
+    };
+  });
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <div className="section-title row">
+        <div>
+          <span className="eyebrow">Intake Candidate Preview</span>
+          <h2>识别预览确认工作台</h2>
+        </div>
+      </div>
+      <p>这里先看系统本次识别成了什么，再决定是否将这些识别结果正式确认并纳入平台可用资产。</p>
+      <div className="opening-candidate-preview-grid">
+        <article className="opening-candidate-preview-card">
+          <strong>当前对象</strong>
+          <div className="opening-report-chip-row">
+            <span className="opening-report-chip tone-info">{packet.workspaceContext.projectCode}</span>
+            <span className="opening-report-chip tone-muted">{reviewObjectLabel}</span>
+          </div>
+          <p>{packet.workspaceContext.reviewObjectName}</p>
+          <small>{packet.workspaceContext.participantEntityName}</small>
+        </article>
+
+        <article className="opening-candidate-preview-card">
+          <strong>依据候选</strong>
+          <div className="opening-report-chip-row">
+            <span className={`opening-report-chip tone-${basisMeta.tone}`}>{basisMeta.label}</span>
+            {boundBasis && (
+              <span className="opening-report-chip tone-info">
+                {openingConditionBasisComponentTypeLabels[boundBasis.componentType] ?? boundBasis.componentType}
+              </span>
+            )}
+          </div>
+          <p>{boundBasis?.title ?? pilotTask.basisVersion?.id ?? "当前 run 尚未识别到明确依据候选"}</p>
+          <small>
+            {boundBasis
+              ? `${boundBasis.version} · ${boundBasis.applicability ?? "当前依据未记录附加适用说明。"}`
+              : "发布当前 run 依据，意味着将该识别结果正式纳入平台依据资产。"}
+          </small>
+        </article>
+
+        <article className="opening-candidate-preview-card">
+          <strong>主数据候选</strong>
+          <p>{masterPreviewEntries.length} 项与当前 run 相关</p>
+          <small>
+            {masterPreviewEntries.length > 0
+              ? masterPreviewEntries.map((item) => `${item.category}：${item.title}`).join(" / ")
+              : "当前还没有可供确认的主数据候选。"}
+          </small>
+        </article>
+
+        <article className="opening-candidate-preview-card">
+          <strong>确认动作含义</strong>
+          <p>确认主数据 / 发布依据</p>
+          <small>
+            这一步不是单纯点亮门禁，而是在把当前识别结果从预览候选转成平台正式可用资产，供后续正式核查引用。
+          </small>
+        </article>
+      </div>
+
+      <div className="opening-candidate-preview-lists">
+        <article className="opening-panel opening-panel-emphasis">
+          <span className="eyebrow">Basis Candidate</span>
+          <h3>当前 run 的依据识别预览</h3>
+          <div className="opening-governance-list">
+            <div className="opening-governance-item">
+              <div className="opening-report-finding-header">
+                <strong>{boundBasis?.title ?? pilotTask.basisVersion?.id ?? "未绑定依据候选"}</strong>
+                <div className="opening-report-chip-row">
+                  <span className={`opening-report-chip tone-${basisMeta.tone}`}>{basisMeta.label}</span>
+                  <span className="opening-report-chip tone-info">正式入库前预览</span>
+                </div>
+              </div>
+              <span>
+                {boundBasis
+                  ? openingConditionBasisComponentTypeLabels[boundBasis.componentType] ?? boundBasis.componentType
+                  : "当前 run 依据候选"}
+              </span>
+              <p>{boundBasis?.applicability ?? basisMeta.description}</p>
+              <small>
+                {boundBasis
+                  ? `版本 ${boundBasis.version} · 后端状态：${boundBasis.status}`
+                  : "发布当前 run 依据后，当前识别结果才会进入正式依据目录。"}
+              </small>
+            </div>
+          </div>
+        </article>
+
+        <article className="opening-panel opening-panel-emphasis">
+          <span className="eyebrow">Master Data Candidates</span>
+          <h3>当前 run 的主数据识别预览</h3>
+          {masterPreviewEntries.length > 0 ? (
+            <div className="opening-governance-list">
+              {masterPreviewEntries.map((item) => (
+                <div key={item.id} className="opening-governance-item">
+                  <div className="opening-report-finding-header">
+                    <strong>{item.title}</strong>
+                    <div className="opening-report-chip-row">
+                      <span className={`opening-report-chip tone-${item.meta.tone}`}>{item.meta.label}</span>
+                      <span className="opening-report-chip tone-info">当前 run 候选</span>
+                    </div>
+                  </div>
+                  <span>{item.category}</span>
+                  <p>{item.note}</p>
+                  {item.safeNote && <small>{item.safeNote}</small>}
+                  <small>后端状态：{item.statusLabel}</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="opening-governance-empty">
+              <strong>当前没有主数据候选预览。</strong>
+              <small>待后端识别出与本次 run 相关的人员、设备、制度或证照事实后，这里会出现预览列表。</small>
+            </div>
+          )}
+        </article>
+      </div>
+
+      <div className="dialog-actions">
+        {onPublishBasis && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={onPublishBasis}
+            disabled={pilotBusy || portalState.currentRunMutationLocked || !boundBasis || boundBasis.status === "published"}
+          >
+            确认并发布当前依据
+          </button>
+        )}
+        {onConfirmMasterData && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={onConfirmMasterData}
+            disabled={pilotBusy || portalState.currentRunMutationLocked || unresolvedMasterData.length === 0}
+          >
+            确认当前主数据候选
+          </button>
+        )}
+      </div>
+      <small>
+        {blockingReasons.length > 0
+          ? blockingReasons.join(" / ")
+          : "先在这里确认系统识别结果，再让这些记录进入正式入库与后续核查链路。"}
       </small>
     </section>
   );

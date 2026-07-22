@@ -626,6 +626,40 @@
   color: var(--text-secondary);
 }
 
+.opening-candidate-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.opening-candidate-preview-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.opening-candidate-preview-card strong,
+.opening-candidate-preview-card p,
+.opening-candidate-preview-card small {
+  display: block;
+  margin: 0;
+}
+
+.opening-candidate-preview-card small {
+  color: var(--text-secondary);
+}
+
+.opening-candidate-preview-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
 .opening-check-list {
   display: grid;
   gap: 12px;
@@ -762,6 +796,8 @@
   .opening-condition-grid,
   .opening-governance-summary-grid,
   .opening-governance-section-grid,
+  .opening-candidate-preview-grid,
+  .opening-candidate-preview-lists,
   .opening-trial-upload-grid,
   .opening-object-participant-list {
     grid-template-columns: 1fr;
