@@ -18,6 +18,11 @@ export type OpeningConditionWorkspaceRole =
   | "construction-unit-self-check"
   | "supervisor-assisted-review";
 
+export type OpeningConditionReviewObjectType =
+  | "dangerous-subproject"
+  | "material-review-topic"
+  | "permit-review-topic";
+
 export type OpeningConditionBasisComponentType =
   | "contract"
   | "supplemental-agreement"
@@ -81,13 +86,43 @@ export interface OpeningConditionVisualAssertion {
 export interface OpeningConditionWorkspace {
   id: string;
   tenantName: string;
+  projectId: string;
+  projectCode: string;
   projectName: string;
+  reviewObjectId: string;
+  reviewObjectName: string;
+  reviewObjectType: OpeningConditionReviewObjectType;
   contractPackage: string;
+  participantEntityId: string;
+  participantEntityName: string;
   participatingOrganization: string;
   organizationRole: "construction-unit" | "general-contractor" | "subcontractor" | "supervisor" | "owner";
   purpose: string;
   roleContext: OpeningConditionWorkspaceRole;
   activeBasisSetVersionId?: string;
+}
+
+export interface OpeningConditionWorkspaceParticipantCatalog {
+  participantEntityId: string;
+  participantEntityName: string;
+  organizationRole: OpeningConditionWorkspace["organizationRole"];
+  workspaces: OpeningConditionWorkspace[];
+}
+
+export interface OpeningConditionWorkspaceReviewObjectCatalog {
+  reviewObjectId: string;
+  reviewObjectName: string;
+  reviewObjectType: OpeningConditionReviewObjectType;
+  workspaces: OpeningConditionWorkspace[];
+  participants: OpeningConditionWorkspaceParticipantCatalog[];
+}
+
+export interface OpeningConditionWorkspaceProjectCatalog {
+  projectId: string;
+  projectCode: string;
+  projectName: string;
+  workspaces: OpeningConditionWorkspace[];
+  reviewObjects: OpeningConditionWorkspaceReviewObjectCatalog[];
 }
 
 export interface OpeningConditionBasisVersion {
@@ -338,8 +373,15 @@ export const openingConditionWorkspaces: OpeningConditionWorkspace[] = [
   {
     id: "oc-ws-g15-08-supervisor",
     tenantName: "华东高速建设管理中心",
+    projectId: "g15-jiajin-08",
+    projectCode: "G15-JJ-08",
     projectName: "G15嘉金段改扩建工程",
+    reviewObjectId: "g15-jj-08-bridge-cap",
+    reviewObjectName: "主线桥梁下部结构 / 承台施工",
+    reviewObjectType: "dangerous-subproject",
     contractPackage: "8标主线预制下部结构",
+    participantEntityId: "jj8-project-dept",
+    participantEntityName: "嘉金八标项目经理部",
     participatingOrganization: "嘉金八标项目经理部",
     organizationRole: "construction-unit",
     purpose: "承台施工开工条件核查",
@@ -349,11 +391,53 @@ export const openingConditionWorkspaces: OpeningConditionWorkspace[] = [
   {
     id: "oc-ws-g15-08-subcontract",
     tenantName: "华东高速建设管理中心",
+    projectId: "g15-jiajin-08",
+    projectCode: "G15-JJ-08",
     projectName: "G15嘉金段改扩建工程",
+    reviewObjectId: "g15-jj-08-bridge-cap",
+    reviewObjectName: "主线桥梁下部结构 / 承台施工",
+    reviewObjectType: "dangerous-subproject",
     contractPackage: "8标钢筋加工分包",
+    participantEntityId: "hutong-rebar-team",
+    participantEntityName: "沪通钢筋加工专业分包队",
     participatingOrganization: "沪通钢筋加工专业分包队",
     organizationRole: "subcontractor",
     purpose: "钢筋加工场开工条件自查",
+  roleContext: "construction-unit-self-check",
+  },
+  {
+    id: "oc-ws-g15-08-pier-supervisor",
+    tenantName: "华东高速建设管理中心",
+    projectId: "g15-jiajin-08",
+    projectCode: "G15-JJ-08",
+    projectName: "G15嘉金段改扩建工程",
+    reviewObjectId: "g15-jj-08-pier-first-piece",
+    reviewObjectName: "主线桥梁下部结构 / 墩柱首件施工",
+    reviewObjectType: "dangerous-subproject",
+    contractPackage: "8标主线预制下部结构",
+    participantEntityId: "jj8-project-dept",
+    participantEntityName: "嘉金八标项目经理部",
+    participatingOrganization: "嘉金八标项目经理部",
+    organizationRole: "construction-unit",
+    purpose: "墩柱首件开工条件核查",
+    roleContext: "supervisor-assisted-review",
+    activeBasisSetVersionId: "basis-opening-2026-001",
+  },
+  {
+    id: "oc-ws-g15-08-pier-subcontract",
+    tenantName: "华东高速建设管理中心",
+    projectId: "g15-jiajin-08",
+    projectCode: "G15-JJ-08",
+    projectName: "G15嘉金段改扩建工程",
+    reviewObjectId: "g15-jj-08-pier-first-piece",
+    reviewObjectName: "主线桥梁下部结构 / 墩柱首件施工",
+    reviewObjectType: "dangerous-subproject",
+    contractPackage: "8标墩柱钢筋绑扎分包",
+    participantEntityId: "huadong-pier-team",
+    participantEntityName: "华东墩柱钢筋专业分包队",
+    participatingOrganization: "华东墩柱钢筋专业分包队",
+    organizationRole: "subcontractor",
+    purpose: "墩柱钢筋班组开工条件自查",
     roleContext: "construction-unit-self-check",
   },
 ];
@@ -759,6 +843,68 @@ export function getOpeningConditionWorkspacePacket(workspaceId: string): Opening
         : item,
     ),
   };
+}
+
+export function buildOpeningConditionWorkspaceCatalog(
+  workspaces: OpeningConditionWorkspace[],
+): OpeningConditionWorkspaceProjectCatalog[] {
+  const projectMap = new Map<string, OpeningConditionWorkspaceProjectCatalog>();
+
+  workspaces.forEach((workspace) => {
+    const existingProject = projectMap.get(workspace.projectId);
+    if (!existingProject) {
+      projectMap.set(workspace.projectId, {
+        projectId: workspace.projectId,
+        projectCode: workspace.projectCode,
+        projectName: workspace.projectName,
+        workspaces: [workspace],
+        reviewObjects: [],
+      });
+      return;
+    }
+    existingProject.workspaces.push(workspace);
+  });
+
+  projectMap.forEach((project) => {
+    const reviewObjectMap = new Map<string, OpeningConditionWorkspaceReviewObjectCatalog>();
+    project.workspaces.forEach((workspace) => {
+      const existingReviewObject = reviewObjectMap.get(workspace.reviewObjectId);
+      if (!existingReviewObject) {
+        reviewObjectMap.set(workspace.reviewObjectId, {
+          reviewObjectId: workspace.reviewObjectId,
+          reviewObjectName: workspace.reviewObjectName,
+          reviewObjectType: workspace.reviewObjectType,
+          workspaces: [workspace],
+          participants: [],
+        });
+        return;
+      }
+      existingReviewObject.workspaces.push(workspace);
+    });
+
+    reviewObjectMap.forEach((reviewObject) => {
+      const participantMap = new Map<string, OpeningConditionWorkspaceParticipantCatalog>();
+      reviewObject.workspaces.forEach((workspace) => {
+        const existingParticipant = participantMap.get(workspace.participantEntityId);
+        if (!existingParticipant) {
+          participantMap.set(workspace.participantEntityId, {
+            participantEntityId: workspace.participantEntityId,
+            participantEntityName: workspace.participantEntityName,
+            organizationRole: workspace.organizationRole,
+            workspaces: [workspace],
+          });
+          return;
+        }
+        existingParticipant.workspaces.push(workspace);
+      });
+
+      reviewObject.participants = [...participantMap.values()];
+    });
+
+    project.reviewObjects = [...reviewObjectMap.values()];
+  });
+
+  return [...projectMap.values()];
 }
 
 export function getOpeningConditionMasterDataReadiness(

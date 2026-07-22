@@ -39,8 +39,10 @@ export interface OpeningConditionPilotWorkspaceContext {
   workspaceId: string;
   tenantId: string;
   projectId: string;
+  reviewObjectId?: string;
   contractPackageId: string;
   participatingOrganizationId: string;
+  participantEntityId?: string;
 }
 
 export interface OpeningConditionObjectRef {

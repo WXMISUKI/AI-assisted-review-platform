@@ -1,8 +1,5 @@
-# opening-condition-context Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change separate-product-portals-and-opening-basis-workflow. Update Purpose after archive.
-## Requirements
 ### Requirement: Opening-condition workspace context
 The opening-condition portal SHALL require a selected hierarchical context before users upload basis files, publish master data, or start formal check tasks.
 
@@ -36,21 +33,9 @@ The opening-condition portal SHALL distinguish participating entities and their 
 - **WHEN** a user uploads materials for a participating organization
 - **THEN** the uploaded materials are associated with that organization, review object, and workspace
 
-### Requirement: Workspace role framing
-The opening-condition portal SHALL frame actions according to the user's role in the selected workspace.
-
-#### Scenario: Construction-unit user opens workspace
-- **WHEN** a construction-unit user opens a workspace
-- **THEN** the portal frames actions as self-check and preparation before human responsibility confirmation
-
-#### Scenario: Supervisor user opens workspace
-- **WHEN** a supervisor user opens a workspace
-- **THEN** the portal frames actions as assisted review and human adjudication
-
 ### Requirement: Context-safe task isolation
 The opening-condition portal SHALL isolate review data by selected hierarchical context.
 
 #### Scenario: User changes workspace
 - **WHEN** a user switches from one workspace to another
 - **THEN** basis sets, master data, check tasks, evidence, and reports are loaded for the selected project/review-object/participating-entity context only
-
