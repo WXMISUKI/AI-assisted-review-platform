@@ -42,6 +42,13 @@ import type {
   OpeningConditionPilotKnowledgeBaseRef,
   OpeningConditionPilotTask,
 } from "./domain/openingConditionPilot";
+import {
+  deriveOpeningConditionRunActionOwnership,
+  deriveOpeningConditionPortalViewState,
+  type OpeningConditionRunActionOwnership,
+  type OpeningConditionPortalViewState,
+  type OpeningPilotIntakeMode,
+} from "./openingConditionPortalState";
 
 const openingWorkspaceNav: Array<{
   id: OpeningConditionPortalPage;
@@ -112,6 +119,70 @@ type RectificationClosureDiff = {
   items: RectificationClosureItem[];
   summary: Record<RectificationClosureCategory, number>;
 };
+
+function getActionOwnershipTone(dueState: OpeningConditionRunActionOwnership["dueState"]) {
+  switch (dueState) {
+    case "overdue":
+      return "danger";
+    case "due_soon":
+      return "warning";
+    case "readonly":
+      return "muted";
+    default:
+      return "success";
+  }
+}
+
+function OpeningConditionActionOwnershipSummary({
+  summary,
+  eyebrow = "Action Ownership",
+  title = "当前动作归属",
+  description,
+}: {
+  summary?: OpeningConditionRunActionOwnership | null;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+}) {
+  if (!summary) {
+    return null;
+  }
+
+  return (
+    <div className="opening-action-summary">
+      <div className="opening-action-summary-header">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h3>{title}</h3>
+        </div>
+        <div className="opening-report-chip-row">
+          <span className="opening-report-chip tone-info">{summary.stageLabel}</span>
+          <span className={`opening-report-chip tone-${getActionOwnershipTone(summary.dueState)}`}>
+            {summary.dueStateLabel}
+          </span>
+          <span className="opening-report-chip tone-muted">{summary.dueWindowLabel}</span>
+          {summary.readOnly && <span className="opening-report-chip tone-muted">只读快照</span>}
+        </div>
+      </div>
+      {description ? <p>{description}</p> : null}
+      <div className="opening-action-summary-grid">
+        <div className="opening-action-summary-item">
+          <strong>当前责任人</strong>
+          <p>{summary.currentOwner}</p>
+        </div>
+        <div className="opening-action-summary-item">
+          <strong>下一动作</strong>
+          <p>{summary.nextAction}</p>
+        </div>
+        <div className="opening-action-summary-item">
+          <strong>原因说明</strong>
+          <p>{summary.actionReason}</p>
+          {summary.activeReviewCount > 0 && <small>当前仍有 {summary.activeReviewCount} 项待处理人工复核。</small>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function LoginPage({
   onSignIn,
@@ -581,11 +652,15 @@ function OpeningConditionMaterialIntakePage({
   getNextOpeningPilotRunTaskId?: () => string;
   onGoToReports?: () => void;
 }) {
-  const archivedReadOnly = pilotTask?.state === "archived" && intakeMode !== "rectification_rerun";
+  const portalState = deriveOpeningConditionPortalViewState({
+    pilotTask,
+    intakeMode,
+    readiness: pilotReadiness,
+  });
 
   return (
     <div className="opening-condition-page">
-      {archivedReadOnly && (
+      {portalState.intakeReadOnly && (
         <section className="opening-panel opening-panel-wide opening-intake-guidance-card">
           <div className="section-title row">
             <div>
@@ -609,7 +684,7 @@ function OpeningConditionMaterialIntakePage({
       <OpeningConditionRealTrialIntakePanel
         packet={packet}
         pilotTask={pilotTask}
-        intakeMode={intakeMode}
+        portalState={portalState}
         busy={pilotBusy}
         submittedBy={roleLabel}
         onComplete={onTrialBootstrapComplete}
@@ -617,7 +692,7 @@ function OpeningConditionMaterialIntakePage({
       />
       <OpeningConditionPilotExecutionPanel
         pilotTask={pilotTask}
-        intakeMode={intakeMode}
+        portalState={portalState}
         readiness={pilotReadiness}
         statusMessage={pilotStatus}
         busy={pilotBusy}
@@ -630,6 +705,7 @@ function OpeningConditionMaterialIntakePage({
       />
       <OpeningConditionTrialIntakeOverviewPanel
         pilotTask={pilotTask}
+        portalState={portalState}
         readiness={pilotReadiness}
         basisRecords={pilotBasisRecords}
         masterDataRecords={pilotMasterDataRecords}
@@ -645,6 +721,7 @@ function OpeningConditionMaterialIntakePage({
 
 function OpeningConditionTrialIntakeOverviewPanel({
   pilotTask,
+  portalState,
   readiness,
   basisRecords,
   masterDataRecords,
@@ -654,6 +731,7 @@ function OpeningConditionTrialIntakeOverviewPanel({
   pilotBusy,
 }: {
   pilotTask?: OpeningConditionPilotTask | null;
+  portalState: OpeningConditionPortalViewState;
   readiness?: OpeningConditionPilotReadinessResult | null;
   basisRecords?: OpeningConditionPilotBasisRecord[];
   masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
@@ -666,6 +744,7 @@ function OpeningConditionTrialIntakeOverviewPanel({
     return null;
   }
 
+  const actionOwnership = portalState.actionOwnership;
   const boundBasis = basisRecords?.find((item) => item.id === pilotTask.basisVersion?.id);
   const requiredMasterData = (masterDataRecords ?? []).filter((item) =>
     (pilotTask.requiredMasterData ?? []).some((required) => required.id === item.id),
@@ -691,6 +770,11 @@ function OpeningConditionTrialIntakeOverviewPanel({
         <span>Master data {requiredMasterData.length || pilotTask.requiredMasterData.length}</span>
         <span>KB {boundKnowledgeBase?.label ?? pilotTask.knowledgeBaseRef?.label ?? "unbound"}</span>
       </div>
+      <OpeningConditionActionOwnershipSummary
+        summary={actionOwnership}
+        title="当前 run 的责任归属"
+        description="把状态枚举翻译成操作者可执行的责任、动作和时限提示。"
+      />
       <div className="opening-record-list">
         <div>
           <strong>Publish Gate</strong>
@@ -701,7 +785,12 @@ function OpeningConditionTrialIntakeOverviewPanel({
           </p>
           <div className="dialog-actions compact">
             {onPublishBasis && (
-              <button type="button" className="secondary" onClick={onPublishBasis} disabled={pilotBusy || !basisNeedsPublish}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={onPublishBasis}
+                disabled={pilotBusy || portalState.currentRunMutationLocked || !basisNeedsPublish}
+              >
                 发布当前 run 依据
               </button>
             )}
@@ -710,7 +799,7 @@ function OpeningConditionTrialIntakeOverviewPanel({
                 type="button"
                 className="secondary"
                 onClick={onConfirmMasterData}
-                disabled={pilotBusy || pendingMasterDataCount === 0}
+                disabled={pilotBusy || portalState.currentRunMutationLocked || pendingMasterDataCount === 0}
               >
                 确认当前 run 主数据
               </button>
@@ -972,6 +1061,7 @@ function OpeningConditionHumanReviewQueuePage({
   const evidenceById = new Map((pilotTask?.evidence ?? []).map((item) => [item.id, item]));
   const checkItemsById = new Map((pilotTask?.checkItems ?? []).map((item) => [item.id, item]));
   const definitionsById = new Map((pilotTask?.checklistDefinition ?? []).map((item) => [item.id, item]));
+  const actionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask });
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -982,6 +1072,12 @@ function OpeningConditionHumanReviewQueuePage({
         <span>已确认 {queue.filter((item) => item.status === "confirmed").length}</span>
         <span>报告 {pilotTask?.trialPackage?.reportStatus ?? "missing"}</span>
       </div>
+      <OpeningConditionActionOwnershipSummary
+        summary={actionOwnership}
+        eyebrow="Human Review Ownership"
+        title="人工复核责任移交"
+        description="这里明确当前是谁要处理、为什么还不能进入报告交付。"
+      />
       <div className="opening-record-list">
         {queue.length > 0
           ? queue.map((item) => {
@@ -1472,6 +1568,7 @@ function OpeningConditionReportArchivePage({
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
   const isCurrentRun = Boolean(selectedTask && pilotTask && selectedTask.id === pilotTask.id);
   const currentRunArchived = pilotTask?.state === "archived";
+  const selectedActionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask: selectedTask });
   const findingSummary = {
     blocked: findings.filter((item) => item.disposition === "blocked").length,
     failed: findings.filter((item) => item.disposition === "fail" || item.disposition === "reject").length,
@@ -1511,6 +1608,16 @@ function OpeningConditionReportArchivePage({
       </div>
       <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
       <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
+      <OpeningConditionActionOwnershipSummary
+        summary={selectedActionOwnership}
+        eyebrow={isCurrentRun ? "Current Run Ownership" : "Historical Run Snapshot"}
+        title={isCurrentRun ? "本轮责任人与交付动作" : "历史轮次责任快照"}
+        description={
+          isCurrentRun
+            ? "报告页同时承担整改移交口径，帮助操作者明确本轮是否该归档、补件还是发起下一轮。"
+            : "历史轮次保留当时的责任边界与下一动作语义，用于复盘，不再允许直接变更。"
+        }
+      />
       {currentRound ? <small>{isCurrentRun ? "当前" : "所选"}为同工作区第 {currentRound} 轮核查/整改复审。</small> : null}
 
       {selectedTask && (
@@ -1528,6 +1635,14 @@ function OpeningConditionReportArchivePage({
             创建 {selectedTask.createdAt}，最近更新 {selectedTask.updatedAt}。
             {selectedTask.state === "archived" ? " 该轮已归档，只用于复盘和对比。" : " 该轮仍可继续推进后续处理。"}
           </p>
+          {!isCurrentRun && (
+            <OpeningConditionActionOwnershipSummary
+              summary={selectedActionOwnership}
+              eyebrow="Readonly Snapshot"
+              title="历史责任边界"
+              description="这块只保留当时那一轮的责任语义，方便和当前轮区分，不提供变更入口。"
+            />
+          )}
           {selectedTask.state === "archived" && (
             <div className="dialog-actions compact">
               {onStartRectificationRerun && currentRunArchived && (
@@ -1839,7 +1954,7 @@ function OpeningConditionTrialPackageDiagnostics({ pilotTask }: { pilotTask?: Op
 
 function OpeningConditionPilotExecutionPanel({
   pilotTask,
-  intakeMode,
+  portalState,
   readiness,
   statusMessage,
   busy,
@@ -1851,7 +1966,7 @@ function OpeningConditionPilotExecutionPanel({
   onEnsureKnowledgeBase,
 }: {
   pilotTask?: OpeningConditionPilotTask | null;
-  intakeMode: "default" | "rectification_rerun";
+  portalState: OpeningConditionPortalViewState;
   readiness?: OpeningConditionPilotReadinessResult | null;
   statusMessage: string;
   busy?: boolean;
@@ -1864,8 +1979,8 @@ function OpeningConditionPilotExecutionPanel({
 }) {
   const readinessStatus = readiness?.preflightReadiness?.status ?? "provisional";
   const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? [];
-  const archivedReadOnly = pilotTask?.state === "archived" && intakeMode !== "rectification_rerun";
-  const matchDisabled = busy || !pilotTask || pilotTask.state === "archived" || readinessStatus !== "ready";
+  const matchDisabled = busy || !pilotTask || portalState.currentRunMutationLocked || readinessStatus !== "ready";
+  const actionOwnership = portalState.actionOwnership;
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -1895,19 +2010,25 @@ function OpeningConditionPilotExecutionPanel({
           <span>支撑库 {readinessLabels[readiness.preflightReadiness.knowledgeBase] ?? readiness.preflightReadiness.knowledgeBase}</span>
         </div>
       )}
+      <OpeningConditionActionOwnershipSummary
+        summary={actionOwnership}
+        eyebrow="Execution Ownership"
+        title="试点执行台责任归属"
+        description="执行台不只显示状态，还明确下一步由谁推进。"
+      />
       <div className="dialog-actions">
         {onInitialize && (
-          <button type="button" className="primary" onClick={onInitialize} disabled={busy || archivedReadOnly}>
+          <button type="button" className="primary" onClick={onInitialize} disabled={busy || !portalState.canInitializeCurrentRun}>
             {pilotTask ? "重新初始化资料包接入" : "初始化资料包接入"}
           </button>
         )}
         {onPublishBasis && (
-          <button type="button" className="secondary" onClick={onPublishBasis} disabled={busy || !pilotTask}>
+          <button type="button" className="secondary" onClick={onPublishBasis} disabled={busy || !portalState.canMutateCurrentRun}>
             发布当前 run 依据
           </button>
         )}
         {onConfirmMasterData && (
-          <button type="button" className="secondary" onClick={onConfirmMasterData} disabled={busy || !pilotTask}>
+          <button type="button" className="secondary" onClick={onConfirmMasterData} disabled={busy || !portalState.canMutateCurrentRun}>
             确认当前 run 主数据
           </button>
         )}
@@ -1917,14 +2038,14 @@ function OpeningConditionPilotExecutionPanel({
           </button>
         )}
         {onEnsureKnowledgeBase && (
-          <button type="button" className="secondary" onClick={onEnsureKnowledgeBase} disabled={busy}>
+          <button type="button" className="secondary" onClick={onEnsureKnowledgeBase} disabled={busy || !portalState.canMutateCurrentRun}>
             生成并绑定试点知识库
           </button>
         )}
       </div>
       <strong>{statusMessage}</strong>
       <small>
-        {archivedReadOnly
+        {portalState.currentRunMutationLocked
           ? "当前归档轮次只用于查看历史接入事实。请从报告归档页发起下一轮整改复审后，再回到本页上传新资料。"
           : matchDisabled && pilotTask?.state !== "archived" && readinessStatus !== "ready"
           ? readiness?.preflightReadiness?.nextAction ?? "请先完成接入预览确认、依据发布、主数据确认和知识库门禁。"
@@ -1965,7 +2086,7 @@ function buildOpeningConditionObjectRefFromUpload(
 function OpeningConditionRealTrialIntakePanel({
   packet,
   pilotTask,
-  intakeMode,
+  portalState,
   busy,
   submittedBy,
   onComplete,
@@ -1973,7 +2094,7 @@ function OpeningConditionRealTrialIntakePanel({
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
-  intakeMode: "default" | "rectification_rerun";
+  portalState: OpeningConditionPortalViewState;
   busy?: boolean;
   submittedBy: string;
   onComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
@@ -1984,11 +2105,10 @@ function OpeningConditionRealTrialIntakePanel({
   const [packetFile, setPacketFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("选择合同依据、核查表和资料包后，可创建一条真实试点任务。");
-  const archivedReadOnly = pilotTask?.state === "archived" && intakeMode !== "rectification_rerun";
-  const isRectificationRerun = intakeMode === "rectification_rerun";
+  const isRectificationRerun = portalState.rerunUploadEnabled;
 
   async function handleBootstrap() {
-    if (archivedReadOnly) {
+    if (portalState.intakeReadOnly) {
       setMessage("当前归档轮次默认只读，请从报告归档页发起下一轮整改复审后再上传。");
       return;
     }
@@ -2016,7 +2136,7 @@ function OpeningConditionRealTrialIntakePanel({
 
       const workspace = packet.workspaceContext;
       const taskId =
-        pilotTask?.state === "archived"
+        portalState.archivedTask
           ? (getNextOpeningPilotRunTaskId?.() ?? `oc-pilot-${packet.workspaceId}-run-${Date.now()}`)
           : (pilotTask?.id ?? `oc-pilot-${packet.workspaceId}`);
 
@@ -2054,7 +2174,7 @@ function OpeningConditionRealTrialIntakePanel({
     }
   }
 
-  const disabled = busy || submitting || archivedReadOnly;
+  const disabled = busy || submitting || !portalState.canUploadNewRun;
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -2067,7 +2187,7 @@ function OpeningConditionRealTrialIntakePanel({
           {submitting ? "接入中..." : isRectificationRerun ? "上传并创建复审 run" : "上传并初始化试点"}
         </button>
       </div>
-      {archivedReadOnly && (
+      {portalState.intakeReadOnly && (
         <div className="opening-report-detail-card">
           <strong>当前展示的是已归档轮次的资料接入记录。</strong>
           <small>新的补件上传入口已收口到报告归档页，避免在多个页面重复创建新 run。</small>

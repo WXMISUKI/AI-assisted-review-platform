@@ -2,7 +2,6 @@
 
 ## Purpose
 Define the delivery handoff from formal matching through human-review decisions to report generation for the opening-condition real-sample pilot.
-
 ## Requirements
 ### Requirement: Human-review delivery handoff
 The system SHALL make human-review blockers the explicit handoff between formal matching and report generation for the opening-condition pilot.
@@ -29,3 +28,17 @@ The system SHALL expose report generation only when the backend task is report-r
 #### Scenario: Task is report ready
 - **WHEN** the task state is `report_ready`, has no open or deferred human-review items, and has no report asset
 - **THEN** the report page enables report generation
+
+### Requirement: Human-review ownership guidance
+The system SHALL present human-review work as an explicit responsibility handoff rather than only a list of blockers.
+
+#### Scenario: Human-review queue has open items
+- **WHEN** the current run contains open or deferred human-review items
+- **THEN** the human-review page shows the supervising review role as the current owner
+- **AND** it states that closing those items is the required next action before report delivery
+
+#### Scenario: Human-review queue is fully closed
+- **WHEN** all open or deferred human-review items are closed
+- **THEN** the human-review page shows that ownership has moved to report delivery
+- **AND** it points the operator to generate the report as the next action
+

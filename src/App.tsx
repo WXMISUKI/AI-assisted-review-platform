@@ -36,6 +36,7 @@ import {
   openingConditionWorkspaces,
   type OpeningConditionReviewPacket,
 } from "./domain/openingConditionReview";
+import type { OpeningPilotIntakeMode } from "./openingConditionPortalState";
 
 function getOpeningPilotTaskId(packet: OpeningConditionReviewPacket) {
   return `oc-pilot-${packet.workspaceId}`;
@@ -146,8 +147,6 @@ function buildOpeningPilotReinitializeRequest(
     submittedBy,
   };
 }
-
-type OpeningPilotIntakeMode = "default" | "rectification_rerun";
 
 export function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
@@ -294,15 +293,17 @@ export function App() {
   }
 
   async function initializeOpeningPilotTask() {
-    const taskId =
-      openingPilotTask?.state === "archived"
-        ? getOpeningPilotRunTaskId(openingPacket)
-        : (openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket));
+    if (openingPilotTask?.state === "archived") {
+      setOpeningPilotStatus("当前展示的是已归档任务，执行台不能直接创建新 run。请从报告归档页发起下一轮整改复审，并在资料接入页上传新的依据、核查表和资料包。");
+      return;
+    }
+
+    const taskId = openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket);
     setOpeningPilotBusy(true);
 
     try {
       const reinitializeRequest =
-        openingPilotTask && openingPilotTask.state !== "archived"
+        openingPilotTask
           ? buildOpeningPilotReinitializeRequest(
               openingPilotTask,
               openingPilotBasisRecords,
@@ -310,7 +311,7 @@ export function App() {
               session?.username ?? "pilot-user",
             )
           : null;
-      if (openingPilotTask && openingPilotTask.state !== "archived" && !reinitializeRequest) {
+      if (openingPilotTask && !reinitializeRequest) {
         setOpeningPilotStatus("当前 run 的真实上传对象引用已丢失或已被演示数据覆盖，不能继续安全重初始化。请通过“真实试点资料接入”重新上传并创建新的 run。");
         return;
       }
