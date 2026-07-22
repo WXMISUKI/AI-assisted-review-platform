@@ -14,6 +14,11 @@ The system SHALL preserve a workspace-scoped history of opening-condition pilot 
 - **WHEN** the operator uploads rectified materials after a prior run has been archived
 - **THEN** the system creates a new run for the same workspace instead of overwriting the archived run
 
+#### Scenario: New rerun keeps reusable asset continuity
+- **WHEN** the operator uploads rectified materials after a prior run has been archived
+- **THEN** the new run remains a separate run in workspace history
+- **AND** the portal explains which confirmed basis and master-data assets continue into the new run versus which assets are newly introduced or need reconfirmation
+
 #### Scenario: Operator starts a rectification rerun from archived report
 - **WHEN** the currently visible run is archived and the operator chooses to start the next rectification review
 - **THEN** the portal routes the operator to the material-intake page and labels the next real-file upload as a new rectification round
@@ -62,4 +67,3 @@ The system SHALL preserve an operator-facing action ownership snapshot when a hi
 - **WHEN** the report page compares the selected round with a previous archived round
 - **THEN** the historical comparison keeps the archived round read-only
 - **AND** it does not suggest mutation actions against the historical round
-

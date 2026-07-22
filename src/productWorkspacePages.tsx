@@ -56,6 +56,10 @@ import {
   type OpeningConditionPortalViewState,
   type OpeningPilotIntakeMode,
 } from "./openingConditionPortalState";
+import {
+  deriveOpeningConditionRerunAssetDiff,
+  getOpeningConditionAssetReuseStatusMeta,
+} from "./openingConditionRerunAssetReuse";
 
 const openingWorkspaceNav: Array<{
   id: OpeningConditionPortalPage;
@@ -188,6 +192,123 @@ function OpeningConditionActionOwnershipSummary({
         </div>
       </div>
     </div>
+  );
+}
+
+function OpeningConditionRerunAssetDiffPanel({
+  diff,
+  eyebrow = "Rerun Asset Reuse",
+  title = "上一轮复用与本轮变化",
+  description,
+  emptyDescription = "当前工作区还没有上一归档轮次，因此本页先按首轮接入展示。",
+}: {
+  diff: ReturnType<typeof deriveOpeningConditionRerunAssetDiff>;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+  emptyDescription?: string;
+}) {
+  if (!diff) {
+    return null;
+  }
+
+  if (!diff.previousTask) {
+    return (
+      <section className="opening-report-detail-card">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <strong>{title}</strong>
+        </div>
+        <small>{emptyDescription}</small>
+      </section>
+    );
+  }
+
+  const groups = {
+    reused: diff.entries.filter((entry) => entry.reuseStatus === "reused"),
+    needs_reconfirmation: diff.entries.filter((entry) => entry.reuseStatus === "needs_reconfirmation"),
+    new_for_current_run: diff.entries.filter((entry) => entry.reuseStatus === "new_for_current_run"),
+    dropped_from_current_run: diff.entries.filter((entry) => entry.reuseStatus === "dropped_from_current_run"),
+  };
+
+  const orderedStatuses: Array<keyof typeof groups> = [
+    "reused",
+    "needs_reconfirmation",
+    "new_for_current_run",
+    "dropped_from_current_run",
+  ];
+
+  return (
+    <section className="opening-panel opening-panel-wide">
+      <div className="section-title row">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h2>{title}</h2>
+        </div>
+      </div>
+      <p>
+        {description ??
+          `对比上一归档轮次 ${diff.previousTask.id} 与当前 run ${diff.currentTask.id}，只前置展示操作者真正需要关心的复用与变化。`}
+      </p>
+      <div className="opening-report-summary-grid">
+        {orderedStatuses.map((status) => {
+          const meta = getOpeningConditionAssetReuseStatusMeta(status);
+          return (
+            <div key={status} className={`opening-report-summary-card tone-${meta.tone}`}>
+              <strong>{meta.label}</strong>
+              <span>{diff.summary[status]} 项</span>
+              <p>{meta.description}</p>
+            </div>
+          );
+        })}
+      </div>
+      <div className="opening-rerun-asset-groups">
+        {orderedStatuses.map((status) => {
+          const items = groups[status];
+          if (items.length === 0) {
+            return null;
+          }
+          const meta = getOpeningConditionAssetReuseStatusMeta(status);
+          return (
+            <article key={status} className="opening-rerun-asset-group">
+              <div className="opening-report-finding-header">
+                <strong>{meta.label}</strong>
+                <span className={`opening-report-chip tone-${meta.tone}`}>{items.length} 项</span>
+              </div>
+              <div className="opening-rerun-asset-list">
+                {items.slice(0, 6).map((item) => (
+                  <div key={`${status}-${item.assetType}-${item.id}`} className="opening-rerun-asset-item">
+                    <div className="opening-report-finding-header">
+                      <strong>{item.title}</strong>
+                      <div className="opening-report-chip-row">
+                        <span className="opening-report-chip tone-muted">{item.assetType === "basis" ? "依据" : "主数据"}</span>
+                        <span className={`opening-report-chip tone-${meta.tone}`}>{meta.label}</span>
+                      </div>
+                    </div>
+                    <span>{item.category}</span>
+                    <p>{item.note}</p>
+                    <div className="opening-rerun-asset-status-grid">
+                      {item.previousStatusLabel && (
+                        <small>
+                          <strong>上一轮</strong>
+                          {item.previousStatusLabel}
+                        </small>
+                      )}
+                      {item.currentStatusLabel && (
+                        <small>
+                          <strong>当前 run</strong>
+                          {item.currentStatusLabel}
+                        </small>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -506,6 +627,7 @@ export function OpeningConditionWorkspaceShell({
               roleLabel={roleLabel}
               intakeMode={intakeMode}
               pilotTask={pilotTask}
+              workspaceTasks={pilotWorkspaceTasks}
               pilotBasisRecords={pilotBasisRecords}
               pilotMasterDataRecords={pilotMasterDataRecords}
               pilotKnowledgeBases={pilotKnowledgeBases}
@@ -529,6 +651,7 @@ export function OpeningConditionWorkspaceShell({
             <OpeningConditionPublicationGovernancePage
               packet={packet}
               pilotTask={pilotTask}
+              workspaceTasks={pilotWorkspaceTasks}
               basisRecords={pilotBasisRecords}
               masterDataRecords={pilotMasterDataRecords}
               knowledgeBases={pilotKnowledgeBases}
@@ -828,6 +951,7 @@ function OpeningConditionMaterialIntakePage({
   roleLabel,
   intakeMode,
   pilotTask,
+  workspaceTasks,
   pilotBasisRecords,
   pilotMasterDataRecords,
   pilotKnowledgeBases,
@@ -850,6 +974,7 @@ function OpeningConditionMaterialIntakePage({
   roleLabel: string;
   intakeMode: "default" | "rectification_rerun";
   pilotTask?: OpeningConditionPilotTask | null;
+  workspaceTasks?: OpeningConditionPilotTask[];
   pilotBasisRecords?: OpeningConditionPilotBasisRecord[];
   pilotMasterDataRecords?: OpeningConditionPilotMasterDataRecord[];
   pilotKnowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
@@ -926,6 +1051,7 @@ function OpeningConditionMaterialIntakePage({
       <OpeningConditionIntakeCandidatePreviewPanel
         packet={packet}
         pilotTask={pilotTask}
+        workspaceTasks={workspaceTasks}
         portalState={portalState}
         readiness={pilotReadiness}
         basisRecords={pilotBasisRecords}
@@ -938,6 +1064,7 @@ function OpeningConditionMaterialIntakePage({
       />
       <OpeningConditionTrialIntakeOverviewPanel
         pilotTask={pilotTask}
+        workspaceTasks={workspaceTasks}
         portalState={portalState}
         readiness={pilotReadiness}
         basisRecords={pilotBasisRecords}
@@ -954,6 +1081,7 @@ function OpeningConditionMaterialIntakePage({
 
 function OpeningConditionTrialIntakeOverviewPanel({
   pilotTask,
+  workspaceTasks,
   portalState,
   readiness,
   basisRecords,
@@ -964,6 +1092,7 @@ function OpeningConditionTrialIntakeOverviewPanel({
   pilotBusy,
 }: {
   pilotTask?: OpeningConditionPilotTask | null;
+  workspaceTasks?: OpeningConditionPilotTask[];
   portalState: OpeningConditionPortalViewState;
   readiness?: OpeningConditionPilotReadinessResult | null;
   basisRecords?: OpeningConditionPilotBasisRecord[];
@@ -977,6 +1106,12 @@ function OpeningConditionTrialIntakeOverviewPanel({
     return null;
   }
 
+  const rerunAssetDiff = deriveOpeningConditionRerunAssetDiff({
+    currentTask: pilotTask,
+    workspaceTasks,
+    basisRecords,
+    masterDataRecords,
+  });
   const actionOwnership = portalState.actionOwnership;
   const boundBasis = basisRecords?.find((item) => item.id === pilotTask.basisVersion?.id);
   const requiredMasterData = (masterDataRecords ?? []).filter((item) =>
@@ -1007,6 +1142,12 @@ function OpeningConditionTrialIntakeOverviewPanel({
         summary={actionOwnership}
         title="当前 run 的责任归属"
         description="把状态枚举翻译成操作者可执行的责任、动作和时限提示。"
+      />
+      <OpeningConditionRerunAssetDiffPanel
+        diff={rerunAssetDiff}
+        eyebrow="Rerun Asset Snapshot"
+        title="上一轮复用与本轮变化"
+        description="正式匹配前先看清楚：哪些依据和主数据沿用了上一轮，哪些是本轮新增，哪些仍需要重新确认。"
       />
       <div className="opening-record-list">
         <div>
@@ -1081,6 +1222,7 @@ function OpeningConditionTrialIntakeOverviewPanel({
 function OpeningConditionIntakeCandidatePreviewPanel({
   packet,
   pilotTask,
+  workspaceTasks,
   portalState,
   readiness,
   basisRecords,
@@ -1093,6 +1235,7 @@ function OpeningConditionIntakeCandidatePreviewPanel({
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
+  workspaceTasks?: OpeningConditionPilotTask[];
   portalState: OpeningConditionPortalViewState;
   readiness?: OpeningConditionPilotReadinessResult | null;
   basisRecords?: OpeningConditionPilotBasisRecord[];
@@ -1113,6 +1256,12 @@ function OpeningConditionIntakeCandidatePreviewPanel({
 
   const [basisSafeNote, setBasisSafeNote] = useState("");
   const [masterDataNotes, setMasterDataNotes] = useState<Record<string, string>>({});
+  const rerunAssetDiff = deriveOpeningConditionRerunAssetDiff({
+    currentTask: pilotTask,
+    workspaceTasks,
+    basisRecords,
+    masterDataRecords,
+  });
 
   const boundBasis = basisRecords?.find((item) => item.id === pilotTask.basisVersion?.id);
   const requiredMasterData = (masterDataRecords ?? []).filter((item) =>
@@ -1157,6 +1306,12 @@ function OpeningConditionIntakeCandidatePreviewPanel({
         </div>
       </div>
       <p>这里先看系统本次识别成了什么，再决定是否将这些识别结果正式确认并纳入平台可用资产。</p>
+      <OpeningConditionRerunAssetDiffPanel
+        diff={rerunAssetDiff}
+        eyebrow="Rerun Reuse"
+        title="复审 run 复用与待确认资产"
+        description="这一栏只服务一件事：减少重复确认，让你先看到哪些资产能直接沿用，哪些变化项要在本轮处理。"
+      />
       <div className="opening-candidate-preview-grid">
         <article className="opening-candidate-preview-card">
           <strong>当前对象</strong>
@@ -1457,6 +1612,7 @@ function OpeningConditionBasisAndMasterDataPage({
 function OpeningConditionPublicationGovernancePage({
   packet,
   pilotTask,
+  workspaceTasks,
   basisRecords,
   masterDataRecords,
   knowledgeBases,
@@ -1464,6 +1620,7 @@ function OpeningConditionPublicationGovernancePage({
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
+  workspaceTasks?: OpeningConditionPilotTask[];
   basisRecords?: OpeningConditionPilotBasisRecord[];
   masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
   knowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
@@ -1471,6 +1628,12 @@ function OpeningConditionPublicationGovernancePage({
 }) {
   const displayedBasisRecords = basisRecords && basisRecords.length > 0 ? basisRecords : packet.basisVersions;
   const displayedMasterDataRecords = masterDataRecords && masterDataRecords.length > 0 ? masterDataRecords : packet.masterData;
+  const rerunAssetDiff = deriveOpeningConditionRerunAssetDiff({
+    currentTask: pilotTask,
+    workspaceTasks,
+    basisRecords,
+    masterDataRecords,
+  });
   const displayedKnowledgeBases = knowledgeBases ?? [];
   const boundBasisId = pilotTask?.basisVersion?.id;
   const requiredMasterDataIds = new Set((pilotTask?.requiredMasterData ?? []).map((record) => record.id));
@@ -1683,6 +1846,12 @@ function OpeningConditionPublicationGovernancePage({
         </div>
       </section>
 
+      <OpeningConditionRerunAssetDiffPanel
+        diff={rerunAssetDiff}
+        eyebrow="Governance Diff"
+        title="当前 run 复用快照"
+        description="治理页从目录视角说明：当前 run 实际消费了哪些复用资产，哪些变化项还需要你处理。"
+      />
       <section className="opening-condition-grid">
         <article className="opening-panel">
           <span className="eyebrow">Basis Queue</span>

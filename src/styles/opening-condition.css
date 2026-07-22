@@ -380,6 +380,63 @@
   color: var(--text-primary);
 }
 
+.opening-rerun-asset-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.opening-rerun-asset-group,
+.opening-rerun-asset-item {
+  display: grid;
+  gap: 10px;
+}
+
+.opening-rerun-asset-group {
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.opening-rerun-asset-list {
+  display: grid;
+  gap: 10px;
+}
+
+.opening-rerun-asset-item {
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.opening-rerun-asset-item > span,
+.opening-rerun-asset-item > p {
+  margin: 0;
+}
+
+.opening-rerun-asset-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.opening-rerun-asset-status-grid small {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+.opening-rerun-asset-status-grid small strong {
+  color: var(--text-primary);
+}
+
 .opening-condition-meta {
   grid-template-columns: repeat(3, minmax(0, max-content));
   margin-top: 18px;
@@ -819,6 +876,8 @@
   .opening-action-summary-grid,
   .opening-object-summary-grid,
   .opening-report-summary-grid,
+  .opening-rerun-asset-groups,
+  .opening-rerun-asset-status-grid,
   .opening-closure-status-grid,
   .opening-condition-grid,
   .opening-governance-summary-grid,

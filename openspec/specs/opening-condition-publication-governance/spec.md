@@ -18,6 +18,11 @@ The system SHALL show which published or approved intake assets the current run 
 - **THEN** the page shows the bound basis version, current-run master-data facts, and bound knowledge-base summary for that run
 - **AND** the snapshot is visually separated from the broader workspace catalog
 
+#### Scenario: Operator reviews current run binding during rerun
+- **WHEN** a current run has a previous archived run in the same workspace
+- **THEN** the governance page shows a reuse snapshot for the current run
+- **AND** it distinguishes reused assets, newly introduced assets, assets needing reconfirmation, and assets no longer used by the current run
+
 ### Requirement: Exception records stay visible
 The system SHALL preserve visibility of rejected, superseded, or expired publication records without mixing them into the primary publish-ready queue.
 
@@ -34,3 +39,7 @@ The system SHALL keep the semantics of intake candidate preview and publication 
 - **THEN** the status language and grouping used in both pages remain consistent
 - **AND** the operator can understand that the governance page is the catalog view of records first introduced by the intake preview
 
+#### Scenario: Operator compares intake and governance pages for the same rerun
+- **WHEN** the operator moves between the intake preview page and the governance page for the same current run
+- **THEN** both pages use the same asset reuse and difference semantics
+- **AND** the operator does not need to reinterpret a record's meaning between the two pages
