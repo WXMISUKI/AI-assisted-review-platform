@@ -125,12 +125,18 @@ The opening-condition execution console SHALL keep operator actions scoped to th
 
 #### Scenario: Archived task becomes read-only
 - **WHEN** the currently displayed backend task is archived
-- **THEN** the execution console disables formal matching and other follow-on mutation actions and guides the operator to upload and initialize a new run
+- **THEN** the execution console disables formal matching and other follow-on mutation actions
+- **AND** the material-intake page defaults to read-only guidance until the operator explicitly enters rerun intake mode
 
 #### Scenario: Start next rectification round
 - **WHEN** the operator starts a next rectification round from an archived run
 - **THEN** the execution console guides the operator to upload a fresh basis/checklist/material package for a new run-specific task id
 - **AND** the archived run is not reinitialized or mutated
+
+#### Scenario: Start next rectification round from the primary entry
+- **WHEN** the operator wants to start the next rectification round for an archived run
+- **THEN** the report page provides the primary entry into rerun intake mode
+- **AND** the material-intake page only opens rerun upload actions after that intent has been explicitly set
 
 ### Requirement: Human-review delivery guidance
 The opening-condition execution console SHALL show task-owned human-review progress and next action guidance after formal matching.

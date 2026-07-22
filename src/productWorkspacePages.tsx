@@ -73,13 +73,44 @@ type ReportFinding = {
   severityTone: "danger" | "warning" | "info";
   disposition: string;
   dispositionLabel: string;
-  dispositionTone: "danger" | "warning" | "success" | "muted";
+  dispositionTone: "danger" | "warning" | "success" | "info" | "muted";
   statusLabel: string;
   description: string;
   basis: string;
   rectification: string;
   evidence: string[];
   humanReview: string[];
+};
+
+type FinalReviewDisposition =
+  | "blocked"
+  | "fail"
+  | "warning"
+  | "needs_human_review"
+  | "pass"
+  | "not_applicable"
+  | "missing_in_current_run"
+  | "confirm"
+  | "correct"
+  | "reject";
+
+type RectificationClosureCategory = "rectified" | "carried_over" | "newly_added" | "pending_human_review";
+
+type RectificationClosureItem = {
+  id: string;
+  title: string;
+  category: string;
+  closureCategory: RectificationClosureCategory;
+  previousStatus: string;
+  currentStatus: string;
+  nextAction: string;
+};
+
+type RectificationClosureDiff = {
+  previousTask: OpeningConditionPilotTask;
+  selectedTask: OpeningConditionPilotTask;
+  items: RectificationClosureItem[];
+  summary: Record<RectificationClosureCategory, number>;
 };
 
 export function LoginPage({
@@ -217,6 +248,7 @@ export function OpeningConditionWorkspaceShell({
   roleLabel,
   themeMode,
   activePage,
+  intakeMode,
   workspaces,
   selectedWorkspaceId,
   packet,
@@ -248,6 +280,7 @@ export function OpeningConditionWorkspaceShell({
   roleLabel: string;
   themeMode: ThemeMode;
   activePage: OpeningConditionPortalPage;
+  intakeMode: "default" | "rectification_rerun";
   workspaces: OpeningConditionWorkspace[];
   selectedWorkspaceId: string;
   packet: OpeningConditionReviewPacket;
@@ -360,6 +393,7 @@ export function OpeningConditionWorkspaceShell({
             <OpeningConditionMaterialIntakePage
               packet={packet}
               roleLabel={roleLabel}
+              intakeMode={intakeMode}
               pilotTask={pilotTask}
               pilotBasisRecords={pilotBasisRecords}
               pilotMasterDataRecords={pilotMasterDataRecords}
@@ -375,6 +409,7 @@ export function OpeningConditionWorkspaceShell({
               onEnsureKnowledgeBase={onEnsureKnowledgeBase}
               onTrialBootstrapComplete={onTrialBootstrapComplete}
               getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
+              onGoToReports={() => onSelectPage("reports")}
             />
           )}
           {activePage === "basis-sets" && (
@@ -508,6 +543,7 @@ function OpeningConditionOverviewPage({
 function OpeningConditionMaterialIntakePage({
   packet,
   roleLabel,
+  intakeMode,
   pilotTask,
   pilotBasisRecords,
   pilotMasterDataRecords,
@@ -523,9 +559,11 @@ function OpeningConditionMaterialIntakePage({
   onEnsureKnowledgeBase,
   onTrialBootstrapComplete,
   getNextOpeningPilotRunTaskId,
+  onGoToReports,
 }: {
   packet: OpeningConditionReviewPacket;
   roleLabel: string;
+  intakeMode: "default" | "rectification_rerun";
   pilotTask?: OpeningConditionPilotTask | null;
   pilotBasisRecords?: OpeningConditionPilotBasisRecord[];
   pilotMasterDataRecords?: OpeningConditionPilotMasterDataRecord[];
@@ -541,12 +579,37 @@ function OpeningConditionMaterialIntakePage({
   onEnsureKnowledgeBase?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
   getNextOpeningPilotRunTaskId?: () => string;
+  onGoToReports?: () => void;
 }) {
+  const archivedReadOnly = pilotTask?.state === "archived" && intakeMode !== "rectification_rerun";
+
   return (
     <div className="opening-condition-page">
+      {archivedReadOnly && (
+        <section className="opening-panel opening-panel-wide opening-intake-guidance-card">
+          <div className="section-title row">
+            <div>
+              <span className="eyebrow">整改复审入口已收口</span>
+              <h2>当前归档轮次在这里默认只读</h2>
+            </div>
+            {onGoToReports && (
+              <button type="button" className="primary" onClick={onGoToReports}>
+                前往报告归档发起下一轮
+              </button>
+            )}
+          </div>
+          <p>为避免“重新上传”和“发起下一轮整改复审”并列造成误操作，新的复审 run 统一从报告归档页进入。</p>
+          <ul className="opening-intake-guidance-list">
+            <li>当前任务仍可在本页查看资料接入事实、门禁状态和历史输入。</li>
+            <li>如果要开始补件后的新一轮复审，请回到报告归档页点击“发起下一轮整改复审”。</li>
+            <li>进入复审模式后，本页会自动切换为可上传的新 run 接入页。</li>
+          </ul>
+        </section>
+      )}
       <OpeningConditionRealTrialIntakePanel
         packet={packet}
         pilotTask={pilotTask}
+        intakeMode={intakeMode}
         busy={pilotBusy}
         submittedBy={roleLabel}
         onComplete={onTrialBootstrapComplete}
@@ -554,6 +617,7 @@ function OpeningConditionMaterialIntakePage({
       />
       <OpeningConditionPilotExecutionPanel
         pilotTask={pilotTask}
+        intakeMode={intakeMode}
         readiness={pilotReadiness}
         statusMessage={pilotStatus}
         busy={pilotBusy}
@@ -979,23 +1043,21 @@ function buildReportFindings(pilotTask?: OpeningConditionPilotTask | null): Repo
   }
 
   const evidenceById = new Map<string, OpeningConditionPilotEvidence>(pilotTask.evidence.map((item) => [item.id, item]));
-  const reviewByTargetId = new Map<string, OpeningConditionPilotHumanReviewItem[]>();
-  pilotTask.humanReviewQueue.forEach((item) => {
-    const current = reviewByTargetId.get(item.targetId) ?? [];
-    current.push(item);
-    reviewByTargetId.set(item.targetId, current);
-  });
+  const reviewByTargetId = buildHumanReviewMap(pilotTask.humanReviewQueue);
+  const latestReviewByTargetId = buildLatestHumanReviewMap(pilotTask.humanReviewQueue);
 
   return pilotTask.checkItems
-    .filter((item) => ["fail", "warning", "needs_human_review", "blocked"].includes(item.verdict))
+    .filter((item) => isProblemCheckItem(item, latestReviewByTargetId.get(item.id)))
     .map((item) => {
+      const latestReview = latestReviewByTargetId.get(item.id);
+      const disposition = getCheckItemDisposition(item, latestReview);
       const severity =
-        item.finalDisposition === "blocked" || (item.required && item.verdict === "fail")
+        disposition === "blocked" || (item.required && (disposition === "fail" || disposition === "reject"))
           ? "high"
-          : item.verdict === "fail" || item.verdict === "needs_human_review"
+          : disposition === "fail" || disposition === "reject" || disposition === "needs_human_review"
             ? "medium"
             : "low";
-      const disposition = item.finalDisposition ?? item.verdict;
+
       return {
         id: item.id,
         title: item.name,
@@ -1011,10 +1073,12 @@ function buildReportFindings(pilotTask?: OpeningConditionPilotTask | null): Repo
         description: item.semanticNote ?? item.ruleExplanation,
         basis: item.basisVersionId,
         rectification:
-          item.documentPresence === "missing"
+          disposition === "reject" || item.documentPresence === "missing"
             ? "补齐对应资料后重新提交复审。"
-            : item.verdict === "blocked"
+            : disposition === "blocked"
               ? "先解决前置依据或授权边界阻塞，再重新发起复审。"
+              : disposition === "needs_human_review"
+                ? "由监理完成人工判断后，再决定是否补件或放行。"
               : "按核查依据补正资料内容后重新提交。",
         evidence: item.evidenceIds
           .map((evidenceId) => {
@@ -1049,23 +1113,204 @@ function summarizePreviousRun(currentTask: OpeningConditionPilotTask | null | un
   if (!previous) {
     return null;
   }
-  const failedLike = (task: OpeningConditionPilotTask) =>
-    task.checkItems.filter((item) => item.verdict === "fail" || item.verdict === "blocked").length;
+  const countProblemItems = (task: OpeningConditionPilotTask) => {
+    const latestReviewByTargetId = buildLatestHumanReviewMap(task.humanReviewQueue);
+    return task.checkItems.filter((item) => isProblemCheckItem(item, latestReviewByTargetId.get(item.id))).length;
+  };
+  const currentLatestReviewByTargetId = buildLatestHumanReviewMap(currentTask.humanReviewQueue);
+  const previousLatestReviewByTargetId = buildLatestHumanReviewMap(previous.humanReviewQueue);
   const currentSet = new Set(
     currentTask.checkItems
-      .filter((item) => item.verdict === "fail" || item.verdict === "blocked" || item.verdict === "needs_human_review")
+      .filter((item) => isProblemCheckItem(item, currentLatestReviewByTargetId.get(item.id)))
       .map((item) => item.id),
   );
   const previousSet = new Set(
     previous.checkItems
-      .filter((item) => item.verdict === "fail" || item.verdict === "blocked" || item.verdict === "needs_human_review")
+      .filter((item) => isProblemCheckItem(item, previousLatestReviewByTargetId.get(item.id)))
       .map((item) => item.id),
   );
   return {
-    previousFailed: failedLike(previous),
-    currentFailed: failedLike(currentTask),
+    previousFailed: countProblemItems(previous),
+    currentFailed: countProblemItems(currentTask),
     carried: [...currentSet].filter((id) => previousSet.has(id)).length,
   };
+}
+
+type PilotCheckItem = OpeningConditionPilotTask["checkItems"][number];
+
+const problemVerdicts = new Set<FinalReviewDisposition>(["fail", "warning", "needs_human_review", "blocked", "reject"]);
+
+function buildHumanReviewMap(queue: OpeningConditionPilotHumanReviewItem[]) {
+  const reviewByTargetId = new Map<string, OpeningConditionPilotHumanReviewItem[]>();
+  queue.forEach((item) => {
+    const current = reviewByTargetId.get(item.targetId) ?? [];
+    current.push(item);
+    reviewByTargetId.set(item.targetId, current);
+  });
+  return reviewByTargetId;
+}
+
+function buildLatestHumanReviewMap(queue: OpeningConditionPilotHumanReviewItem[]) {
+  const latestByTargetId = new Map<string, OpeningConditionPilotHumanReviewItem>();
+  queue.forEach((item) => {
+    const current = latestByTargetId.get(item.targetId);
+    const currentTime = Date.parse(current?.decidedAt || "");
+    const nextTime = Date.parse(item.decidedAt || "");
+    const currentRank = Number.isNaN(currentTime) ? -1 : currentTime;
+    const nextRank = Number.isNaN(nextTime) ? -1 : nextTime;
+    if (!current || nextRank >= currentRank) {
+      latestByTargetId.set(item.targetId, item);
+    }
+  });
+  return latestByTargetId;
+}
+
+function getCheckItemDisposition(
+  item?: PilotCheckItem | null,
+  latestReview?: OpeningConditionPilotHumanReviewItem | null,
+): FinalReviewDisposition {
+  if (!item) {
+    return "missing_in_current_run";
+  }
+
+  switch (latestReview?.status) {
+    case "confirmed":
+      return "confirm";
+    case "corrected":
+      return "correct";
+    case "rejected":
+      return "reject";
+    case "open":
+    case "deferred":
+      return "needs_human_review";
+    default:
+      return (item.finalDisposition ?? item.verdict) as FinalReviewDisposition;
+  }
+}
+
+function isProblemCheckItem(
+  item?: PilotCheckItem | null,
+  latestReview?: OpeningConditionPilotHumanReviewItem | null,
+) {
+  if (!item) {
+    return false;
+  }
+  return problemVerdicts.has(getCheckItemDisposition(item, latestReview));
+}
+
+function getCheckItemCategory(item: PilotCheckItem) {
+  return item.subCategory ? `${item.category} / ${item.subCategory}` : item.category;
+}
+
+function getPreviousArchivedRun(selectedTask: OpeningConditionPilotTask | null | undefined, tasks: OpeningConditionPilotTask[]) {
+  if (!selectedTask) {
+    return null;
+  }
+  const selectedCreatedAt = Date.parse(selectedTask.createdAt || selectedTask.updatedAt || "");
+  return [...tasks]
+    .filter((task) => task.id !== selectedTask.id && task.state === "archived")
+    .filter((task) => Date.parse(task.createdAt || task.updatedAt || "") < selectedCreatedAt)
+    .sort(compareTaskByUpdatedAtDesc)[0] ?? null;
+}
+
+function getRectificationNextAction(category: RectificationClosureCategory) {
+  switch (category) {
+    case "rectified":
+      return "本项可作为已补齐记录进入本轮报告留痕。";
+    case "carried_over":
+      return "继续列入整改清单，要求补齐资料后进入下一轮复审。";
+    case "newly_added":
+      return "作为本轮新增问题补充整改要求，避免只处理上一轮遗留项。";
+    case "pending_human_review":
+      return "先由监理人工判断是否接受说明、修正或驳回。";
+  }
+}
+
+function buildRectificationClosureDiff(
+  selectedTask: OpeningConditionPilotTask | null | undefined,
+  tasks: OpeningConditionPilotTask[],
+): RectificationClosureDiff | null {
+  const previousTask = getPreviousArchivedRun(selectedTask, tasks);
+  if (!selectedTask || !previousTask) {
+    return null;
+  }
+
+  const previousById = new Map(previousTask.checkItems.map((item) => [item.id, item]));
+  const currentById = new Map(selectedTask.checkItems.map((item) => [item.id, item]));
+  const previousLatestReviewByTargetId = buildLatestHumanReviewMap(previousTask.humanReviewQueue);
+  const currentLatestReviewByTargetId = buildLatestHumanReviewMap(selectedTask.humanReviewQueue);
+  const allProblemIds = new Set<string>();
+  previousTask.checkItems
+    .filter((item) => isProblemCheckItem(item, previousLatestReviewByTargetId.get(item.id)))
+    .forEach((item) => allProblemIds.add(item.id));
+  selectedTask.checkItems
+    .filter((item) => isProblemCheckItem(item, currentLatestReviewByTargetId.get(item.id)))
+    .forEach((item) => allProblemIds.add(item.id));
+
+  const items = [...allProblemIds].map((id) => {
+    const previousItem = previousById.get(id);
+    const currentItem = currentById.get(id);
+    const previousProblem = isProblemCheckItem(previousItem, previousLatestReviewByTargetId.get(id));
+    const currentProblem = isProblemCheckItem(currentItem, currentLatestReviewByTargetId.get(id));
+    const currentDisposition = getCheckItemDisposition(currentItem, currentLatestReviewByTargetId.get(id));
+    const closureCategory: RectificationClosureCategory =
+      currentDisposition === "needs_human_review"
+        ? "pending_human_review"
+        : previousProblem && !currentProblem
+          ? "rectified"
+          : previousProblem && currentProblem
+            ? "carried_over"
+            : "newly_added";
+    const displayItem = currentItem ?? previousItem;
+
+    return {
+      id,
+      title: displayItem?.name ?? id,
+      category: displayItem ? getCheckItemCategory(displayItem) : "未分类",
+      closureCategory,
+      previousStatus: getFindingDispositionLabel(getCheckItemDisposition(previousItem, previousLatestReviewByTargetId.get(id))),
+      currentStatus: currentItem ? getFindingDispositionLabel(currentDisposition) : "本轮未再列为问题",
+      nextAction: getRectificationNextAction(closureCategory),
+    };
+  });
+
+  return {
+    previousTask,
+    selectedTask,
+    items,
+    summary: {
+      rectified: items.filter((item) => item.closureCategory === "rectified").length,
+      carried_over: items.filter((item) => item.closureCategory === "carried_over").length,
+      newly_added: items.filter((item) => item.closureCategory === "newly_added").length,
+      pending_human_review: items.filter((item) => item.closureCategory === "pending_human_review").length,
+    },
+  };
+}
+
+function getClosureCategoryLabel(category: RectificationClosureCategory) {
+  switch (category) {
+    case "rectified":
+      return "已整改";
+    case "carried_over":
+      return "仍未整改";
+    case "newly_added":
+      return "本轮新增";
+    case "pending_human_review":
+      return "待人工判断";
+  }
+}
+
+function getClosureCategoryTone(category: RectificationClosureCategory): ReportFinding["dispositionTone"] {
+  switch (category) {
+    case "rectified":
+      return "success";
+    case "carried_over":
+      return "danger";
+    case "newly_added":
+      return "warning";
+    case "pending_human_review":
+      return "info";
+  }
 }
 
 function getFindingDispositionLabel(disposition: string) {
@@ -1082,6 +1327,8 @@ function getFindingDispositionLabel(disposition: string) {
       return "通过";
     case "not_applicable":
       return "本轮不适用";
+    case "missing_in_current_run":
+      return "本轮未再列为问题";
     case "confirm":
       return "人工确认";
     case "correct":
@@ -1221,12 +1468,13 @@ function OpeningConditionReportArchivePage({
   const runRoundMap = buildRunRoundMap(historyTasks);
   const currentRound = selectedTask ? runRoundMap.get(selectedTask.id) : undefined;
   const previousRun = summarizePreviousRun(selectedTask, historyTasks);
+  const closureDiff = buildRectificationClosureDiff(selectedTask, historyTasks);
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
   const isCurrentRun = Boolean(selectedTask && pilotTask && selectedTask.id === pilotTask.id);
   const currentRunArchived = pilotTask?.state === "archived";
   const findingSummary = {
     blocked: findings.filter((item) => item.disposition === "blocked").length,
-    failed: findings.filter((item) => item.disposition === "fail").length,
+    failed: findings.filter((item) => item.disposition === "fail" || item.disposition === "reject").length,
     pendingHuman: findings.filter((item) => item.disposition === "needs_human_review").length,
     warning: findings.filter((item) => item.disposition === "warning").length,
   };
@@ -1306,6 +1554,60 @@ function OpeningConditionReportArchivePage({
             <span>上一轮不通过 {previousRun.previousFailed} 项 · 当前不通过 {previousRun.currentFailed} 项</span>
             <p>仍延续到本轮的待整改项 {previousRun.carried} 项，可据此判断补件效果。</p>
           </div>
+        </div>
+      )}
+
+      {closureDiff && (
+        <div className="opening-record-list">
+          <div>
+            <strong>整改闭环对照</strong>
+            <span>对比上一归档轮次 {runRoundMap.get(closureDiff.previousTask.id) ?? "-"} 与当前查看轮次 {currentRound ?? "-"}</span>
+            <p>用于判断本轮补件是否真正解决上一轮问题，并识别本轮新增风险。</p>
+          </div>
+          <div className="opening-report-summary-grid">
+            <div className="opening-report-summary-card tone-success">
+              <strong>已整改</strong>
+              <span>{closureDiff.summary.rectified} 项</span>
+              <p>上一轮问题在本轮未再构成阻塞。</p>
+            </div>
+            <div className="opening-report-summary-card tone-danger">
+              <strong>仍未整改</strong>
+              <span>{closureDiff.summary.carried_over} 项</span>
+              <p>上一轮问题延续到本轮。</p>
+            </div>
+            <div className="opening-report-summary-card tone-warning">
+              <strong>本轮新增</strong>
+              <span>{closureDiff.summary.newly_added} 项</span>
+              <p>本轮资料暴露的新问题。</p>
+            </div>
+            <div className="opening-report-summary-card tone-info">
+              <strong>待人工判断</strong>
+              <span>{closureDiff.summary.pending_human_review} 项</span>
+              <p>需要监理确认处理结论。</p>
+            </div>
+          </div>
+          {closureDiff.items.slice(0, 8).map((item) => (
+            <div key={item.id} className="opening-closure-diff-item">
+              <div className="opening-report-finding-header">
+                <strong>{item.title}</strong>
+                <span className={`opening-report-chip tone-${getClosureCategoryTone(item.closureCategory)}`}>
+                  {getClosureCategoryLabel(item.closureCategory)}
+                </span>
+              </div>
+              <span>{item.category}</span>
+              <div className="opening-closure-status-grid">
+                <small>
+                  <strong>上一轮</strong>
+                  {item.previousStatus}
+                </small>
+                <small>
+                  <strong>本轮</strong>
+                  {item.currentStatus}
+                </small>
+              </div>
+              <p>{item.nextAction}</p>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1445,7 +1747,7 @@ function OpeningConditionReportArchivePage({
               </div>
               <p>
                 创建 {task.createdAt} / 更新 {task.updatedAt} / 不通过{" "}
-                {task.checkItems.filter((item) => item.verdict === "fail" || item.verdict === "blocked").length} 项 / 待复核{" "}
+                {buildReportFindings(task).filter((item) => item.disposition === "fail" || item.disposition === "reject" || item.disposition === "blocked").length} 项 / 待复核{" "}
                 {task.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length} 项
               </p>
               <div className="dialog-actions compact">
@@ -1537,6 +1839,7 @@ function OpeningConditionTrialPackageDiagnostics({ pilotTask }: { pilotTask?: Op
 
 function OpeningConditionPilotExecutionPanel({
   pilotTask,
+  intakeMode,
   readiness,
   statusMessage,
   busy,
@@ -1548,6 +1851,7 @@ function OpeningConditionPilotExecutionPanel({
   onEnsureKnowledgeBase,
 }: {
   pilotTask?: OpeningConditionPilotTask | null;
+  intakeMode: "default" | "rectification_rerun";
   readiness?: OpeningConditionPilotReadinessResult | null;
   statusMessage: string;
   busy?: boolean;
@@ -1560,6 +1864,7 @@ function OpeningConditionPilotExecutionPanel({
 }) {
   const readinessStatus = readiness?.preflightReadiness?.status ?? "provisional";
   const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? [];
+  const archivedReadOnly = pilotTask?.state === "archived" && intakeMode !== "rectification_rerun";
   const matchDisabled = busy || !pilotTask || pilotTask.state === "archived" || readinessStatus !== "ready";
 
   return (
@@ -1592,7 +1897,7 @@ function OpeningConditionPilotExecutionPanel({
       )}
       <div className="dialog-actions">
         {onInitialize && (
-          <button type="button" className="primary" onClick={onInitialize} disabled={busy}>
+          <button type="button" className="primary" onClick={onInitialize} disabled={busy || archivedReadOnly}>
             {pilotTask ? "重新初始化资料包接入" : "初始化资料包接入"}
           </button>
         )}
@@ -1619,7 +1924,9 @@ function OpeningConditionPilotExecutionPanel({
       </div>
       <strong>{statusMessage}</strong>
       <small>
-        {matchDisabled && pilotTask?.state !== "archived" && readinessStatus !== "ready"
+        {archivedReadOnly
+          ? "当前归档轮次只用于查看历史接入事实。请从报告归档页发起下一轮整改复审后，再回到本页上传新资料。"
+          : matchDisabled && pilotTask?.state !== "archived" && readinessStatus !== "ready"
           ? readiness?.preflightReadiness?.nextAction ?? "请先完成接入预览确认、依据发布、主数据确认和知识库门禁。"
           : blockingReasons.length > 0
             ? blockingReasons.join(" / ")
@@ -1658,6 +1965,7 @@ function buildOpeningConditionObjectRefFromUpload(
 function OpeningConditionRealTrialIntakePanel({
   packet,
   pilotTask,
+  intakeMode,
   busy,
   submittedBy,
   onComplete,
@@ -1665,6 +1973,7 @@ function OpeningConditionRealTrialIntakePanel({
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
+  intakeMode: "default" | "rectification_rerun";
   busy?: boolean;
   submittedBy: string;
   onComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
@@ -1675,9 +1984,14 @@ function OpeningConditionRealTrialIntakePanel({
   const [packetFile, setPacketFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("选择合同依据、核查表和资料包后，可创建一条真实试点任务。");
-  const isRectificationRerun = pilotTask?.state === "archived";
+  const archivedReadOnly = pilotTask?.state === "archived" && intakeMode !== "rectification_rerun";
+  const isRectificationRerun = intakeMode === "rectification_rerun";
 
   async function handleBootstrap() {
+    if (archivedReadOnly) {
+      setMessage("当前归档轮次默认只读，请从报告归档页发起下一轮整改复审后再上传。");
+      return;
+    }
     if (!basisFile || !checklistFile || !packetFile) {
       setMessage("请先选择合同依据、核查表和资料包 ZIP。");
       return;
@@ -1740,7 +2054,7 @@ function OpeningConditionRealTrialIntakePanel({
     }
   }
 
-  const disabled = busy || submitting;
+  const disabled = busy || submitting || archivedReadOnly;
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -1753,6 +2067,12 @@ function OpeningConditionRealTrialIntakePanel({
           {submitting ? "接入中..." : isRectificationRerun ? "上传并创建复审 run" : "上传并初始化试点"}
         </button>
       </div>
+      {archivedReadOnly && (
+        <div className="opening-report-detail-card">
+          <strong>当前展示的是已归档轮次的资料接入记录。</strong>
+          <small>新的补件上传入口已收口到报告归档页，避免在多个页面重复创建新 run。</small>
+        </div>
+      )}
       {isRectificationRerun && (
         <div className="opening-report-detail-card">
           <strong>上一轮已归档，本次上传将创建新的整改复审 run。</strong>

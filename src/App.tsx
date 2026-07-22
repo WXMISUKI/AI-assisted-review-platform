@@ -147,6 +147,8 @@ function buildOpeningPilotReinitializeRequest(
   };
 }
 
+type OpeningPilotIntakeMode = "default" | "rectification_rerun";
+
 export function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialTheme());
   const [session, setSession] = useState<Session | null>(null);
@@ -164,6 +166,7 @@ export function App() {
   const [openingPilotKnowledgeBases, setOpeningPilotKnowledgeBases] = useState<OpeningConditionPilotKnowledgeBaseRef[]>([]);
   const [openingPilotStatus, setOpeningPilotStatus] = useState("试点任务尚未初始化，可先进入资料接入页创建任务。");
   const [openingPilotBusy, setOpeningPilotBusy] = useState(false);
+  const [openingPilotIntakeMode, setOpeningPilotIntakeMode] = useState<OpeningPilotIntakeMode>("default");
 
   const roleLabel = session ? roleLabels[session.role] : "监理单位";
   const availableProducts = useMemo(() => (session ? getAccessibleProductPortals(session.role) : []), [session]);
@@ -189,11 +192,13 @@ export function App() {
     setSession(null);
     setActiveProduct(null);
     setOpeningPage("workspace-context");
+    setOpeningPilotIntakeMode("default");
   }
 
   function returnToProductLauncher() {
     setActiveProduct(null);
     setOpeningPage("workspace-context");
+    setOpeningPilotIntakeMode("default");
   }
 
   function selectOpeningWorkspace(workspaceId: string) {
@@ -205,6 +210,7 @@ export function App() {
     setOpeningPilotMasterDataRecords([]);
     setOpeningPilotKnowledgeBases([]);
     setOpeningPilotStatus("已切换工作区，请进入资料接入页同步或初始化该工作区的试点任务。");
+    setOpeningPilotIntakeMode("default");
   }
 
   async function refreshOpeningWorkspaceFacts(workspaceId = openingPacket.workspaceId) {
@@ -586,6 +592,7 @@ export function App() {
   }
 
   function startOpeningRectificationRerun() {
+    setOpeningPilotIntakeMode("rectification_rerun");
     setOpeningPage("material-intake");
     setOpeningPilotStatus("已进入整改复审接入，请上传本轮补正后的合同依据、资料核查表和资料包；归档历史将保持只读。");
   }
@@ -655,6 +662,7 @@ export function App() {
       return;
     }
 
+    setOpeningPilotIntakeMode("default");
     setOpeningPilotTask(result.task);
     setOpeningPilotReadiness(
       result.preflightReadiness
@@ -711,6 +719,7 @@ export function App() {
       activePage={openingPage}
       workspaces={openingConditionWorkspaces}
       selectedWorkspaceId={openingPacket.workspaceId}
+      intakeMode={openingPilotIntakeMode}
       packet={openingPacket}
       pilotTask={openingPilotTask}
       pilotWorkspaceTasks={openingPilotWorkspaceTasks}

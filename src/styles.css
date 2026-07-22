@@ -3332,6 +3332,19 @@ h4 {
   background: var(--surface-muted);
 }
 
+.opening-intake-guidance-card {
+  gap: 14px;
+  border-style: dashed;
+}
+
+.opening-intake-guidance-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
 .opening-report-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3363,6 +3376,11 @@ h4 {
   background: color-mix(in srgb, var(--warning-soft) 72%, var(--surface));
 }
 
+.opening-report-summary-card.tone-success {
+  border-color: color-mix(in srgb, var(--success) 26%, var(--border));
+  background: color-mix(in srgb, var(--success-soft) 72%, var(--surface));
+}
+
 .opening-report-summary-card.tone-info {
   border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
   background: color-mix(in srgb, var(--primary-soft) 74%, var(--surface));
@@ -3390,6 +3408,33 @@ h4 {
 .opening-history-item {
   display: grid;
   gap: 10px;
+}
+
+.opening-closure-diff-item {
+  display: grid;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 3px solid var(--primary);
+}
+
+.opening-closure-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.opening-closure-status-grid small {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+.opening-closure-status-grid small strong {
+  color: var(--text-primary);
 }
 
 .opening-condition-meta {
@@ -3734,6 +3779,10 @@ h4 {
   .opening-report-finding-header,
   .opening-history-item-header {
     flex-direction: column;
+  }
+
+  .opening-closure-status-grid {
+    grid-template-columns: 1fr;
   }
 }
 
