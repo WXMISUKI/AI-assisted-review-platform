@@ -47,6 +47,10 @@ The system SHALL place real single-project trial intake controls inside the open
 - **WHEN** the operator enters the opening-condition workspace overview
 - **THEN** the system shows a concise project/task status summary without exposing all upload, readiness, matching, and report controls together
 
+#### Scenario: Overview routes to material intake
+- **WHEN** the operator needs to upload files, initialize a new run, or continue intake
+- **THEN** the overview provides a clear route to the "资料接入" page rather than duplicating intake controls
+
 #### Scenario: Operator opens material intake
 - **WHEN** the operator selects the "资料接入" page
 - **THEN** the system shows the basis, checklist, ZIP/material packet upload bootstrap, readiness, knowledge-base binding, and formal matching controls needed for the current pilot
@@ -95,3 +99,4 @@ The single-project trial intake SHALL create a fresh pilot run when retrying rea
 #### Scenario: Current task is not archived before upload
 - **WHEN** the browser real-file intake panel has no current task or a non-archived current pilot task
 - **THEN** it may use the workspace base task id or current task id for bootstrap according to the existing intake behavior
+

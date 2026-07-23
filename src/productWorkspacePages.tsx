@@ -669,7 +669,7 @@ export function OpeningConditionWorkspaceShell({
 
         <div className="opening-workspace-content">
           {activePage === "workspace-context" && (
-            <OpeningConditionObjectOverviewPage
+            <OpeningConditionObjectOverviewProductizedPage
               packet={packet}
               workspaces={workspaces}
               selectedWorkspaceId={selectedWorkspaceId}
@@ -829,6 +829,224 @@ function OpeningConditionOverviewPage({
             <button type="button" className="primary" onClick={onGoToIntake}>
               进入资料接入
             </button>
+          </div>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function getReadableReviewObjectTypeLabel(type: OpeningConditionReviewObjectType) {
+  switch (type) {
+    case "dangerous-subproject":
+      return "危大工程对象";
+    case "material-review-topic":
+      return "资料核查对象";
+    case "permit-review-topic":
+      return "许可审查对象";
+    default:
+      return type;
+  }
+}
+
+function OpeningConditionObjectOverviewProductizedPage({
+  packet,
+  workspaces,
+  selectedWorkspaceId,
+  pilotTask,
+  pilotReadiness,
+  onSelectWorkspace,
+  onGoToIntake,
+  onGoToPage,
+}: {
+  packet: OpeningConditionReviewPacket;
+  workspaces: OpeningConditionWorkspace[];
+  selectedWorkspaceId: string;
+  pilotTask?: OpeningConditionPilotTask | null;
+  pilotReadiness?: OpeningConditionPilotReadinessResult | null;
+  onSelectWorkspace: (workspaceId: string) => void;
+  onGoToIntake: () => void;
+  onGoToPage: (page: OpeningConditionPortalPage) => void;
+}) {
+  const verdictSummary = getOpeningConditionVerdictSummary(packet);
+  const riskSummary = getOpeningConditionRiskSummary(packet);
+  const readiness = pilotReadiness?.preflightReadiness ?? packet.preflightReadiness;
+  const workspaceCatalog = useMemo(() => buildOpeningConditionWorkspaceCatalog(workspaces), [workspaces]);
+  const currentWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? packet.workspaceContext;
+  const selectedProject = findWorkspaceProjectCatalog(workspaceCatalog, selectedWorkspaceId);
+  const selectedReviewObject =
+    selectedProject?.reviewObjects.find((item) => item.reviewObjectId === currentWorkspace.reviewObjectId) ?? null;
+  const actionOwnership = deriveOpeningConditionRunActionOwnership({
+    pilotTask,
+    readiness: pilotReadiness,
+  });
+  const activeCheckItems = pilotTask?.checkItems.length ?? verdictSummary.total;
+  const evidenceCount = pilotTask?.evidence.length ?? packet.evidence.length;
+  const activeHumanReviews =
+    pilotTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ??
+    verdictSummary.needsHumanReview;
+
+  return (
+    <div className="opening-condition-page">
+      <section className="opening-condition-hero opening-workspace-hero opening-overview-command-hero">
+        <div>
+          <span className="eyebrow">开工条件核查工作区</span>
+          <h2>{currentWorkspace.projectName}</h2>
+          <p>
+            先确认项目、审查对象和参建主体，再沿着资料接入、正式核查、人工复核、报告归档和整改复审推进当前 run。
+          </p>
+          <div className="opening-condition-meta">
+            <span>{currentWorkspace.projectCode}</span>
+            <span>{currentWorkspace.reviewObjectName}</span>
+            <span>{currentWorkspace.participantEntityName}</span>
+          </div>
+        </div>
+        <div className="opening-overview-run-card">
+          <span className={`opening-report-chip tone-${readiness.status === "ready" ? "success" : "warning"}`}>
+            门禁 {readinessLabels[readiness.status] ?? readiness.status}
+          </span>
+          <strong>{pilotTask?.state ?? "尚未创建 run"}</strong>
+          <small>{pilotTask?.id ?? "进入资料接入后创建首轮真实试点任务"}</small>
+        </div>
+      </section>
+
+      <section className="opening-metric-grid">
+        <MetricBlock label="核查项" value={activeCheckItems} />
+        <MetricBlock label="待人工处理" value={activeHumanReviews} tone={activeHumanReviews > 0 ? "danger" : "success"} />
+        <MetricBlock label="高风险" value={riskSummary.critical + riskSummary.high} tone="danger" />
+        <MetricBlock label="证据" value={evidenceCount} tone={readiness.status === "ready" ? "success" : "neutral"} />
+      </section>
+
+      {actionOwnership ? (
+        <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />
+      ) : (
+        <article className="opening-panel opening-panel-wide opening-responsibility-board">
+          <span className="eyebrow">Next Action</span>
+          <h2>创建首轮真实试点 run</h2>
+          <p>当前工作区还没有后端试点任务。下一步进入资料接入，上传依据、核查表和资料包后初始化首轮 run。</p>
+          <div className="dialog-actions">
+            <button type="button" className="primary" onClick={onGoToIntake}>
+              进入资料接入
+            </button>
+          </div>
+        </article>
+      )}
+
+      <section className="opening-object-summary-grid opening-overview-context-grid">
+        <article className="opening-panel">
+          <span className="eyebrow">项目</span>
+          <h2>{currentWorkspace.projectName}</h2>
+          <div className="opening-record-list opening-record-list-compact">
+            <div>
+              <strong>{currentWorkspace.projectCode}</strong>
+              <span>{selectedProject?.reviewObjects.length ?? 0} 个审查对象</span>
+              <p>项目作为监理工作区容器，承载对象、参建主体、知识库和多轮核查历史。</p>
+            </div>
+          </div>
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">审查对象</span>
+          <h2>{currentWorkspace.reviewObjectName}</h2>
+          <div className="opening-record-list opening-record-list-compact">
+            <div>
+              <strong>{getReadableReviewObjectTypeLabel(currentWorkspace.reviewObjectType)}</strong>
+              <span>{currentWorkspace.contractPackage}</span>
+              <p>{packet.reviewTarget}</p>
+            </div>
+          </div>
+        </article>
+
+        <article className="opening-panel">
+          <span className="eyebrow">参建主体</span>
+          <h2>{currentWorkspace.participantEntityName}</h2>
+          <div className="opening-record-list opening-record-list-compact">
+            <div>
+              <strong>{currentWorkspace.participatingOrganization}</strong>
+              <span>{currentWorkspace.organizationRole}</span>
+              <p>该主体决定本轮合同、资质、人员、设备和专属知识库的核查边界。</p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section className="opening-condition-grid opening-overview-workbench-grid">
+        <article className="opening-panel">
+          <span className="eyebrow">项目对象台账</span>
+          <h2>切换项目、审查对象与参建主体</h2>
+          <div className="opening-record-list">
+            {workspaceCatalog.map((project) => (
+              <div key={project.projectId} className="opening-object-switcher-group">
+                <strong>{project.projectName}</strong>
+                <span>
+                  {project.projectCode} / {project.reviewObjects.length} 个审查对象
+                </span>
+                <p>按审查对象组织参建主体，切换后只加载该对象对应的 run、门禁和知识库上下文。</p>
+                <div className="opening-object-switcher-list">
+                  {project.reviewObjects.map((reviewObject) => (
+                    <div key={reviewObject.reviewObjectId} className="opening-object-switcher-item opening-overview-object-record">
+                      <div className="opening-report-finding-header">
+                        <strong>{reviewObject.reviewObjectName}</strong>
+                        <span className="opening-report-chip tone-info">
+                          {getReadableReviewObjectTypeLabel(reviewObject.reviewObjectType)}
+                        </span>
+                      </div>
+                      <span>{reviewObject.participants.length} 个参建主体</span>
+                      <div className="opening-object-participant-list">
+                        {reviewObject.participants.flatMap((participant) =>
+                          participant.workspaces.map((workspace) => (
+                            <button
+                              key={workspace.id}
+                              type="button"
+                              className={
+                                selectedWorkspaceId === workspace.id
+                                  ? "opening-object-select-button active"
+                                  : "opening-object-select-button"
+                              }
+                              onClick={() => onSelectWorkspace(workspace.id)}
+                            >
+                              <strong>{participant.participantEntityName}</strong>
+                              <span>{participant.organizationRole}</span>
+                              <small>{workspace.contractPackage}</small>
+                              <small>{selectedWorkspaceId === workspace.id ? "当前上下文" : "切换到该主体"}</small>
+                            </button>
+                          )),
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="opening-panel opening-overview-run-panel">
+          <span className="eyebrow">当前 run</span>
+          <h2>运行状态与入口</h2>
+          <div className="opening-record-list">
+            <div>
+              <strong>{pilotTask?.id ?? "尚未初始化 run"}</strong>
+              <span>
+                {pilotTask?.state ?? "draft"} / {readiness.nextAction}
+              </span>
+              <p>
+                {pilotTask
+                  ? `当前 run 绑定到 ${currentWorkspace.reviewObjectName} / ${currentWorkspace.participantEntityName}，后续操作应沿推荐入口继续。`
+                  : "先通过资料接入创建真实试点 run，再进入正式资料核查。"}
+              </p>
+              {selectedReviewObject && <small>该审查对象下共有 {selectedReviewObject.participants.length} 个参建主体。</small>}
+            </div>
+          </div>
+          <div className="dialog-actions">
+            <button type="button" className="primary" onClick={onGoToIntake}>
+              进入资料接入
+            </button>
+            {actionOwnership && (
+              <button type="button" className="secondary" onClick={() => onGoToPage(actionOwnership.recommendedPage)}>
+                {actionOwnership.primaryActionLabel}
+              </button>
+            )}
           </div>
         </article>
       </section>

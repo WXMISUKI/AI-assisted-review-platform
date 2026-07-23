@@ -8,6 +8,7 @@
     "dev": "concurrently -k -n backend,frontend -c cyan,green \"pnpm:server:dev\" \"pnpm:dev:frontend\"",
     "dev:frontend": "vite --host 127.0.0.1",
     "server:dev": "node server/index.mjs",
+    "smoke:opening-condition": "node --test server/openingConditionPilotStore.test.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1"
   },

@@ -992,6 +992,183 @@
   color: var(--primary);
 }
 
+.opening-overview-command-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  align-items: stretch;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--primary-soft) 72%, transparent), transparent 58%),
+    var(--surface);
+}
+
+.opening-overview-command-hero > div:first-child {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.opening-overview-command-hero h2,
+.opening-overview-command-hero p {
+  margin: 0;
+}
+
+.opening-overview-command-hero p {
+  max-width: 68rem;
+  line-height: 1.75;
+}
+
+.opening-overview-run-card {
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface-muted) 82%, var(--surface));
+}
+
+.opening-overview-run-card strong,
+.opening-overview-run-card small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opening-overview-run-card strong {
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.opening-overview-context-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.opening-overview-context-grid .opening-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.opening-overview-context-grid .opening-record-list > div {
+  min-height: 132px;
+}
+
+.opening-overview-workbench-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  align-items: start;
+}
+
+.opening-object-switcher-group {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-muted);
+}
+
+.opening-object-switcher-group > strong,
+.opening-object-switcher-group > span,
+.opening-object-switcher-group > p {
+  margin: 0;
+}
+
+.opening-object-switcher-group > strong {
+  color: var(--text-primary);
+}
+
+.opening-object-switcher-group > span,
+.opening-object-switcher-group > p {
+  color: var(--text-secondary);
+}
+
+.opening-object-switcher-list,
+.opening-object-participant-list {
+  display: grid;
+  gap: 10px;
+}
+
+.opening-overview-object-record {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.opening-overview-object-record > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.opening-object-participant-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.opening-object-select-button {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  min-height: 92px;
+  border: 1px solid var(--button-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--button-bg);
+  color: var(--button-foreground);
+  text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.opening-object-select-button:hover {
+  border-color: var(--primary);
+  background: var(--button-bg-hover);
+}
+
+.opening-object-select-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.opening-object-select-button.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent) inset;
+}
+
+.opening-object-select-button strong,
+.opening-object-select-button span,
+.opening-object-select-button small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opening-object-select-button strong {
+  color: var(--text-primary);
+}
+
+.opening-object-select-button span,
+.opening-object-select-button small {
+  color: var(--text-secondary);
+}
+
+.opening-overview-run-panel {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.opening-overview-run-panel .dialog-actions {
+  justify-content: flex-start;
+}
+
 @media (max-width: 960px) {
   .opening-action-summary-header,
   .opening-report-workbench-header,
@@ -1016,7 +1193,13 @@
   .opening-candidate-preview-grid,
   .opening-candidate-preview-lists,
   .opening-trial-upload-grid,
+  .opening-overview-command-hero,
+  .opening-overview-context-grid,
   .opening-object-participant-list {
     grid-template-columns: 1fr;
+  }
+
+  .opening-overview-run-panel {
+    position: static;
   }
 }

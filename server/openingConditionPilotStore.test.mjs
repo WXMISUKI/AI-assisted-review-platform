@@ -1575,3 +1575,214 @@ test("generates and archives auxiliary report assets after human review is clear
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("acceptance smoke protects the opening-condition pilot delivery chain", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-acceptance-smoke-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-smoke-run-1", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-smoke-run-1",
+      {
+        checklistObject: {
+          objectId: "checklist-smoke-1",
+          kind: "checklist",
+          fileName: "opening-condition-checklist.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-smoke-1",
+            kind: "source_archive",
+            fileName: "safety-officer-certificate.pdf",
+            summary: "safety officer certificate for the current contractor package",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const matched = await runOpeningConditionPilotChecklistMatch(
+      "task-smoke-run-1",
+      {
+        checklistItems: [
+          {
+            id: "item-safety-officer",
+            name: "Safety officer certificate",
+            expectedEvidenceHints: ["safety officer", "certificate"],
+            masterDataIds: ["md-1"],
+          },
+          {
+            id: "item-approval-form",
+            name: "Stamped approval form",
+            expectedEvidenceHints: ["approval form", "stamp"],
+            masterDataIds: [],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(matched.ok, true);
+    assert.equal(matched.task.state, "awaiting_human_review");
+    assert.equal(matched.checkItems.length, 2);
+    assert.equal(matched.checkItems[0].verdict, "pass");
+    assert.equal(matched.checkItems[1].verdict, "fail");
+    assert.deepEqual(matched.checkItems[1].humanReviewIds, ["hr-item-approval-form"]);
+    assert.equal(matched.humanReviewQueue.length, 1);
+
+    const blockedReport = await generateOpeningConditionPilotReport("task-smoke-run-1", {}, { storePath });
+    assert.equal(blockedReport.ok, false);
+    assert.equal(blockedReport.status, "human_review_blocking");
+
+    const decision = await decideOpeningConditionPilotHumanReviewItem(
+      "task-smoke-run-1",
+      "hr-item-approval-form",
+      {
+        decision: "reject",
+        actorId: "smoke-reviewer",
+        safeNote: "The packet did not include a stable approval-form match.",
+        privateUrl: "must-redact",
+      },
+      { storePath },
+    );
+    assert.equal(decision.ok, true);
+    assert.equal(decision.blockingCount, 0);
+    assert.equal(decision.task.state, "report_ready");
+    assert.equal("privateUrl" in decision.event.safeDiagnostics, false);
+
+    const report = await generateOpeningConditionPilotReport(
+      "task-smoke-run-1",
+      {
+        objectRef: {
+          objectId: "report-smoke-1",
+          kind: "report",
+          fileName: "opening-condition-internal-report.md",
+          token: "must-redact",
+        },
+      },
+      { storePath },
+    );
+    assert.equal(report.ok, true);
+    assert.equal(report.reportAsset.status, "ready");
+    assert.equal(report.reportAsset.packageDiagnostics.humanReview.blockingCount, 0);
+    assert.equal(report.reportAsset.packageDiagnostics.decisionLedger.length, 1);
+    assert.equal("token" in report.reportAsset.objectRef, false);
+
+    const archived = await archiveOpeningConditionPilotTask(
+      "task-smoke-run-1",
+      { message: "Acceptance smoke archived the completed run." },
+      { storePath },
+    );
+    assert.equal(archived.ok, true);
+    assert.equal(archived.task.state, "archived");
+    assert.equal(archived.reportAsset.status, "archived");
+    assert.equal(archived.reportAsset.packageDiagnostics.archiveStatus, "archived");
+    const archivedEventCount = archived.task.events.length;
+
+    const rematchArchived = await runOpeningConditionPilotChecklistMatch("task-smoke-run-1", {}, { storePath });
+    assert.equal(rematchArchived.ok, false);
+    assert.equal(rematchArchived.status, "invalid_state");
+
+    const regenerateArchived = await generateOpeningConditionPilotReport("task-smoke-run-1", {}, { storePath });
+    assert.equal(regenerateArchived.ok, false);
+    assert.equal(regenerateArchived.status, "invalid_state");
+
+    const reinitializeArchived = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-smoke-run-1",
+        context: validTaskInput().context,
+        checklistObject: {
+          objectId: "checklist-smoke-archived",
+          kind: "checklist",
+          fileName: "replacement-checklist.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-smoke-archived",
+            kind: "source_archive",
+            fileName: "replacement-packet.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+    assert.equal(reinitializeArchived.ok, false);
+    assert.equal(reinitializeArchived.status, "invalid_state");
+
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "Acceptance smoke basis",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "Safety officer",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "Acceptance smoke subcontract KB",
+        status: "ready",
+        summary: "Ready for acceptance smoke.",
+      },
+      { storePath },
+    );
+
+    const nextRun = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-smoke-run-2",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistItems: [
+          {
+            id: "item-next-run",
+            name: "Rectification approval form",
+            expectedEvidenceHints: ["rectification approval"],
+            masterDataIds: [],
+          },
+        ],
+        checklistObject: {
+          objectId: "checklist-smoke-2",
+          kind: "checklist",
+          fileName: "rectification-checklist.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-smoke-2",
+            kind: "source_archive",
+            fileName: "rectification-approval.pdf",
+          },
+        ],
+      },
+      { storePath },
+    );
+    assert.equal(nextRun.ok, true);
+    assert.equal(nextRun.task.id, "task-smoke-run-2");
+    assert.equal(nextRun.task.state, "packet_uploaded");
+    assert.equal(nextRun.preflightReadiness.status, "ready");
+
+    const listed = await listOpeningConditionPilotTasks({ storePath });
+    const archivedRun = listed.tasks.find((task) => task.id === "task-smoke-run-1");
+    const activeRun = listed.tasks.find((task) => task.id === "task-smoke-run-2");
+    assert.equal(archivedRun.state, "archived");
+    assert.equal(archivedRun.events.length, archivedEventCount);
+    assert.equal(activeRun.state, "packet_uploaded");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

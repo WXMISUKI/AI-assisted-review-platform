@@ -1,8 +1,5 @@
-# opening-condition-project-object-model Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change opening-condition-project-object-model-foundation. Update Purpose after archive.
-## Requirements
 ### Requirement: Hierarchical opening-condition object model
 The system SHALL represent opening-condition trial context with three explicit layers: project, review object, and participating entity.
 
@@ -35,15 +32,3 @@ The system SHALL derive a project-scoped catalog from workspace metadata for ope
 - **WHEN** the project catalog is shown on the overview
 - **THEN** each review object row shows its object type, participant count, participating entities, contract package, and selected state
 - **AND** switching context remains a deliberate button action rather than a hidden side effect
-
-### Requirement: Object-bound run and knowledge context
-The system SHALL bind current-run semantics, history semantics, and knowledge-base semantics to the selected review object context.
-
-#### Scenario: Current context has a knowledge base
-- **WHEN** the selected context includes a bound knowledge base
-- **THEN** the portal SHALL show that knowledge base as belonging to the current review object and participating entity
-
-#### Scenario: Current context has archived reruns
-- **WHEN** the selected context contains archived reruns
-- **THEN** the portal SHALL present those reruns as belonging to the current review object context rather than as global project history
-
