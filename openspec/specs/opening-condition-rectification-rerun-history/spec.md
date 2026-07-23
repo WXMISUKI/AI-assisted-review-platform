@@ -23,6 +23,7 @@ The system SHALL preserve a workspace-scoped history of opening-condition pilot 
 - **WHEN** the currently visible run is archived and the operator chooses to start the next rectification review
 - **THEN** the portal routes the operator to the material-intake page and labels the next real-file upload as a new rectification round
 - **AND** the archived run remains read-only in workspace history
+- **AND** material intake does not expose current-run mutation actions against the archived run while waiting for the new upload
 
 ### Requirement: Controlled history disposal
 The system SHALL treat formal run history as retained records and allow only controlled soft deletion for operator mistakes or test data.
@@ -72,4 +73,3 @@ The system SHALL preserve an operator-facing action ownership snapshot when a hi
 - **WHEN** the report page compares the selected round with a previous archived round
 - **THEN** the historical comparison keeps the archived round read-only
 - **AND** it does not suggest mutation actions against the historical round
-

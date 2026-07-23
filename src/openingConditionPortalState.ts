@@ -22,6 +22,25 @@ export type OpeningConditionRunActionOwnership = {
   readOnly: boolean;
 };
 
+export type OpeningConditionRunActionGate = {
+  enabled: boolean;
+  label: string;
+  disabledReason: string;
+};
+
+export type OpeningConditionRunActionGates = {
+  initializeCurrentRun: OpeningConditionRunActionGate;
+  mutateCurrentRun: OpeningConditionRunActionGate;
+  uploadNewRun: OpeningConditionRunActionGate;
+  publishBasis: OpeningConditionRunActionGate;
+  confirmMasterData: OpeningConditionRunActionGate;
+  bindKnowledgeBase: OpeningConditionRunActionGate;
+  runFormalMatch: OpeningConditionRunActionGate;
+  generateReport: OpeningConditionRunActionGate;
+  archiveRun: OpeningConditionRunActionGate;
+  startRectificationRerun: OpeningConditionRunActionGate;
+};
+
 export type OpeningConditionPortalViewState = {
   archivedTask: boolean;
   rerunUploadEnabled: boolean;
@@ -32,6 +51,7 @@ export type OpeningConditionPortalViewState = {
   canUploadNewRun: boolean;
   readinessStatus: "ready" | "blocked" | "provisional";
   actionOwnership: OpeningConditionRunActionOwnership | null;
+  actions: OpeningConditionRunActionGates;
 };
 
 const activeHumanReviewStatuses = new Set(["open", "deferred"]);
@@ -52,6 +72,22 @@ const dueStateLabels: Record<OpeningConditionRunDueState, string> = {
   overdue: "已经超时",
   readonly: "历史只读",
 };
+
+const noTaskReason = "当前工作区还没有可操作的试点 run，请先完成资料接入。";
+const archivedReadonlyReason = "当前展示的是已归档历史轮次，只能查看；如需继续补件，请从报告归档页发起下一轮整改复审。";
+const rerunUploadReason = "已进入整改复审接入模式，本次操作会创建新的复审 run，不会修改已归档历史。";
+
+function buildOpeningConditionRunActionGate(
+  enabled: boolean,
+  label: string,
+  disabledReason = "",
+): OpeningConditionRunActionGate {
+  return {
+    enabled,
+    label,
+    disabledReason: enabled ? "" : disabledReason,
+  };
+}
 
 function getStageWindowHours(state: OpeningConditionPilotTask["state"]) {
   switch (state) {
@@ -261,11 +297,68 @@ export function deriveOpeningConditionPortalViewState(args: {
   const rerunUploadEnabled = archivedTask && args.intakeMode === "rectification_rerun";
   const intakeReadOnly = archivedTask && !rerunUploadEnabled;
   const currentRunMutationLocked = archivedTask;
+  const readinessStatus = args.readiness?.preflightReadiness?.status ?? "provisional";
+  const actionOwnership = deriveOpeningConditionRunActionOwnership(args);
+  const hasTask = Boolean(args.pilotTask);
+  const activeTask = hasTask && !currentRunMutationLocked;
+  const formalMatchReady =
+    activeTask &&
+    readinessStatus === "ready" &&
+    Boolean(
+      args.pilotTask &&
+        ["packet_uploaded", "extracting", "matching", "awaiting_human_review"].includes(args.pilotTask.state),
+    );
+  const reportReady =
+    activeTask &&
+    args.pilotTask?.state === "report_ready" &&
+    (args.pilotTask.humanReviewQueue ?? []).every((item) => !activeHumanReviewStatuses.has(item.status));
+  const reportAssetReady = args.pilotTask?.reportAsset?.status === "ready";
+  const lockedReason = archivedTask ? archivedReadonlyReason : noTaskReason;
+  const preflightReason =
+    args.readiness?.preflightReadiness?.nextAction ??
+    args.pilotTask?.preflightReadiness?.nextAction ??
+    "请先完成依据发布、主数据确认、资料包接入和知识库门禁。";
+  const actions: OpeningConditionRunActionGates = {
+    initializeCurrentRun: buildOpeningConditionRunActionGate(
+      !currentRunMutationLocked,
+      hasTask ? "重新初始化资料包接入" : "初始化资料包接入",
+      archivedReadonlyReason,
+    ),
+    mutateCurrentRun: buildOpeningConditionRunActionGate(activeTask, "变更当前 run", lockedReason),
+    uploadNewRun: buildOpeningConditionRunActionGate(
+      !archivedTask || rerunUploadEnabled,
+      rerunUploadEnabled ? "上传并创建复审 run" : "上传并初始化试点",
+      "当前归档轮次默认只读，请先从报告归档页发起下一轮整改复审。",
+    ),
+    publishBasis: buildOpeningConditionRunActionGate(activeTask, "发布当前 run 依据", lockedReason),
+    confirmMasterData: buildOpeningConditionRunActionGate(activeTask, "确认当前 run 主数据", lockedReason),
+    bindKnowledgeBase: buildOpeningConditionRunActionGate(activeTask, "生成并绑定试点知识库", lockedReason),
+    runFormalMatch: buildOpeningConditionRunActionGate(
+      Boolean(formalMatchReady),
+      "执行正式核查",
+      currentRunMutationLocked ? archivedReadonlyReason : preflightReason,
+    ),
+    generateReport: buildOpeningConditionRunActionGate(
+      Boolean(reportReady && !reportAssetReady),
+      "生成报告摘要",
+      currentRunMutationLocked
+        ? archivedReadonlyReason
+        : "当前 run 尚未到达可生成报告状态，或仍存在未关闭的人工复核项。",
+    ),
+    archiveRun: buildOpeningConditionRunActionGate(
+      Boolean(activeTask && reportAssetReady),
+      "归档任务",
+      currentRunMutationLocked ? archivedReadonlyReason : "请先生成报告资产后再归档本轮任务。",
+    ),
+    startRectificationRerun: buildOpeningConditionRunActionGate(
+      archivedTask,
+      "发起下一轮整改复审",
+      "只有已归档轮次才需要发起下一轮整改复审。",
+    ),
+  };
   const canInitializeCurrentRun = !currentRunMutationLocked;
   const canMutateCurrentRun = Boolean(args.pilotTask) && !currentRunMutationLocked;
   const canUploadNewRun = !archivedTask || rerunUploadEnabled;
-  const readinessStatus = args.readiness?.preflightReadiness?.status ?? "provisional";
-  const actionOwnership = deriveOpeningConditionRunActionOwnership(args);
 
   return {
     archivedTask,
@@ -277,5 +370,6 @@ export function deriveOpeningConditionPortalViewState(args: {
     canUploadNewRun,
     readinessStatus,
     actionOwnership,
+    actions,
   };
 }

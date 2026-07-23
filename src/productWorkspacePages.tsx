@@ -134,6 +134,10 @@ function summarizeBasisPreviewProvenance(provenance?: NonNullable<OpeningConditi
   return parts || "No extraction provenance recorded.";
 }
 
+function getOpeningActionGateTitle(gate: { enabled: boolean; disabledReason: string }, fallback = "") {
+  return gate.enabled ? "" : gate.disabledReason || fallback;
+}
+
 type ReportFinding = {
   id: string;
   title: string;
@@ -1474,6 +1478,7 @@ function OpeningConditionTrialIntakeOverviewPanel({
   const diagnostics = pilotTask.trialPackage?.diagnostics;
   const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? pilotTask.trialPackage?.blockingReasons ?? [];
   const knowledgeBaseReadiness = readiness?.preflightReadiness?.knowledgeBase ?? "provisional";
+  const actionGates = portalState.actions;
   const basisNeedsPublish = Boolean(boundBasis && boundBasis.status !== "published");
   const pendingMasterDataCount = requiredMasterData.filter(
     (item) => item.status !== "published" && item.status !== "human_approved",
@@ -1516,7 +1521,14 @@ function OpeningConditionTrialIntakeOverviewPanel({
                 type="button"
                 className="secondary"
                 onClick={onPublishBasis}
-                disabled={pilotBusy || portalState.currentRunMutationLocked || !basisNeedsPublish}
+                disabled={pilotBusy || !actionGates.publishBasis.enabled || !basisNeedsPublish}
+                title={
+                  !actionGates.publishBasis.enabled
+                    ? getOpeningActionGateTitle(actionGates.publishBasis)
+                    : !basisNeedsPublish
+                      ? "当前 run 依据已发布或没有待发布依据。"
+                      : ""
+                }
               >
                 发布当前 run 依据
               </button>
@@ -1526,7 +1538,14 @@ function OpeningConditionTrialIntakeOverviewPanel({
                 type="button"
                 className="secondary"
                 onClick={onConfirmMasterData}
-                disabled={pilotBusy || portalState.currentRunMutationLocked || pendingMasterDataCount === 0}
+                disabled={pilotBusy || !actionGates.confirmMasterData.enabled || pendingMasterDataCount === 0}
+                title={
+                  !actionGates.confirmMasterData.enabled
+                    ? getOpeningActionGateTitle(actionGates.confirmMasterData)
+                    : pendingMasterDataCount === 0
+                      ? "当前 run 主数据已确认或没有待确认记录。"
+                      : ""
+                }
               >
                 确认当前 run 主数据
               </button>
@@ -1796,7 +1815,14 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                     value={basisSafeNote}
                     onChange={(event) => setBasisSafeNote(event.target.value)}
                     placeholder="例如：页码、签章核验结论、人工确认边界。"
-                    disabled={pilotBusy || portalState.currentRunMutationLocked || boundBasis.status === "published"}
+                    disabled={pilotBusy || !portalState.actions.publishBasis.enabled || boundBasis.status === "published"}
+                    title={
+                      !portalState.actions.publishBasis.enabled
+                        ? getOpeningActionGateTitle(portalState.actions.publishBasis)
+                        : boundBasis.status === "published"
+                          ? "当前依据已发布。"
+                          : ""
+                    }
                   />
                 </label>
               )}
@@ -1807,7 +1833,14 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                       type="button"
                       className="secondary"
                       onClick={() => onRefreshBasisPreview(boundBasis.id)}
-                      disabled={pilotBusy || portalState.currentRunMutationLocked || boundBasis.status === "published"}
+                      disabled={pilotBusy || !portalState.actions.publishBasis.enabled || boundBasis.status === "published"}
+                      title={
+                        !portalState.actions.publishBasis.enabled
+                          ? getOpeningActionGateTitle(portalState.actions.publishBasis)
+                          : boundBasis.status === "published"
+                            ? "当前依据已发布。"
+                            : ""
+                      }
                     >
                       刷新预览抽取
                     </button>
@@ -1816,7 +1849,14 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                     type="button"
                     className="secondary"
                     onClick={() => onPublishBasisDecision(boundBasis.id, basisSafeNote)}
-                    disabled={pilotBusy || portalState.currentRunMutationLocked || boundBasis.status === "published"}
+                    disabled={pilotBusy || !portalState.actions.publishBasis.enabled || boundBasis.status === "published"}
+                    title={
+                      !portalState.actions.publishBasis.enabled
+                        ? getOpeningActionGateTitle(portalState.actions.publishBasis)
+                        : boundBasis.status === "published"
+                          ? "当前依据已发布。"
+                          : ""
+                    }
                   >
                     备注后发布当前依据
                   </button>
@@ -1852,7 +1892,8 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                           value={masterDataNotes[item.id] ?? ""}
                           onChange={(event) => updateMasterDataNote(item.id, event.target.value)}
                           placeholder="例如：人工核验来源文件、发现问题、暂时放行原因。"
-                          disabled={pilotBusy || portalState.currentRunMutationLocked}
+                          disabled={pilotBusy || !portalState.actions.confirmMasterData.enabled}
+                          title={getOpeningActionGateTitle(portalState.actions.confirmMasterData)}
                         />
                       </label>
                       <div className="dialog-actions compact">
@@ -1860,7 +1901,8 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                           type="button"
                           className="secondary"
                           onClick={() => onDecideMasterDataCandidate(item.id, "approve", masterDataNotes[item.id])}
-                          disabled={pilotBusy || portalState.currentRunMutationLocked}
+                          disabled={pilotBusy || !portalState.actions.confirmMasterData.enabled}
+                          title={getOpeningActionGateTitle(portalState.actions.confirmMasterData)}
                         >
                           逐条确认
                         </button>
@@ -1868,7 +1910,8 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                           type="button"
                           className="secondary danger"
                           onClick={() => onDecideMasterDataCandidate(item.id, "reject", masterDataNotes[item.id])}
-                          disabled={pilotBusy || portalState.currentRunMutationLocked}
+                          disabled={pilotBusy || !portalState.actions.confirmMasterData.enabled}
+                          title={getOpeningActionGateTitle(portalState.actions.confirmMasterData)}
                         >
                           驳回该候选
                         </button>
@@ -1893,7 +1936,16 @@ function OpeningConditionIntakeCandidatePreviewPanel({
             type="button"
             className="secondary"
             onClick={onPublishBasis}
-            disabled={pilotBusy || portalState.currentRunMutationLocked || !boundBasis || boundBasis.status === "published"}
+            disabled={pilotBusy || !portalState.actions.publishBasis.enabled || !boundBasis || boundBasis.status === "published"}
+            title={
+              !portalState.actions.publishBasis.enabled
+                ? getOpeningActionGateTitle(portalState.actions.publishBasis)
+                : !boundBasis
+                  ? "当前 run 没有可发布的依据记录。"
+                  : boundBasis.status === "published"
+                    ? "当前依据已发布。"
+                    : ""
+            }
           >
             确认并发布当前依据
           </button>
@@ -1903,7 +1955,14 @@ function OpeningConditionIntakeCandidatePreviewPanel({
             type="button"
             className="secondary"
             onClick={onConfirmMasterData}
-            disabled={pilotBusy || portalState.currentRunMutationLocked || unresolvedMasterData.length === 0}
+            disabled={pilotBusy || !portalState.actions.confirmMasterData.enabled || unresolvedMasterData.length === 0}
+            title={
+              !portalState.actions.confirmMasterData.enabled
+                ? getOpeningActionGateTitle(portalState.actions.confirmMasterData)
+                : unresolvedMasterData.length === 0
+                  ? "当前没有待确认的主数据候选。"
+                  : ""
+            }
           >
             确认当前主数据候选
           </button>
@@ -3961,7 +4020,8 @@ function OpeningConditionPilotExecutionPanel({
 }) {
   const readinessStatus = readiness?.preflightReadiness?.status ?? "provisional";
   const blockingReasons = readiness?.preflightReadiness?.blockingReasons ?? [];
-  const matchDisabled = busy || !pilotTask || portalState.currentRunMutationLocked || readinessStatus !== "ready";
+  const actionGates = portalState.actions;
+  const matchDisabled = busy || !actionGates.runFormalMatch.enabled;
   const actionOwnership = portalState.actionOwnership;
 
   return (
@@ -4000,27 +4060,27 @@ function OpeningConditionPilotExecutionPanel({
       />
       <div className="dialog-actions">
         {onInitialize && (
-          <button type="button" className="primary" onClick={onInitialize} disabled={busy || !portalState.canInitializeCurrentRun}>
+          <button type="button" className="primary" onClick={onInitialize} disabled={busy || !actionGates.initializeCurrentRun.enabled} title={getOpeningActionGateTitle(actionGates.initializeCurrentRun)}>
             {pilotTask ? "重新初始化资料包接入" : "初始化资料包接入"}
           </button>
         )}
         {onPublishBasis && (
-          <button type="button" className="secondary" onClick={onPublishBasis} disabled={busy || !portalState.canMutateCurrentRun}>
+          <button type="button" className="secondary" onClick={onPublishBasis} disabled={busy || !actionGates.publishBasis.enabled} title={getOpeningActionGateTitle(actionGates.publishBasis)}>
             发布当前 run 依据
           </button>
         )}
         {onConfirmMasterData && (
-          <button type="button" className="secondary" onClick={onConfirmMasterData} disabled={busy || !portalState.canMutateCurrentRun}>
+          <button type="button" className="secondary" onClick={onConfirmMasterData} disabled={busy || !actionGates.confirmMasterData.enabled} title={getOpeningActionGateTitle(actionGates.confirmMasterData)}>
             确认当前 run 主数据
           </button>
         )}
         {onRunMatch && (
-          <button type="button" className="primary" onClick={onRunMatch} disabled={matchDisabled}>
+          <button type="button" className="primary" onClick={onRunMatch} disabled={matchDisabled} title={getOpeningActionGateTitle(actionGates.runFormalMatch)}>
             执行正式核查
           </button>
         )}
         {onEnsureKnowledgeBase && (
-          <button type="button" className="secondary" onClick={onEnsureKnowledgeBase} disabled={busy || !portalState.canMutateCurrentRun}>
+          <button type="button" className="secondary" onClick={onEnsureKnowledgeBase} disabled={busy || !actionGates.bindKnowledgeBase.enabled} title={getOpeningActionGateTitle(actionGates.bindKnowledgeBase)}>
             生成并绑定试点知识库
           </button>
         )}
@@ -4030,7 +4090,7 @@ function OpeningConditionPilotExecutionPanel({
         {portalState.currentRunMutationLocked
           ? "当前归档轮次只用于查看历史接入事实。请从报告归档页发起下一轮整改复审后，再回到本页上传新资料。"
           : matchDisabled && pilotTask?.state !== "archived" && readinessStatus !== "ready"
-          ? readiness?.preflightReadiness?.nextAction ?? "请先完成接入预览确认、依据发布、主数据确认和知识库门禁。"
+          ? (actionGates.runFormalMatch.disabledReason || (readiness?.preflightReadiness?.nextAction ?? "请先完成接入预览确认、依据发布、主数据确认和知识库门禁。"))
           : blockingReasons.length > 0
             ? blockingReasons.join(" / ")
             : readiness?.preflightReadiness?.nextAction ?? "先完成资料包接入，再进入正式匹配。"}

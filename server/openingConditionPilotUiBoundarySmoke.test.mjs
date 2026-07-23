@@ -10,6 +10,10 @@ test("UI smoke keeps archived opening-condition runs read-only in the shared por
 
   assert.match(source, /const archivedTask = args\.pilotTask\?\.state === "archived";/);
   assert.match(source, /const currentRunMutationLocked = archivedTask;/);
+  assert.match(source, /const actions: OpeningConditionRunActionGates = \{/);
+  assert.match(source, /initializeCurrentRun: buildOpeningConditionRunActionGate\(/);
+  assert.match(source, /runFormalMatch: buildOpeningConditionRunActionGate\(/);
+  assert.match(source, /startRectificationRerun: buildOpeningConditionRunActionGate\(/);
   assert.match(source, /const canInitializeCurrentRun = !currentRunMutationLocked;/);
   assert.match(source, /const canMutateCurrentRun = Boolean\(args\.pilotTask\) && !currentRunMutationLocked;/);
   assert.match(source, /const canUploadNewRun = !archivedTask \|\| rerunUploadEnabled;/);

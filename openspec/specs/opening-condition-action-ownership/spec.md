@@ -25,6 +25,7 @@ The system SHALL derive one operator-facing action ownership summary for the cur
 - **WHEN** the selected run is archived
 - **THEN** the system marks the run as read-only with no active owner for mutation
 - **AND** the next action shifts to starting a new rectification rerun from the report page when more materials must be submitted
+- **AND** action ownership does not advertise direct mutation of the archived run
 
 ### Requirement: Trial due-state derivation
 The system SHALL derive a bounded due-state hint for the current run from its stage and latest update time.
@@ -54,4 +55,3 @@ The system SHALL expose the current run's owner, next action, due-state, and act
 - **WHEN** the action summary is rendered on workspace, human-review, or report delivery views
 - **THEN** it shows readable labels for current owner, next action, action reason, due state, due window, recommended page, and primary action
 - **AND** it does not expose unreadable internal placeholders or raw state-only labels as the main guidance
-

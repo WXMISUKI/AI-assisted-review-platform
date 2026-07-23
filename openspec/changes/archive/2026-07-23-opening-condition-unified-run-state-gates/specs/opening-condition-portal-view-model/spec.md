@@ -1,8 +1,5 @@
-# opening-condition-portal-view-model Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change opening-condition-state-and-style-foundation. Update Purpose after archive.
-## Requirements
 ### Requirement: Shared portal UI state derivation
 The system SHALL derive a shared operator-facing portal state for the opening-condition workspace rather than scattering mutability rules across individual components.
 
