@@ -147,7 +147,7 @@ function getActionOwnershipTone(dueState: OpeningConditionRunActionOwnership["du
 function OpeningConditionActionOwnershipSummary({
   summary,
   eyebrow = "Action Ownership",
-  title = "当前动作归属",
+  title = "??????",
   description,
 }: {
   summary?: OpeningConditionRunActionOwnership | null;
@@ -172,26 +172,67 @@ function OpeningConditionActionOwnershipSummary({
             {summary.dueStateLabel}
           </span>
           <span className="opening-report-chip tone-muted">{summary.dueWindowLabel}</span>
-          {summary.readOnly && <span className="opening-report-chip tone-muted">只读快照</span>}
+          {summary.readOnly && <span className="opening-report-chip tone-muted">????</span>}
         </div>
       </div>
       {description ? <p>{description}</p> : null}
       <div className="opening-action-summary-grid">
         <div className="opening-action-summary-item">
-          <strong>当前责任人</strong>
+          <strong>?????</strong>
           <p>{summary.currentOwner}</p>
         </div>
         <div className="opening-action-summary-item">
-          <strong>下一动作</strong>
+          <strong>????</strong>
           <p>{summary.nextAction}</p>
         </div>
         <div className="opening-action-summary-item">
-          <strong>原因说明</strong>
+          <strong>????</strong>
           <p>{summary.actionReason}</p>
-          {summary.activeReviewCount > 0 && <small>当前仍有 {summary.activeReviewCount} 项待处理人工复核。</small>}
+          {summary.activeReviewCount > 0 && <small>???? {summary.activeReviewCount} ?????????</small>}
+        </div>
+        <div className="opening-action-summary-item">
+          <strong>????</strong>
+          <p>{summary.recommendedPageLabel}</p>
+          <small>
+            {summary.primaryActionLabel}
+            {summary.blockingCount > 0 ? ` ? ?? ${summary.blockingCount} ?` : ""}
+          </small>
         </div>
       </div>
     </div>
+  );
+}
+
+function OpeningConditionResponsibilityBoard({
+  summary,
+  onNavigate,
+}: {
+  summary?: OpeningConditionRunActionOwnership | null;
+  onNavigate?: (page: OpeningConditionPortalPage) => void;
+}) {
+  if (!summary) {
+    return null;
+  }
+
+  return (
+    <article className="opening-panel opening-panel-wide">
+      <span className="eyebrow">Responsibility Workqueue</span>
+      <h2>???????????</h2>
+      <p>??? run ????????????????????????????????????</p>
+      <div className="opening-report-summary-grid">
+        <MetricBlock label="????" value={summary.currentOwner} />
+        <MetricBlock label="????" value={summary.dueStateLabel} tone={summary.dueState === "overdue" ? "danger" : summary.dueState === "on_track" ? "success" : "neutral"} />
+        <MetricBlock label="???" value={summary.blockingCount} tone={summary.blockingCount > 0 ? "danger" : "success"} />
+        <MetricBlock label="????" value={summary.recommendedPageLabel} />
+      </div>
+      {onNavigate ? (
+        <div className="dialog-actions">
+          <button type="button" className="primary" onClick={() => onNavigate(summary.recommendedPage)}>
+            {summary.primaryActionLabel}
+          </button>
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -619,6 +660,7 @@ export function OpeningConditionWorkspaceShell({
               pilotReadiness={pilotReadiness}
               onSelectWorkspace={onSelectWorkspace}
               onGoToIntake={() => onSelectPage("material-intake")}
+              onGoToPage={onSelectPage}
             />
           )}
           {activePage === "material-intake" && (
@@ -665,6 +707,7 @@ export function OpeningConditionWorkspaceShell({
               pilotTask={pilotTask}
               pilotBusy={pilotBusy}
               onReviewDecision={onReviewDecision}
+              onGoToPage={onSelectPage}
             />
           )}
           {activePage === "reports" && (
@@ -784,6 +827,7 @@ function OpeningConditionObjectOverviewPage({
   pilotReadiness,
   onSelectWorkspace,
   onGoToIntake,
+  onGoToPage,
 }: {
   packet: OpeningConditionReviewPacket;
   workspaces: OpeningConditionWorkspace[];
@@ -792,6 +836,7 @@ function OpeningConditionObjectOverviewPage({
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
   onSelectWorkspace: (workspaceId: string) => void;
   onGoToIntake: () => void;
+  onGoToPage: (page: OpeningConditionPortalPage) => void;
 }) {
   const verdictSummary = getOpeningConditionVerdictSummary(packet);
   const riskSummary = getOpeningConditionRiskSummary(packet);
@@ -801,14 +846,18 @@ function OpeningConditionObjectOverviewPage({
   const selectedProject = findWorkspaceProjectCatalog(workspaceCatalog, selectedWorkspaceId);
   const selectedReviewObject =
     selectedProject?.reviewObjects.find((item) => item.reviewObjectId === currentWorkspace.reviewObjectId) ?? null;
+  const actionOwnership = deriveOpeningConditionRunActionOwnership({
+    pilotTask,
+    readiness: pilotReadiness,
+  });
 
   return (
     <div className="opening-condition-page">
       <section className="opening-condition-hero opening-workspace-hero">
         <div>
-          <span className="eyebrow">真实试点闭环</span>
+          <span className="eyebrow">??????</span>
           <h2>{currentWorkspace.projectName}</h2>
-          <p>从资料接入、正式核查、人工复核，到报告归档和整改复审，都围绕当前项目对象与参建主体推进。</p>
+          <p>????????????????????????????????????????????</p>
           <div className="opening-condition-meta">
             <span>{currentWorkspace.projectCode}</span>
             <span>{currentWorkspace.reviewObjectName}</span>
@@ -817,36 +866,38 @@ function OpeningConditionObjectOverviewPage({
         </div>
         <div className="opening-condition-verdict">
           <strong>{pilotTask?.state ?? packet.stage}</strong>
-          <span>当前任务状态</span>
+          <span>??????</span>
         </div>
       </section>
 
       <section className="opening-metric-grid">
-        <MetricBlock label="核查项" value={verdictSummary.total} />
-        <MetricBlock label="待人工复核" value={verdictSummary.needsHumanReview} />
-        <MetricBlock label="高风险" value={riskSummary.critical + riskSummary.high} tone="danger" />
+        <MetricBlock label="???" value={verdictSummary.total} />
+        <MetricBlock label="?????" value={verdictSummary.needsHumanReview} />
+        <MetricBlock label="???" value={riskSummary.critical + riskSummary.high} tone="danger" />
         <MetricBlock
-          label="门禁"
+          label="??"
           value={readinessLabels[readiness.status] ?? readiness.status}
           tone={readiness.status === "ready" ? "success" : "neutral"}
         />
       </section>
 
+      <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />
+
       <section className="opening-object-summary-grid">
         <article className="opening-panel">
-          <span className="eyebrow">当前项目</span>
+          <span className="eyebrow">????</span>
           <h2>{currentWorkspace.projectName}</h2>
           <div className="opening-record-list opening-record-list-compact">
             <div>
               <strong>{currentWorkspace.projectCode}</strong>
-              <span>{selectedProject?.reviewObjects.length ?? 0} 个审查对象</span>
-              <p>当前工作区已按项目对象语义组织，后续 run、知识库和历史记录都会挂在这个对象层上。</p>
+              <span>{selectedProject?.reviewObjects.length ?? 0} ?????</span>
+              <p>?????????????????? run?????????????????????</p>
             </div>
           </div>
         </article>
 
         <article className="opening-panel">
-          <span className="eyebrow">当前审查对象</span>
+          <span className="eyebrow">??????</span>
           <h2>{currentWorkspace.reviewObjectName}</h2>
           <div className="opening-record-list opening-record-list-compact">
             <div>
@@ -858,13 +909,13 @@ function OpeningConditionObjectOverviewPage({
         </article>
 
         <article className="opening-panel">
-          <span className="eyebrow">当前参建主体</span>
+          <span className="eyebrow">??????</span>
           <h2>{currentWorkspace.participantEntityName}</h2>
           <div className="opening-record-list opening-record-list-compact">
             <div>
               <strong>{currentWorkspace.participatingOrganization}</strong>
               <span>{currentWorkspace.organizationRole}</span>
-              <p>该主体下的资料接入、知识库和整改复审历史都保持独立留痕。</p>
+              <p>????????????????????????????</p>
             </div>
           </div>
         </article>
@@ -872,14 +923,14 @@ function OpeningConditionObjectOverviewPage({
 
       <section className="opening-condition-grid">
         <article className="opening-panel">
-          <span className="eyebrow">对象选择台</span>
-          <h2>按项目、审查对象和主体切换</h2>
+          <span className="eyebrow">?????</span>
+          <h2>?????????????</h2>
           <div className="opening-record-list">
             {workspaceCatalog.map((project) => (
               <div key={project.projectId} className="opening-object-switcher-group">
                 <strong>{project.projectName}</strong>
-                <span>{project.projectCode} | {project.reviewObjects.length} 个审查对象</span>
-                <p>同一项目下的对象与主体统一收口到这里，不再直接暴露扁平工作区列表。</p>
+                <span>{project.projectCode} | {project.reviewObjects.length} ?????</span>
+                <p>?????????????????????????????????</p>
                 <div className="opening-object-switcher-list">
                   {project.reviewObjects.map((reviewObject) => (
                     <div key={reviewObject.reviewObjectId} className="opening-object-switcher-item">
@@ -889,7 +940,7 @@ function OpeningConditionObjectOverviewPage({
                           {getReviewObjectTypeLabel(reviewObject.reviewObjectType)}
                         </span>
                       </div>
-                      <span>{reviewObject.participants.length} 个参建主体</span>
+                      <span>{reviewObject.participants.length} ?????</span>
                       <div className="opening-object-participant-list">
                         {reviewObject.participants.flatMap((participant) =>
                           participant.workspaces.map((workspace) => (
@@ -919,25 +970,25 @@ function OpeningConditionObjectOverviewPage({
         </article>
 
         <article className="opening-panel">
-          <span className="eyebrow">当前运行</span>
-          <h2>进入资料接入继续推进</h2>
+          <span className="eyebrow">????</span>
+          <h2>??????????</h2>
           <div className="opening-record-list">
             <div>
-              <strong>{pilotTask?.id ?? "尚未初始化 run"}</strong>
+              <strong>{pilotTask?.id ?? "????? run"}</strong>
               <span>{pilotTask?.state ?? "draft"} | {readiness.nextAction}</span>
               <p>
                 {pilotTask
-                  ? `当前 run 属于 ${currentWorkspace.reviewObjectName} / ${currentWorkspace.participantEntityName}，可继续接入或执行正式核查。`
-                  : "先通过资料接入，为当前对象上下文创建真实试点 run。"}
+                  ? `?? run ?? ${currentWorkspace.reviewObjectName} / ${currentWorkspace.participantEntityName}??????????????`
+                  : "?????????????????????? run?"}
               </p>
               {selectedReviewObject && (
-                <small>同一审查对象下当前共维护 {selectedReviewObject.participants.length} 个参建主体上下文。</small>
+                <small>???????????? {selectedReviewObject.participants.length} ?????????</small>
               )}
             </div>
           </div>
           <div className="dialog-actions">
             <button type="button" className="primary" onClick={onGoToIntake}>
-              进入资料接入
+              ??????
             </button>
           </div>
         </article>
@@ -2041,84 +2092,126 @@ function OpeningConditionHumanReviewQueuePage({
   pilotTask,
   pilotBusy,
   onReviewDecision,
+  onGoToPage,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
   pilotBusy?: boolean;
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
+  onGoToPage?: (page: OpeningConditionPortalPage) => void;
 }) {
   const queue = pilotTask?.humanReviewQueue ?? [];
   const evidenceById = new Map((pilotTask?.evidence ?? []).map((item) => [item.id, item]));
   const checkItemsById = new Map((pilotTask?.checkItems ?? []).map((item) => [item.id, item]));
   const definitionsById = new Map((pilotTask?.checklistDefinition ?? []).map((item) => [item.id, item]));
   const actionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask });
+  const pendingQueue = queue.filter((item) => item.status === "open");
+  const deferredQueue = queue.filter((item) => item.status === "deferred");
+  const resolvedQueue = queue.filter((item) => item.status !== "open" && item.status !== "deferred");
+
+  function renderQueueItem(item: OpeningConditionPilotHumanReviewItem) {
+    const fallbackContext = checkItemsById.get(item.targetId) ?? definitionsById.get(item.targetId);
+    const evidenceSummary = item.evidenceIds
+      .map((evidenceId) => {
+        const evidence = evidenceById.get(evidenceId);
+        return evidence ? `${evidence.objectRef.fileName}${evidence.locator ? ` @ ${evidence.locator}` : ""}` : evidenceId;
+      })
+      .join(" / ");
+
+    return (
+      <div key={item.id}>
+        <strong>{item.targetLabel ?? fallbackContext?.name ?? item.targetId}</strong>
+        <span>
+          {(item.category ?? fallbackContext?.category ?? "?????")}
+          {(item.subCategory ?? fallbackContext?.subCategory) ? ` / ${item.subCategory ?? fallbackContext?.subCategory}` : ""} | {item.status}
+        </span>
+        <p>{item.reason}</p>
+        {item.ruleExplanation && <small>?????{item.ruleExplanation}</small>}
+        {item.expectedEvidenceHints && item.expectedEvidenceHints.length > 0 && (
+          <small>?????{item.expectedEvidenceHints.join(" / ")}</small>
+        )}
+        {evidenceSummary && <small>???{evidenceSummary}</small>}
+        {item.safeNote && <small>{item.safeNote}</small>}
+        {onReviewDecision && (item.status === "open" || item.status === "deferred") && (
+          <div className="dialog-actions">
+            <button type="button" className="primary" onClick={() => onReviewDecision(item.id, "confirm")} disabled={pilotBusy}>
+              ??
+            </button>
+            <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "correct")} disabled={pilotBusy}>
+              ??
+            </button>
+            <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "defer")} disabled={pilotBusy}>
+              ??
+            </button>
+            <button type="button" className="danger subtle" onClick={() => onReviewDecision(item.id, "reject")} disabled={pilotBusy}>
+              ??
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const groups = [
+    {
+      key: "pending",
+      title: "???",
+      description: "???????????????????????????",
+      items: pendingQueue,
+    },
+    {
+      key: "deferred",
+      title: "???",
+      description: "?????????????????????",
+      items: deferredQueue,
+    },
+    {
+      key: "resolved",
+      title: "???",
+      description: "????????????????????????????",
+      items: resolvedQueue,
+    },
+  ];
 
   return (
     <section className="opening-panel opening-panel-wide">
-      <span className="eyebrow">人工复核</span>
-      <h2>需要人工确认的核查项</h2>
+      <span className="eyebrow">????</span>
+      <h2>??????????</h2>
       <div className="opening-condition-meta">
-        <span>待处理 {queue.filter((item) => item.status === "open" || item.status === "deferred").length}</span>
-        <span>已确认 {queue.filter((item) => item.status === "confirmed").length}</span>
-        <span>报告 {pilotTask?.trialPackage?.reportStatus ?? "missing"}</span>
+        <span>??? {pendingQueue.length}</span>
+        <span>??? {deferredQueue.length}</span>
+        <span>??? {resolvedQueue.length}</span>
+        <span>?? {pilotTask?.trialPackage?.reportStatus ?? "missing"}</span>
       </div>
+      <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />
       <OpeningConditionActionOwnershipSummary
         summary={actionOwnership}
         eyebrow="Human Review Ownership"
-        title="人工复核责任移交"
-        description="这里明确当前是谁要处理、为什么还不能进入报告交付。"
+        title="????????"
+        description="????????????????????????????????????????"
       />
-      <div className="opening-record-list">
-        {queue.length > 0
-          ? queue.map((item) => {
-              const fallbackContext = checkItemsById.get(item.targetId) ?? definitionsById.get(item.targetId);
-              const evidenceSummary = item.evidenceIds
-                .map((evidenceId) => {
-                  const evidence = evidenceById.get(evidenceId);
-                  return evidence ? `${evidence.objectRef.fileName}${evidence.locator ? ` @ ${evidence.locator}` : ""}` : evidenceId;
-                })
-                .join(" / ");
-              return (
-                <div key={item.id}>
-                  <strong>{item.targetLabel ?? fallbackContext?.name ?? item.targetId}</strong>
-                  <span>
-                    {(item.category ?? fallbackContext?.category ?? "未解析分类")}
-                    {(item.subCategory ?? fallbackContext?.subCategory) ? ` / ${item.subCategory ?? fallbackContext?.subCategory}` : ""} | {item.status}
-                  </span>
-                  <p>{item.reason}</p>
-                  {item.ruleExplanation && <small>核查规则：{item.ruleExplanation}</small>}
-                  {item.expectedEvidenceHints && item.expectedEvidenceHints.length > 0 && (
-                    <small>期望资料：{item.expectedEvidenceHints.join(" / ")}</small>
-                  )}
-                  {evidenceSummary && <small>证据：{evidenceSummary}</small>}
-                  {item.safeNote && <small>{item.safeNote}</small>}
-                  {onReviewDecision && (item.status === "open" || item.status === "deferred") && (
-                    <div className="dialog-actions">
-                      <button type="button" className="primary" onClick={() => onReviewDecision(item.id, "confirm")} disabled={pilotBusy}>
-                        确认
-                      </button>
-                      <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "correct")} disabled={pilotBusy}>
-                        修正
-                      </button>
-                      <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "defer")} disabled={pilotBusy}>
-                        延期
-                      </button>
-                      <button type="button" className="danger subtle" onClick={() => onReviewDecision(item.id, "reject")} disabled={pilotBusy}>
-                        驳回
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          : packet.humanReviewQueue.map((item) => (
-              <div key={item.id}>
-                <strong>{item.targetId}</strong>
-                <span>{item.trigger}</span>
-                <p>{item.reason}</p>
-              </div>
-            ))}
-      </div>
+      {queue.length > 0 ? (
+        groups.map((group) => (
+          <div key={group.key} className="opening-record-list">
+            <div>
+              <strong>{group.title}</strong>
+              <span>{group.items.length} ?</span>
+              <p>{group.description}</p>
+            </div>
+            {group.items.length > 0 ? group.items.map(renderQueueItem) : <div><small>?????????</small></div>}
+          </div>
+        ))
+      ) : (
+        <div className="opening-record-list">
+          {packet.humanReviewQueue.map((item) => (
+            <div key={item.id}>
+              <strong>{item.targetId}</strong>
+              <span>{item.trigger}</span>
+              <p>{item.reason}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

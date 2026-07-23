@@ -190,3 +190,8 @@ The opening-condition execution console SHALL show the current run's action owne
 - **THEN** it shows who currently owns the next step
 - **AND** it explains what action should be completed before the run can advance
 
+
+#### Scenario: Operator opens workspace overview
+- **WHEN** the workspace overview is backed by a current or selected run
+- **THEN** it can consume the same shared action ownership data as the execution console
+- **AND** it shows the operator which page should be opened next to continue the run

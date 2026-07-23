@@ -32,13 +32,12 @@ The system SHALL expose report generation only when the backend task is report-r
 ### Requirement: Human-review ownership guidance
 The system SHALL present human-review work as an explicit responsibility handoff rather than only a list of blockers.
 
-#### Scenario: Human-review queue has open items
-- **WHEN** the current run contains open or deferred human-review items
-- **THEN** the human-review page shows the supervising review role as the current owner
-- **AND** it states that closing those items is the required next action before report delivery
+#### Scenario: Queue contains pending and deferred items
+- **WHEN** the current run contains open and deferred human-review items
+- **THEN** the human-review page groups those items separately from resolved items
+- **AND** it explains that both pending and deferred groups still block report delivery
 
-#### Scenario: Human-review queue is fully closed
+#### Scenario: Queue is fully closed
 - **WHEN** all open or deferred human-review items are closed
-- **THEN** the human-review page shows that ownership has moved to report delivery
-- **AND** it points the operator to generate the report as the next action
-
+- **THEN** the page shows that responsibility has moved to report delivery
+- **AND** it points the operator to the report page as the next primary action

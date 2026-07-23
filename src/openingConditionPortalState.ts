@@ -1,3 +1,4 @@
+import type { OpeningConditionPortalPage } from "./appShellTypes";
 import type { OpeningConditionPilotReadinessResult } from "./domain/backendConnectivity";
 import type { OpeningConditionPilotTask } from "./domain/openingConditionPilot";
 
@@ -14,6 +15,10 @@ export type OpeningConditionRunActionOwnership = {
   actionReason: string;
   stageLabel: string;
   activeReviewCount: number;
+  blockingCount: number;
+  recommendedPage: OpeningConditionPortalPage;
+  recommendedPageLabel: string;
+  primaryActionLabel: string;
   readOnly: boolean;
 };
 
@@ -30,6 +35,15 @@ export type OpeningConditionPortalViewState = {
 };
 
 const activeHumanReviewStatuses = new Set(["open", "deferred"]);
+const recommendedPageLabels: Record<OpeningConditionPortalPage, string> = {
+  "workspace-context": "工作台概览",
+  "material-intake": "资料接入",
+  "basis-sets": "依据与主数据",
+  "master-data": "依据与主数据",
+  "check-tasks": "资料核查",
+  "human-review": "人工复核",
+  reports: "报告归档",
+};
 
 const dueStateLabels: Record<OpeningConditionRunDueState, string> = {
   on_track: "正常推进",
@@ -109,6 +123,7 @@ export function deriveOpeningConditionRunActionOwnership(args: {
 
   const readiness = args.readiness?.preflightReadiness ?? pilotTask.preflightReadiness;
   const activeReviewCount = pilotTask.humanReviewQueue.filter((item) => activeHumanReviewStatuses.has(item.status)).length;
+  const blockingCount = (readiness?.blockingReasons?.length ?? 0) + activeReviewCount;
 
   if (pilotTask.state === "archived") {
     return {
@@ -120,6 +135,10 @@ export function deriveOpeningConditionRunActionOwnership(args: {
       actionReason: "当前 run 已归档，只保留历史留痕、报告和处理过程，不再允许直接变更。",
       stageLabel: "归档历史",
       activeReviewCount,
+      blockingCount: 0,
+      recommendedPage: "reports",
+      recommendedPageLabel: recommendedPageLabels.reports,
+      primaryActionLabel: "查看归档与复审入口",
       readOnly: true,
     };
   }
@@ -135,6 +154,10 @@ export function deriveOpeningConditionRunActionOwnership(args: {
       actionReason: "当前 run 未处于可继续流转状态，需要先恢复到可执行链路。",
       stageLabel: pilotTask.state === "failed" ? "异常恢复" : "已取消待重启",
       activeReviewCount,
+      blockingCount,
+      recommendedPage: "material-intake",
+      recommendedPageLabel: recommendedPageLabels["material-intake"],
+      primaryActionLabel: "回到资料接入恢复本轮",
       readOnly: false,
     };
   }
@@ -153,6 +176,10 @@ export function deriveOpeningConditionRunActionOwnership(args: {
           : "当前 run 已进入人工复核阶段，需要监理完成最终判断。",
       stageLabel: "人工复核",
       activeReviewCount,
+      blockingCount: activeReviewCount,
+      recommendedPage: "human-review",
+      recommendedPageLabel: recommendedPageLabels["human-review"],
+      primaryActionLabel: "去处理人工复核",
       readOnly: false,
     };
   }
@@ -168,6 +195,10 @@ export function deriveOpeningConditionRunActionOwnership(args: {
       actionReason: "正式核查与人工复核已收敛到可交付状态，当前重点转为报告输出和结果留痕。",
       stageLabel: "报告交付",
       activeReviewCount,
+      blockingCount,
+      recommendedPage: "reports",
+      recommendedPageLabel: recommendedPageLabels.reports,
+      primaryActionLabel: pilotTask.reportAsset?.status === "ready" ? "去报告归档完成交付" : "去生成报告",
       readOnly: false,
     };
   }
@@ -183,6 +214,10 @@ export function deriveOpeningConditionRunActionOwnership(args: {
       actionReason: "当前 run 已进入自动处理阶段，操作者主要负责观察结果与异常。",
       stageLabel: pilotTask.state === "extracting" ? "资料提取" : "正式核查匹配",
       activeReviewCount,
+      blockingCount,
+      recommendedPage: "check-tasks",
+      recommendedPageLabel: recommendedPageLabels["check-tasks"],
+      primaryActionLabel: "去看核查进度",
       readOnly: false,
     };
   }
@@ -203,6 +238,10 @@ export function deriveOpeningConditionRunActionOwnership(args: {
         : "当前 run 仍处于资料接入和门禁确认阶段，需要先完成前置条件。",
     stageLabel: "资料接入门禁",
     activeReviewCount,
+    blockingCount,
+    recommendedPage: "material-intake",
+    recommendedPageLabel: recommendedPageLabels["material-intake"],
+    primaryActionLabel: "去完成资料接入",
     readOnly: false,
   };
 }
