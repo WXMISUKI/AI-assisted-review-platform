@@ -39,6 +39,7 @@ import {
   getOpeningConditionPilotTask,
   getOpeningConditionPilotTaskReadiness,
   initializeOpeningConditionPilotTaskIntake,
+  ingestOpeningConditionPilotBasisProviderPreview,
   intakeOpeningConditionPilotPacket,
   bindOpeningConditionPilotKnowledgeBase,
   listOpeningConditionPilotHumanReviewItems,
@@ -242,6 +243,7 @@ export function createBackendServer(options = {}) {
           "GET /api/opening-condition/workspaces/:workspaceId/basis",
           "PUT /api/opening-condition/workspaces/:workspaceId/basis/:basisId",
           "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/extract",
+          "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/provider-preview",
           "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/decision",
           "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/publish",
           "GET /api/opening-condition/workspaces/:workspaceId/master-data",
@@ -645,6 +647,18 @@ export function createBackendServer(options = {}) {
       if (request.method === "POST" && basisId && action === "extract") {
         const body = await readJson(request);
         const result = await refreshOpeningConditionPilotBasisPreview(
+          workspaceId,
+          basisId,
+          body,
+          openingConditionStoreOptions,
+        );
+        sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+        return;
+      }
+
+      if (request.method === "POST" && basisId && action === "provider-preview") {
+        const body = await readJson(request);
+        const result = await ingestOpeningConditionPilotBasisProviderPreview(
           workspaceId,
           basisId,
           body,

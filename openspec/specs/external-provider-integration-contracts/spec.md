@@ -9,6 +9,7 @@ The system SHALL integrate external providers through platform-owned adapters th
 #### Scenario: Provider output is received
 - **WHEN** an external provider returns OCR, LLM, RAG, worker, storage, or queue output
 - **THEN** the system normalizes the output into platform-owned records or safe summaries before it affects workflow state, review results, readiness, or reports
+- **AND** opening-condition basis preview ingestion can consume provider output only after normalization into the platform-owned preview contract
 
 #### Scenario: Provider is unavailable
 - **WHEN** an optional provider is disabled, not configured, or unavailable
@@ -80,4 +81,3 @@ The system SHALL support MaxKB as an optional external knowledge-base provider t
 #### Scenario: Proxy owns MaxKB login
 - **WHEN** the platform invokes MaxKB retrieval or provider status for the opening-condition pilot
 - **THEN** it calls the Worker/Proxy with a server-side Bearer token and does not require `MAXKB_USERNAME` or `MAXKB_PASSWORD` in the platform runtime
-

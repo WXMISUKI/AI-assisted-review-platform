@@ -877,6 +877,45 @@ export async function refreshOpeningConditionPilotBasisPreview(
   return readJson<OpeningConditionPilotBasisResult>(response);
 }
 
+export async function ingestOpeningConditionPilotBasisProviderPreview(
+  workspaceId: string,
+  basisId: string,
+  input: {
+    providerOutput?: Record<string, unknown>;
+    provider?: Record<string, unknown>;
+    facts?: Record<string, unknown>;
+    fields?: Array<Record<string, unknown>>;
+    entities?: Array<Record<string, unknown>>;
+    snippets?: Array<Record<string, unknown> | string>;
+    summary?: string;
+    snippet?: string;
+    safeSnippet?: string;
+    boundedText?: string;
+    providerName?: string;
+    providerJobId?: string;
+    providerDocumentId?: string;
+    providerChunkId?: string;
+    sourceObject?: OpeningConditionObjectRef;
+    projectId?: string;
+    contractPackageId?: string;
+    participatingOrganizationId?: string;
+    participatingOrganizationName?: string;
+    safeNote?: string;
+  } = {},
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/basis/${encodeURIComponent(basisId)}/provider-preview`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    },
+  );
+  return readJson<OpeningConditionPilotBasisResult>(response);
+}
+
 export async function decideOpeningConditionPilotBasisPreview(
   workspaceId: string,
   basisId: string,

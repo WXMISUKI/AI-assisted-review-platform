@@ -64,3 +64,14 @@ The publication governance workspace SHALL display only safe preview facts and b
 - **WHEN** the backend stores the basis preview
 - **THEN** private URLs, tokens, raw OCR text, raw prompts, provider traces, and credentials are removed from stored and returned preview data
 
+### Requirement: Provider provenance in publication governance
+The publication governance surface SHALL show provider provenance for provider-derived basis previews before publication.
+
+#### Scenario: Provider-derived preview is shown
+- **WHEN** a basis preview was refreshed from provider structured output
+- **THEN** the governance surface shows the provider source, extractor, confidence, missing fields, and next action alongside the preview facts
+- **AND** the publish action remains unavailable until the preview is human-confirmed
+
+#### Scenario: Provider-derived preview is rejected
+- **WHEN** an operator rejects a provider-derived preview
+- **THEN** the system keeps the provider provenance and rejection note visible as an exception record for follow-up

@@ -120,7 +120,15 @@ function summarizeBasisPreviewProvenance(provenance?: NonNullable<OpeningConditi
     return "No extraction provenance recorded.";
   }
 
-  const parts = [provenance.extractor, provenance.source, provenance.sourceFileName, provenance.boundedTextLength ? `${provenance.boundedTextLength} chars` : ""]
+  const parts = [
+    provenance.provider,
+    provenance.extractor,
+    provenance.source,
+    provenance.providerJobId,
+    provenance.providerDocumentId,
+    provenance.sourceFileName,
+    provenance.boundedTextLength ? `${provenance.boundedTextLength} chars` : "",
+  ]
     .filter(Boolean)
     .join(" / ");
   return parts || "No extraction provenance recorded.";
@@ -590,6 +598,7 @@ export function OpeningConditionWorkspaceShell({
   onPublishPilotBasis,
   onPublishPilotBasisDecision,
   onRefreshPilotBasisPreview,
+  onIngestPilotBasisProviderPreview,
   onConfirmPilotMasterData,
   onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
@@ -625,6 +634,7 @@ export function OpeningConditionWorkspaceShell({
   onPublishPilotBasis?: () => void;
   onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
   onRefreshPilotBasisPreview?: (basisId: string) => void;
+  onIngestPilotBasisProviderPreview?: (basisId: string) => void;
   onConfirmPilotMasterData?: () => void;
   onDecidePilotMasterDataCandidate?: (
     recordId: string,
@@ -744,6 +754,7 @@ export function OpeningConditionWorkspaceShell({
               onPublishPilotBasis={onPublishPilotBasis}
               onPublishPilotBasisDecision={onPublishPilotBasisDecision}
               onRefreshPilotBasisPreview={onRefreshPilotBasisPreview}
+              onIngestPilotBasisProviderPreview={onIngestPilotBasisProviderPreview}
               onConfirmPilotMasterData={onConfirmPilotMasterData}
               onDecidePilotMasterDataCandidate={onDecidePilotMasterDataCandidate}
               onRunPilotMatch={onRunPilotMatch}
@@ -764,6 +775,7 @@ export function OpeningConditionWorkspaceShell({
               pilotReadiness={pilotReadiness}
               pilotBusy={pilotBusy}
               onRefreshBasisPreview={onRefreshPilotBasisPreview}
+              onIngestProviderPreview={onIngestPilotBasisProviderPreview}
             />
           )}
           {activePage === "check-tasks" && <OpeningConditionCheckTasksPage packet={packet} pilotTask={pilotTask} />}
@@ -1298,6 +1310,7 @@ function OpeningConditionMaterialIntakePage({
   onPublishPilotBasis,
   onPublishPilotBasisDecision,
   onRefreshPilotBasisPreview,
+  onIngestPilotBasisProviderPreview,
   onConfirmPilotMasterData,
   onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
@@ -1322,6 +1335,7 @@ function OpeningConditionMaterialIntakePage({
   onPublishPilotBasis?: () => void;
   onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
   onRefreshPilotBasisPreview?: (basisId: string) => void;
+  onIngestPilotBasisProviderPreview?: (basisId: string) => void;
   onConfirmPilotMasterData?: () => void;
   onDecidePilotMasterDataCandidate?: (
     recordId: string,
@@ -1397,6 +1411,7 @@ function OpeningConditionMaterialIntakePage({
         onPublishBasis={onPublishPilotBasis}
         onPublishBasisDecision={onPublishPilotBasisDecision}
         onRefreshBasisPreview={onRefreshPilotBasisPreview}
+        onIngestProviderPreview={onIngestPilotBasisProviderPreview}
         onConfirmMasterData={onConfirmPilotMasterData}
         onDecideMasterDataCandidate={onDecidePilotMasterDataCandidate}
       />
@@ -1595,6 +1610,7 @@ function OpeningConditionIntakeCandidatePreviewPanel({
   onPublishBasis,
   onPublishBasisDecision,
   onRefreshBasisPreview,
+  onIngestProviderPreview,
   onConfirmMasterData,
   onDecideMasterDataCandidate,
 }: {
@@ -1609,6 +1625,7 @@ function OpeningConditionIntakeCandidatePreviewPanel({
   onPublishBasis?: () => void;
   onPublishBasisDecision?: (basisId: string, safeNote?: string) => void;
   onRefreshBasisPreview?: (basisId: string) => void;
+  onIngestProviderPreview?: (basisId: string) => void;
   onConfirmMasterData?: () => void;
   onDecideMasterDataCandidate?: (
     recordId: string,
@@ -2017,6 +2034,7 @@ function OpeningConditionPublicationGovernancePage({
   pilotReadiness,
   pilotBusy,
   onRefreshBasisPreview,
+  onIngestProviderPreview,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
@@ -2027,6 +2045,7 @@ function OpeningConditionPublicationGovernancePage({
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
   pilotBusy?: boolean;
   onRefreshBasisPreview?: (basisId: string) => void;
+  onIngestProviderPreview?: (basisId: string) => void;
 }) {
   const displayedBasisRecords = basisRecords && basisRecords.length > 0 ? basisRecords : packet.basisVersions;
   const displayedMasterDataRecords = masterDataRecords && masterDataRecords.length > 0 ? masterDataRecords : packet.masterData;
@@ -2181,6 +2200,13 @@ function OpeningConditionPublicationGovernancePage({
               <div className="dialog-actions compact">
                 <button type="button" className="secondary" onClick={() => onRefreshBasisPreview(item.id)} disabled={pilotBusy}>
                   刷新预览抽取
+                </button>
+              </div>
+            )}
+            {item.assetType === "basis" && onIngestProviderPreview && item.meta.group !== "published" && (
+              <div className="dialog-actions compact">
+                <button type="button" className="secondary" onClick={() => onIngestProviderPreview(item.id)} disabled={pilotBusy}>
+                  导入 provider 预览
                 </button>
               </div>
             )}

@@ -82,6 +82,11 @@ export interface OpeningConditionBasisIngestionPreview {
     sourceObjectId?: string;
     sourceFileName?: string;
     sourceContentType?: string;
+    provider?: string;
+    providerJobId?: string;
+    providerDocumentId?: string;
+    providerChunkId?: string;
+    providerScore?: number;
     boundedTextLength?: number;
     boundedTextExcerpt?: string;
     matchedSignals?: string[];

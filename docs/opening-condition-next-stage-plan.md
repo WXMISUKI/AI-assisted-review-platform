@@ -44,6 +44,8 @@
 - 前置平台继续负责 ZIP 拆包、文件清单、资料类型初判、业务状态和人工结论。
 - OCR Worker 负责 OCR、结构化后处理、可控入库和 provider 检索验收。
 - MaxKB provider 负责安全检索和知识库支撑，不承载项目、队伍、任务或审批状态。
+- OCR/Provider 的结构化输出先进入平台 owned 的 basis preview，保留 provenance、missingFields、confidence 和 nextAction。
+- provider preview 只能作为待确认预览，不得绕过人工确认直接发布为正式依据。
 
 ### D. 后续升级顺序
 

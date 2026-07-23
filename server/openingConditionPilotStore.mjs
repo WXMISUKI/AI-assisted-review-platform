@@ -251,10 +251,192 @@ function normalizeBasisPreviewProvenance(value = {}, sourceObject = null) {
     sourceObjectId: normalizeString(value.sourceObjectId ?? sourceObject?.objectId, "", 180) || undefined,
     sourceFileName: normalizeString(value.sourceFileName ?? sourceObject?.fileName, "", 240) || undefined,
     sourceContentType: normalizeString(value.sourceContentType ?? sourceObject?.contentType, "", 120) || undefined,
+    provider: normalizeString(value.provider, "", 80) || undefined,
+    providerJobId: normalizeString(value.providerJobId ?? value.jobId, "", 180) || undefined,
+    providerDocumentId: normalizeString(value.providerDocumentId ?? value.documentId, "", 180) || undefined,
+    providerChunkId: normalizeString(value.providerChunkId ?? value.chunkId, "", 180) || undefined,
+    providerScore: Number.isFinite(Number(value.providerScore ?? value.score))
+      ? Math.max(0, Math.min(Number(value.providerScore ?? value.score), 1))
+      : undefined,
     boundedTextLength: normalizeNumber(value.boundedTextLength, 0, MAX_BASIS_PREVIEW_TEXT_LENGTH),
     boundedTextExcerpt: normalizeString(value.boundedTextExcerpt, "", 500) || undefined,
     matchedSignals: normalizeStringList(value.matchedSignals, 20, 120),
   });
+}
+
+function getProviderPayloadValue(payload, aliases = []) {
+  if (!isPlainObject(payload)) {
+    return "";
+  }
+
+  for (const key of aliases) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+    if (isPlainObject(value) && typeof value.value === "string" && value.value.trim()) {
+      return value.value;
+    }
+  }
+
+  const fields = Array.isArray(payload.fields) ? payload.fields : [];
+  for (const field of fields) {
+    if (!isPlainObject(field)) {
+      continue;
+    }
+    const key = normalizeString(field.key ?? field.name ?? field.label ?? field.type, "", 120);
+    if (aliases.some((alias) => key.toLowerCase() === alias.toLowerCase())) {
+      return normalizeString(field.value ?? field.text ?? field.content, "", 500);
+    }
+  }
+
+  const entities = Array.isArray(payload.entities) ? payload.entities : [];
+  for (const entity of entities) {
+    if (!isPlainObject(entity)) {
+      continue;
+    }
+    const key = normalizeString(entity.key ?? entity.name ?? entity.label ?? entity.type, "", 120);
+    if (aliases.some((alias) => key.toLowerCase() === alias.toLowerCase())) {
+      return normalizeString(entity.value ?? entity.text ?? entity.content, "", 500);
+    }
+  }
+
+  return "";
+}
+
+function normalizeProviderStructuredPreview(input = {}, sourceObject = null, context = {}) {
+  const providerOutput = isPlainObject(input.providerOutput) ? input.providerOutput : isPlainObject(input.provider) ? input.provider : input;
+  const factsPayload = isPlainObject(providerOutput.facts) ? providerOutput.facts : providerOutput;
+  const summary =
+    normalizeString(providerOutput.summary ?? providerOutput.safeSummary ?? providerOutput.excerpt, "", 500) ||
+    normalizeString(sourceObject?.summary ?? sourceObject?.fileName, "", 500);
+  const snippets = normalizeStringList(
+    Array.isArray(providerOutput.snippets)
+      ? providerOutput.snippets.map((item) => (isPlainObject(item) ? item.text ?? item.content ?? item.summary : item))
+      : [providerOutput.snippet ?? providerOutput.safeSnippet ?? providerOutput.boundedText],
+    5,
+    240,
+  );
+  const safeExcerpt = snippets.join(" / ").slice(0, 500);
+
+  const facts = normalizeBasisPreviewFacts({
+    projectName: getProviderPayloadValue(factsPayload, ["projectName", "project_name", "工程名称", "项目名称"]),
+    projectId:
+      getProviderPayloadValue(factsPayload, ["projectId", "project_id", "projectCode", "project_code"]) ||
+      context.projectId,
+    contractPackageId:
+      getProviderPayloadValue(factsPayload, [
+        "contractPackageId",
+        "contract_package_id",
+        "contractPackage",
+        "contract_package",
+        "标段",
+        "合同段",
+      ]) || context.contractPackageId,
+    participatingOrganizationId:
+      getProviderPayloadValue(factsPayload, [
+        "participatingOrganizationId",
+        "participating_organization_id",
+        "organizationId",
+        "organization_id",
+      ]) || context.participatingOrganizationId,
+    participantEntityName: getProviderPayloadValue(factsPayload, [
+      "participantEntityName",
+      "participant_entity_name",
+      "contractorName",
+      "contractor_name",
+      "subcontractorName",
+      "subcontractor_name",
+      "施工单位",
+      "分包单位",
+    ]),
+    basisFileName: sourceObject?.fileName,
+    qualificationScope: getProviderPayloadValue(factsPayload, [
+      "qualificationScope",
+      "qualification_scope",
+      "contractScope",
+      "contract_scope",
+      "资质范围",
+      "资质边界",
+      "承包范围",
+    ]),
+    personnelScope: getProviderPayloadValue(factsPayload, [
+      "personnelScope",
+      "personnel_scope",
+      "人员范围",
+      "人员配置",
+    ]),
+    equipmentScope: getProviderPayloadValue(factsPayload, [
+      "equipmentScope",
+      "equipment_scope",
+      "设备范围",
+      "机械设备",
+    ]),
+    effectivePeriod: getProviderPayloadValue(factsPayload, [
+      "effectivePeriod",
+      "effective_period",
+      "validity",
+      "validUntil",
+      "有效期",
+      "有效期限",
+    ]),
+    sourceSummary: summary,
+  });
+
+  const missingFields = [];
+  if (!facts.projectId) missingFields.push("projectId");
+  if (!facts.contractPackageId) missingFields.push("contractPackageId");
+  if (!facts.participatingOrganizationId) missingFields.push("participatingOrganizationId");
+  if (!facts.participantEntityName) missingFields.push("participantEntityName");
+  if (!facts.qualificationScope) missingFields.push("qualificationScope");
+  if (!facts.personnelScope) missingFields.push("personnelScope");
+  if (!facts.equipmentScope) missingFields.push("equipmentScope");
+  if (!facts.effectivePeriod) missingFields.push("effectivePeriod");
+
+  const providerScore = Number(providerOutput.score ?? providerOutput.confidenceScore);
+  const confidence = ["high", "medium", "low"].includes(providerOutput.confidence)
+    ? providerOutput.confidence
+    : Number.isFinite(providerScore)
+      ? providerScore >= 0.8
+        ? "high"
+        : providerScore >= 0.5
+          ? "medium"
+          : "low"
+      : missingFields.length > 2
+        ? "medium"
+        : "high";
+  const matchedSignals = Object.entries(facts)
+    .filter(([, value]) => typeof value === "string" && value.trim())
+    .map(([key]) => key)
+    .slice(0, 20);
+
+  return {
+    facts,
+    missingFields,
+    confidence,
+    factSummary:
+      normalizeString(input.factSummary ?? providerOutput.factSummary, "", 600) ||
+      `Provider preview derived from ${normalizeString(providerOutput.provider, "provider", 80)} output for ${sourceObject?.fileName ?? "basis source"}.`,
+    provenance: normalizeBasisPreviewProvenance(
+      {
+        extractor: normalizeString(providerOutput.extractor, "provider_structured_preview_v1", 80),
+        source: "provider_structured_output",
+        provider: providerOutput.provider ?? input.providerName,
+        providerJobId: providerOutput.jobId ?? input.providerJobId,
+        providerDocumentId: providerOutput.documentId ?? input.providerDocumentId,
+        providerChunkId: providerOutput.chunkId ?? input.providerChunkId,
+        providerScore,
+        sourceObjectId: sourceObject?.objectId,
+        sourceFileName: sourceObject?.fileName,
+        sourceContentType: sourceObject?.contentType,
+        extractedAt: normalizeString(providerOutput.extractedAt ?? input.extractedAt, new Date().toISOString(), 80),
+        boundedTextLength: safeExcerpt.length,
+        boundedTextExcerpt: safeExcerpt,
+        matchedSignals,
+      },
+      sourceObject,
+    ),
+  };
 }
 
 function escapeRegExp(value = "") {
@@ -1913,6 +2095,89 @@ export async function refreshOpeningConditionPilotBasisPreview(workspaceId, basi
         nextAction: extraction.missingFields.length > 0
           ? "Review extracted basis facts, fill missing fields, then confirm the preview."
           : "Review and human-confirm the extracted basis preview before publication.",
+      },
+      existingBasis,
+    );
+    const now = new Date().toISOString();
+    const nextBasis = normalizeBasisRecord(
+      {
+        ...existingBasis,
+        status: "pending_confirmation",
+        sourceObject,
+        confidence: nextPreview.confidence,
+        safeNote: input.safeNote ?? existingBasis.safeNote,
+        ingestionPreview: nextPreview,
+        updatedAt: now,
+      },
+      workspaceId,
+    );
+    const nextBasisVersions = [...snapshot.basisVersions];
+    nextBasisVersions[index] = nextBasis;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        basisVersions: nextBasisVersions,
+      },
+      value: {
+        ok: true,
+        basisVersion: nextBasis,
+      },
+    };
+  }, options.storePath);
+}
+
+export async function ingestOpeningConditionPilotBasisProviderPreview(workspaceId, basisId, input = {}, options = {}) {
+  return mutateSnapshot((snapshot) => {
+    const index = snapshot.basisVersions.findIndex((item) => item.workspaceId === workspaceId && item.id === basisId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition basis version not found.",
+        },
+      };
+    }
+
+    const existingBasis = normalizeBasisRecord(snapshot.basisVersions[index], workspaceId);
+    const sourceObject = normalizeObjectRef(input.sourceObject ?? existingBasis.sourceObject);
+    if (!sourceObject) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "missing_source_object",
+          message: "Provider preview ingestion requires a basis source object.",
+          basisVersion: existingBasis,
+        },
+      };
+    }
+
+    const providerPreview = normalizeProviderStructuredPreview(input, sourceObject, {
+      workspaceId,
+      projectId: input.projectId ?? input.context?.projectId,
+      contractPackageId: input.contractPackageId ?? input.context?.contractPackageId,
+      participatingOrganizationId: input.participatingOrganizationId ?? input.context?.participatingOrganizationId,
+    });
+    const nextPreview = normalizeBasisIngestionPreview(
+      {
+        status: "needs_confirmation",
+        source: "provider_structured_output",
+        sourceObject,
+        facts: providerPreview.facts,
+        factSummary: providerPreview.factSummary,
+        missingFields: providerPreview.missingFields,
+        confidence: providerPreview.confidence,
+        provenance: providerPreview.provenance,
+        safeNote:
+          input.safeNote ??
+          "Provider structured preview. Human confirmation is required before this basis can be published.",
+        nextAction:
+          providerPreview.missingFields.length > 0
+            ? "Review provider-derived basis facts, fill missing fields, then confirm the preview."
+            : "Review and human-confirm the provider-derived basis preview before publication.",
       },
       existingBasis,
     );

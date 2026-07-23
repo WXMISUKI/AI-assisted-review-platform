@@ -20,6 +20,7 @@ import {
   fetchOpeningConditionPilotTaskReadiness,
   generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotIntake,
+  ingestOpeningConditionPilotBasisProviderPreview,
   publishOpeningConditionPilotBasis,
   refreshOpeningConditionPilotBasisPreview,
   runOpeningConditionPilotMatch,
@@ -107,6 +108,12 @@ function buildOpeningPilotIntakeRequest(packet: OpeningConditionReviewPacket, su
 type OpeningPilotPacketRef =
   | NonNullable<NonNullable<OpeningConditionPilotTask["packet"]>["sourceObjects"]>[number]
   | NonNullable<NonNullable<OpeningConditionPilotTask["packet"]>["checklistObject"]>;
+
+function isOpeningPilotBasisRecord(
+  basisRecord?: OpeningConditionPilotBasisRecord | OpeningConditionPilotTask["basisVersion"] | null,
+): basisRecord is OpeningConditionPilotBasisRecord {
+  return Boolean(basisRecord && "title" in basisRecord);
+}
 
 function isPersistedOpeningPilotObject(objectRef?: OpeningPilotPacketRef | null) {
   if (!objectRef) {
@@ -485,6 +492,74 @@ export function App() {
     }
   }
 
+  async function ingestOpeningPilotBasisProviderPreview(basisId: string) {
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可导入的依据记录，请先初始化试点任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，不能导入 provider 预览；请发起新的整改复审 run。");
+      return;
+    }
+
+    const basisRecord =
+      openingPilotBasisRecords.find((item) => item.id === basisId) ??
+      openingPilotBasisRecords.find((item) => item.id === openingPilotTask.basisVersion?.id);
+    const basisRef = basisRecord ?? openingPilotTask.basisVersion;
+    const sourceObject = basisRef?.sourceObject;
+    if (!basisRef || !sourceObject) {
+      setOpeningPilotStatus("当前依据缺少可用来源对象，无法导入 provider 预览。");
+      return;
+    }
+
+    setOpeningPilotBusy(true);
+    try {
+      const previewFacts = basisRef.ingestionPreview?.facts ?? {};
+      const result = await ingestOpeningConditionPilotBasisProviderPreview(openingPilotTask.context.workspaceId, basisId, {
+        providerOutput: {
+          provider: "mock-ocr-provider",
+          jobId: `demo-${basisId}`,
+          extractedAt: new Date().toISOString(),
+          summary: isOpeningPilotBasisRecord(basisRecord) ? basisRecord.title : sourceObject.summary ?? sourceObject.fileName,
+          score: 0.82,
+          facts: {
+            projectName: previewFacts.projectName ?? openingPacket.projectName,
+            projectId: openingPilotTask.context.projectId,
+            contractPackageId: openingPilotTask.context.contractPackageId,
+            participatingOrganizationId: openingPilotTask.context.participatingOrganizationId,
+            participantEntityName: openingPacket.workspaceContext.participatingOrganization ?? previewFacts.participantEntityName,
+            qualificationScope: previewFacts.qualificationScope ?? openingPacket.reviewTarget,
+            personnelScope: previewFacts.personnelScope ?? "项目管理人员、专职安全员、特种作业人员",
+            equipmentScope: previewFacts.equipmentScope ?? "汽车吊、起重设备、泵车、检测仪器",
+            effectivePeriod: previewFacts.effectivePeriod ?? "2026-07-23 至 2026-08-23",
+          },
+          snippets: [
+            (isOpeningPilotBasisRecord(basisRecord) ? basisRecord.safeNote ?? basisRecord.applicability : undefined) ??
+              sourceObject.summary ??
+              sourceObject.fileName,
+          ],
+        },
+        sourceObject,
+        projectId: openingPilotTask.context.projectId,
+        contractPackageId: openingPilotTask.context.contractPackageId,
+        participatingOrganizationId: openingPilotTask.context.participatingOrganizationId,
+        safeNote: "Operator imported provider structured preview into basis governance.",
+      });
+      if (!result.ok) {
+        setOpeningPilotStatus(result.message ?? "provider 预览导入失败。");
+        return;
+      }
+
+      await refreshOpeningPilotTask(openingPilotTask.id, { preserveStatus: true });
+      const providerName = result.basisVersion?.ingestionPreview?.provenance?.provider ?? "provider";
+      setOpeningPilotStatus(`已导入 ${providerName} 结构化预览，请人工确认后发布。`);
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "provider 预览导入失败。");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
   async function confirmOpeningPilotMasterDataRecords() {
     if (!openingPilotTask) {
       setOpeningPilotStatus("褰撳墠娌℃湁鍙‘璁ょ殑涓绘暟鎹褰曪紝璇峰厛鍒濆鍖栬瘯鐐逛换鍔°€?");
@@ -835,6 +910,7 @@ export function App() {
       onPublishPilotBasis={() => void publishOpeningPilotBasisRecord()}
       onPublishPilotBasisDecision={(basisId, safeNote) => void publishOpeningPilotBasisRecord({ basisId, safeNote })}
       onRefreshPilotBasisPreview={(basisId) => void refreshOpeningPilotBasisPreview(basisId)}
+      onIngestPilotBasisProviderPreview={(basisId) => void ingestOpeningPilotBasisProviderPreview(basisId)}
       onConfirmPilotMasterData={() => void confirmOpeningPilotMasterDataRecords()}
       onDecidePilotMasterDataCandidate={(recordId, decision, safeNote) =>
         void decideOpeningPilotMasterDataRecord(recordId, decision, safeNote)
