@@ -100,6 +100,14 @@ type ReportFinding = {
   humanReview: string[];
 };
 
+type ReportFindingGroup = {
+  id: "blocked" | "failed" | "pendingHuman" | "warning";
+  title: string;
+  description: string;
+  tone: "danger" | "warning" | "info" | "muted";
+  findings: ReportFinding[];
+};
+
 type FinalReviewDisposition =
   | "blocked"
   | "fail"
@@ -711,7 +719,7 @@ export function OpeningConditionWorkspaceShell({
             />
           )}
           {activePage === "reports" && (
-            <OpeningConditionReportArchivePage
+            <OpeningConditionReportDeliveryWorkbench
               packet={packet}
               pilotTask={pilotTask}
               workspaceTasks={pilotWorkspaceTasks}
@@ -2270,6 +2278,45 @@ function buildReportFindings(pilotTask?: OpeningConditionPilotTask | null): Repo
     });
 }
 
+function buildReportFindingGroups(findings: ReportFinding[]): ReportFindingGroup[] {
+  const blocked = findings.filter((item) => item.disposition === "blocked");
+  const failed = findings.filter((item) => item.disposition === "fail" || item.disposition === "reject");
+  const pendingHuman = findings.filter((item) => item.disposition === "needs_human_review");
+  const warning = findings.filter((item) => item.disposition === "warning");
+
+  const groups: ReportFindingGroup[] = [
+    {
+      id: "blocked",
+      title: "Blocking issues",
+      description: "Resolve gate or scope blockers before the next formal review.",
+      tone: "danger",
+      findings: blocked,
+    },
+    {
+      id: "failed",
+      title: "Failed and rectification required",
+      description: "These items still need supplementary files or corrected evidence.",
+      tone: "warning",
+      findings: failed,
+    },
+    {
+      id: "pendingHuman",
+      title: "Pending human judgement",
+      description: "A supervisor still needs to confirm whether the evidence is acceptable.",
+      tone: "info",
+      findings: pendingHuman,
+    },
+    {
+      id: "warning",
+      title: "Warnings and follow-up",
+      description: "These items are not blocking now, but should be tracked in the next round.",
+      tone: "muted",
+      findings: warning,
+    },
+  ];
+  return groups.filter((group) => group.findings.length > 0);
+}
+
 function compareTaskByUpdatedAtDesc(left: OpeningConditionPilotTask, right: OpeningConditionPilotTask) {
   return Date.parse(right.updatedAt || right.createdAt || "") - Date.parse(left.updatedAt || left.createdAt || "");
 }
@@ -2604,6 +2651,449 @@ function writeHiddenPilotRunAudits(workspaceId: string, audits: HiddenPilotRunAu
     return;
   }
   window.localStorage.setItem(getHiddenRunStorageKey(workspaceId), JSON.stringify(audits));
+}
+
+function OpeningConditionReportDeliveryWorkbench({
+  packet,
+  pilotTask,
+  workspaceTasks,
+  pilotBusy,
+  onGenerateReport,
+  onArchive,
+  onStartRectificationRerun,
+}: {
+  packet: OpeningConditionReviewPacket;
+  pilotTask?: OpeningConditionPilotTask | null;
+  workspaceTasks?: OpeningConditionPilotTask[];
+  pilotBusy?: boolean;
+  onGenerateReport?: () => void;
+  onArchive?: () => void;
+  onStartRectificationRerun?: () => void;
+}) {
+  const [hiddenRunAudits, setHiddenRunAudits] = useState<HiddenPilotRunAudit[]>(() =>
+    readHiddenPilotRunAudits(packet.workspaceId),
+  );
+  const hiddenRunIds = new Set(hiddenRunAudits.map((item) => item.taskId));
+  const historyTasks = [...(workspaceTasks ?? [])]
+    .filter((task) => !hiddenRunIds.has(task.id) || task.id === pilotTask?.id)
+    .sort(compareTaskByUpdatedAtDesc);
+  const [selectedHistoryTaskId, setSelectedHistoryTaskId] = useState<string | null>(null);
+  const selectedTask = historyTasks.find((task) => task.id === selectedHistoryTaskId) ?? pilotTask ?? historyTasks[0] ?? null;
+  const reportAsset = selectedTask?.reportAsset;
+  const packageDiagnostics = reportAsset?.packageDiagnostics;
+  const runRoundMap = buildRunRoundMap(historyTasks);
+  const currentRound = selectedTask ? runRoundMap.get(selectedTask.id) : undefined;
+  const findings = buildReportFindings(selectedTask);
+  const findingGroups = buildReportFindingGroups(findings);
+  const closureDiff = buildRectificationClosureDiff(selectedTask, historyTasks);
+  const previousRun = summarizePreviousRun(selectedTask, historyTasks);
+  const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
+  const isCurrentRun = Boolean(selectedTask && pilotTask && selectedTask.id === pilotTask.id);
+  const selectedActionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask: selectedTask });
+  const selectedOpenReviewCount =
+    selectedTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
+  const findingSummary = {
+    blocked: findings.filter((item) => item.disposition === "blocked").length,
+    failed: findings.filter((item) => item.disposition === "fail" || item.disposition === "reject").length,
+    pendingHuman: findings.filter((item) => item.disposition === "needs_human_review").length,
+    warning: findings.filter((item) => item.disposition === "warning").length,
+  };
+  const canGenerateReport = Boolean(
+    pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && selectedOpenReviewCount === 0 && !reportAsset,
+  );
+  const canStartRectificationRerun = Boolean(
+    onStartRectificationRerun && isCurrentRun && selectedTask?.state === "archived" && pilotTask?.state === "archived",
+  );
+
+  function hideHistoryRun(taskId: string) {
+    const nextAudits = [
+      ...hiddenRunAudits.filter((item) => item.taskId !== taskId),
+      {
+        taskId,
+        hiddenAt: new Date().toISOString(),
+        reason: "operator_hidden_test_or_mistaken_run",
+      },
+    ];
+    setHiddenRunAudits(nextAudits);
+    writeHiddenPilotRunAudits(packet.workspaceId, nextAudits);
+    if (selectedHistoryTaskId === taskId) {
+      setSelectedHistoryTaskId(null);
+    }
+  }
+
+  return (
+    <section className="opening-panel opening-panel-report opening-panel-wide">
+      <span className="eyebrow">报告交付工作台</span>
+      <h2>{reportAsset?.title ?? packet.reportSummary.title}</h2>
+      <p>
+        {reportAsset
+          ? `平台报告资产已生成：共 ${reportAsset.summary.total} 项，符合 ${reportAsset.summary.passed} 项，不符合 ${reportAsset.summary.failed} 项，待复核 ${reportAsset.summary.humanReview} 项。`
+          : packet.reportSummary.conclusion}
+      </p>
+      <div className="opening-condition-meta">
+        <span>{packet.workspaceContext.contractPackage}</span>
+        <span>{packet.boundBasisSetVersionId ?? "未绑定依据版本"}</span>
+        <span>{reportAsset?.status ?? "待生成报告"}</span>
+      </div>
+      <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
+      <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
+
+      {selectedTask && (
+        <div className="opening-report-workbench">
+          <div className="opening-report-workbench-header">
+            <div>
+              <span className="eyebrow">Selected Run</span>
+              <h3>{isCurrentRun ? "当前查看轮次" : "历史轮次详情"}</h3>
+              <p>
+                {isCurrentRun
+                  ? "以当前 run 为中心查看结论、问题项和唯一整改复审入口。"
+                  : "这是历史只读快照，用来对比上一轮与本轮的整改变化。"}
+              </p>
+            </div>
+            <div className="opening-report-chip-row">
+              <span className={`opening-report-chip tone-${isCurrentRun ? "info" : "muted"}`}>
+                {isCurrentRun ? "当前 run" : "历史只读"}
+              </span>
+              {currentRound ? <span className="opening-report-chip tone-muted">第 {currentRound} 轮</span> : null}
+              <span className={`opening-report-chip tone-${selectedTask.state === "archived" ? "success" : "warning"}`}>
+                {getTaskConclusionLabel(selectedTask)}
+              </span>
+              <span className="opening-report-chip tone-muted">任务 {selectedTask.id}</span>
+            </div>
+          </div>
+
+          <OpeningConditionActionOwnershipSummary
+            summary={selectedActionOwnership}
+            eyebrow={isCurrentRun ? "Current Run Ownership" : "Historical Run Snapshot"}
+            title={isCurrentRun ? "当前轮次责任与下一动作" : "历史轮次责任快照"}
+            description={
+              isCurrentRun
+                ? "报告页是试点交付工作台。这里要回答当前轮次的结论、还差什么、以及下一步从哪里唯一发起。"
+                : "历史轮次只保留当时的责任边界与处理语义，便于复盘和对比，不再提供直接变更入口。"
+            }
+          />
+
+          <div className="opening-report-summary-grid">
+            <div className="opening-report-summary-card tone-danger">
+              <strong>阻塞项</strong>
+              <span>{findingSummary.blocked}</span>
+              <p>前置门禁或范围阻塞项。</p>
+            </div>
+            <div className="opening-report-summary-card tone-warning">
+              <strong>不通过项</strong>
+              <span>{findingSummary.failed}</span>
+              <p>仍需补件或整改后重审。</p>
+            </div>
+            <div className="opening-report-summary-card tone-info">
+              <strong>待人工判断</strong>
+              <span>{findingSummary.pendingHuman}</span>
+              <p>需要监理继续人工判断。</p>
+            </div>
+            <div className="opening-report-summary-card tone-muted">
+              <strong>提示关注</strong>
+              <span>{findingSummary.warning}</span>
+              <p>非阻塞提示，但建议跟踪。</p>
+            </div>
+          </div>
+
+          <div className="opening-report-context-grid">
+            <div className="opening-action-summary-item">
+              <strong>轮次上下文</strong>
+              <small>创建 {selectedTask.createdAt}</small>
+              <small>更新 {selectedTask.updatedAt}</small>
+            </div>
+            <div className="opening-action-summary-item">
+              <strong>人工复核队列</strong>
+              <small>{selectedOpenReviewCount} 项仍待处理或延期。</small>
+            </div>
+            <div className="opening-action-summary-item">
+              <strong>下一动作</strong>
+              <small>{selectedActionOwnership?.nextAction ?? "暂无下一动作。"}</small>
+            </div>
+          </div>
+
+          {canStartRectificationRerun && (
+            <div className="dialog-actions compact">
+              <button type="button" className="primary" onClick={onStartRectificationRerun} disabled={pilotBusy}>
+                <RotateCcw size={16} />
+                发起下一轮整改复审
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {currentRound ? <small>{isCurrentRun ? "当前" : "所选"}为同工作区第 {currentRound} 轮资料核查 / 整改复审。</small> : null}
+
+      {previousRun && (
+        <div className="opening-record-list">
+          <div>
+            <strong>整改复审对比</strong>
+            <span>上一轮不通过 {previousRun.previousFailed} 项 / 当前不通过 {previousRun.currentFailed} 项</span>
+            <p>仍延续到本轮的待整改项 {previousRun.carried} 项，可据此判断补件是否真正解决问题。</p>
+          </div>
+        </div>
+      )}
+
+      {closureDiff && (
+        <div className="opening-record-list">
+          <div>
+            <strong>整改闭环对照</strong>
+            <span>对比上一归档轮次 {runRoundMap.get(closureDiff.previousTask.id) ?? "-"} 与当前查看轮次 {currentRound ?? "-"}</span>
+            <p>用于判断本轮补件是否真正解决上一轮问题，并识别本轮新增风险。</p>
+          </div>
+          <div className="opening-report-summary-grid">
+            <div className="opening-report-summary-card tone-success">
+              <strong>已整改</strong>
+              <span>{closureDiff.summary.rectified}</span>
+              <p>上一轮问题在本轮未再构成阻塞。</p>
+            </div>
+            <div className="opening-report-summary-card tone-danger">
+              <strong>仍未整改</strong>
+              <span>{closureDiff.summary.carried_over}</span>
+              <p>上一轮问题延续到本轮。</p>
+            </div>
+            <div className="opening-report-summary-card tone-warning">
+              <strong>本轮新增</strong>
+              <span>{closureDiff.summary.newly_added}</span>
+              <p>本轮资料暴露的新问题。</p>
+            </div>
+            <div className="opening-report-summary-card tone-info">
+              <strong>待人工判断</strong>
+              <span>{closureDiff.summary.pending_human_review}</span>
+              <p>需要监理确认处理结论。</p>
+            </div>
+          </div>
+          {closureDiff.items.slice(0, 8).map((item) => (
+            <div key={item.id} className="opening-closure-diff-item">
+              <div className="opening-report-finding-header">
+                <strong>{item.title}</strong>
+                <span className={`opening-report-chip tone-${getClosureCategoryTone(item.closureCategory)}`}>
+                  {getClosureCategoryLabel(item.closureCategory)}
+                </span>
+              </div>
+              <span>{item.category}</span>
+              <div className="opening-closure-status-grid">
+                <small>
+                  <strong>上一轮</strong>
+                  {item.previousStatus}
+                </small>
+                <small>
+                  <strong>本轮</strong>
+                  {item.currentStatus}
+                </small>
+              </div>
+              <p>{item.nextAction}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {packageDiagnostics && (
+        <div className="opening-record-list">
+          <div>
+            <strong>试点输入</strong>
+            <span>
+              {packageDiagnostics.inputObjects.basisFileName ?? "未记录依据"} /{" "}
+              {packageDiagnostics.inputObjects.checklistFileName ?? "未记录核查表"}
+            </span>
+            <p>{packageDiagnostics.inputObjects.sourceFileNames.slice(0, 6).join(" / ") || "未记录资料包文件"}</p>
+          </div>
+          <div>
+            <strong>核查与复核</strong>
+            <span>
+              核查 {packageDiagnostics.matching.total} 项 / 证据 {packageDiagnostics.matching.evidenceCount} 条 / 阻塞{" "}
+              {packageDiagnostics.humanReview.blockingCount} 项
+            </span>
+            <p>
+              人工确认 {packageDiagnostics.humanReview.confirmed} 项，修正 {packageDiagnostics.humanReview.corrected} 项，驳回{" "}
+              {packageDiagnostics.humanReview.rejected} 项，延期 {packageDiagnostics.humanReview.deferred} 项。
+            </p>
+          </div>
+          <div>
+            <strong>交付状态</strong>
+            <span>Provider {packageDiagnostics.providerReadiness?.status ?? "unrecorded"} / 归档 {packageDiagnostics.archiveStatus}</span>
+            <p>{packageDiagnostics.blockingReasons.length > 0 ? packageDiagnostics.blockingReasons.join(" / ") : "未记录阻塞原因。"}</p>
+          </div>
+        </div>
+      )}
+
+      {findings.length > 0 && (
+        <div className="opening-record-list">
+          <div>
+            <strong>不符合与待整改项</strong>
+            <span>{findings.length} 项需要持续跟踪</span>
+            <p>按交付优先级分组展示，便于监理先看阻塞、再看补件、最后看提示项。</p>
+          </div>
+          {findingGroups.map((group) => (
+            <div key={group.id} className={`opening-finding-group tone-${group.tone}`}>
+              <div className="opening-finding-group-header">
+                <div>
+                  <strong>{group.title}</strong>
+                  <p>{group.description}</p>
+                </div>
+                <span className={`opening-report-chip tone-${group.tone}`}>{group.findings.length} 项</span>
+              </div>
+              <div className="opening-finding-group-list">
+                {group.findings.map((finding) => (
+                  <div key={finding.id} className="opening-report-finding">
+                    <div className="opening-report-finding-header">
+                      <strong>{finding.title}</strong>
+                      <div className="opening-report-chip-row">
+                        <span className={`opening-report-chip tone-${finding.dispositionTone}`}>{finding.dispositionLabel}</span>
+                        <span className={`opening-report-chip tone-${finding.severityTone}`}>{finding.severityLabel}</span>
+                        <span className="opening-report-chip tone-muted">{finding.statusLabel}</span>
+                      </div>
+                    </div>
+                    <span>{finding.category}</span>
+                    <p>{finding.description}</p>
+                    <div className="opening-report-detail-list opening-report-finding-detail-grid">
+                      <small>
+                        <strong>结论</strong>
+                        {finding.dispositionLabel}
+                      </small>
+                      <small>
+                        <strong>风险</strong>
+                        {finding.severityLabel}
+                      </small>
+                      <small>
+                        <strong>范围</strong>
+                        {finding.statusLabel}
+                      </small>
+                      <small>
+                        <strong>依据</strong>
+                        {finding.basis}
+                      </small>
+                      <small>
+                        <strong>整改建议</strong>
+                        {finding.rectification}
+                      </small>
+                      {finding.evidence.length > 0 && (
+                        <small>
+                          <strong>证据</strong>
+                          {finding.evidence.join(" / ")}
+                        </small>
+                      )}
+                      {finding.humanReview.length > 0 && (
+                        <small>
+                          <strong>人工复核</strong>
+                          {finding.humanReview.join(" / ")}
+                        </small>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {decisionLedger.length > 0 && (
+        <div className="opening-record-list">
+          <div>
+            <strong>人工复核决策留痕</strong>
+            <span>{decisionLedger.length} 条决策</span>
+            <p>归档后保留本轮人工确认、修正、驳回与延期记录。</p>
+          </div>
+          {decisionLedger.map((item) => (
+            <div key={item.reviewId}>
+              <strong>{item.targetLabel ?? item.targetId}</strong>
+              <span>
+                {item.category ?? "未分类"} | {item.status} | {item.reviewerId ?? "unknown"}
+              </span>
+              <p>{item.reason}</p>
+              {item.safeNote && <small>{item.safeNote}</small>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {historyTasks.length > 0 && (
+        <div className="opening-record-list">
+          <div>
+            <strong>历史核查轮次</strong>
+            <span>{historyTasks.length} 轮记录</span>
+            <p>新的整改复审会生成新的 run。历史 run 保留为只读记录，已隐藏测试轮次 {hiddenRunAudits.length} 条。</p>
+          </div>
+          {historyTasks.map((task) => {
+            const taskFindings = buildReportFindings(task);
+            const taskBlockingCount = taskFindings.filter(
+              (item) => item.disposition === "fail" || item.disposition === "reject" || item.disposition === "blocked",
+            ).length;
+            const taskOpenReviewCount = task.humanReviewQueue.filter(
+              (item) => item.status === "open" || item.status === "deferred",
+            ).length;
+            const isSelected = selectedTask?.id === task.id;
+
+            return (
+              <div key={task.id} className={isSelected ? "opening-history-item opening-selected-record" : "opening-history-item"}>
+                <div className="opening-history-item-header">
+                  <strong>
+                    第 {runRoundMap.get(task.id) ?? "-"} 轮 / {task.id}
+                  </strong>
+                  <div className="opening-report-chip-row">
+                    {isSelected && <span className="opening-report-chip tone-success">正在查看</span>}
+                    <span className={`opening-report-chip tone-${pilotTask?.id === task.id ? "info" : "muted"}`}>
+                      {pilotTask?.id === task.id ? "当前 run" : "历史轮次"}
+                    </span>
+                    <span className={`opening-report-chip tone-${task.state === "archived" ? "success" : "warning"}`}>
+                      {getTaskConclusionLabel(task)}
+                    </span>
+                  </div>
+                </div>
+                <p>
+                  创建 {task.createdAt} / 更新 {task.updatedAt} / 不通过 {taskBlockingCount} 项 / 待人工处理 {taskOpenReviewCount} 项
+                </p>
+                <div className="opening-history-item-summary">
+                  <small>
+                    <strong>轮次状态</strong>
+                    {getTaskConclusionLabel(task)}
+                  </small>
+                  <small>
+                    <strong>人工待处理</strong>
+                    {taskOpenReviewCount}
+                  </small>
+                </div>
+                <div className="dialog-actions compact">
+                  <button
+                    type="button"
+                    className={isSelected ? "primary" : "secondary"}
+                    onClick={() => setSelectedHistoryTaskId(task.id)}
+                  >
+                    {isSelected ? "当前查看中" : "查看该轮详情"}
+                  </button>
+                  {pilotTask?.id !== task.id && (
+                    <button type="button" className="secondary" onClick={() => hideHistoryRun(task.id)} disabled={pilotBusy}>
+                      <EyeOff size={16} />
+                      隐藏测试轮次
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {(onGenerateReport || onArchive) && (
+        <div className="dialog-actions">
+          {onGenerateReport && (
+            <button type="button" className="primary" onClick={onGenerateReport} disabled={pilotBusy || !canGenerateReport}>
+              生成报告摘要
+            </button>
+          )}
+          {onArchive && reportAsset?.status === "ready" && isCurrentRun && (
+            <button type="button" className="secondary" onClick={onArchive} disabled={pilotBusy}>
+              归档任务
+            </button>
+          )}
+        </div>
+      )}
+
+      {selectedTask && selectedOpenReviewCount > 0 && <small>仍有 {selectedOpenReviewCount} 项人工复核阻塞，处理后才能生成报告。</small>}
+    </section>
+  );
 }
 
 function OpeningConditionReportArchivePage({

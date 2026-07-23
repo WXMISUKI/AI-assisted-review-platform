@@ -176,6 +176,99 @@
   background: var(--surface-muted);
 }
 
+.opening-report-workbench {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface));
+}
+
+.opening-report-workbench-header,
+.opening-finding-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.opening-report-workbench-header h3,
+.opening-report-workbench-header p,
+.opening-finding-group-header p {
+  margin: 0;
+}
+
+.opening-report-context-grid,
+.opening-history-item-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.opening-history-item-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.opening-history-item-summary small {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+.opening-history-item-summary small strong {
+  color: var(--text-primary);
+}
+
+.opening-finding-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.opening-finding-group.tone-danger {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 50%, var(--surface));
+}
+
+.opening-finding-group.tone-warning {
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
+  background: color-mix(in srgb, var(--warning-soft) 50%, var(--surface));
+}
+
+.opening-finding-group.tone-info {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary-soft) 48%, var(--surface));
+}
+
+.opening-finding-group.tone-muted {
+  background: var(--surface-muted);
+}
+
+.opening-finding-group-list {
+  display: grid;
+  gap: 12px;
+}
+
+.opening-report-finding-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.opening-report-finding-detail-grid small {
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 80%, var(--surface-muted));
+}
+
 .opening-intake-guidance-card {
   gap: 14px;
   border-style: dashed;
@@ -868,12 +961,17 @@
 
 @media (max-width: 960px) {
   .opening-action-summary-header,
+  .opening-report-workbench-header,
+  .opening-finding-group-header,
   .opening-report-finding-header,
   .opening-history-item-header {
     flex-direction: column;
   }
 
   .opening-action-summary-grid,
+  .opening-report-context-grid,
+  .opening-history-item-summary,
+  .opening-report-finding-detail-grid,
   .opening-object-summary-grid,
   .opening-report-summary-grid,
   .opening-rerun-asset-groups,

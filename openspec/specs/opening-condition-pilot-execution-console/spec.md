@@ -138,6 +138,11 @@ The opening-condition execution console SHALL keep operator actions scoped to th
 - **THEN** the report page provides the primary entry into rerun intake mode
 - **AND** the material-intake page only opens rerun upload actions after that intent has been explicitly set
 
+#### Scenario: Historical run detail does not expose rerun entry
+- **WHEN** the operator is inspecting a non-current historical round
+- **THEN** the report page keeps that round read-only
+- **AND** it does not expose the primary rectification-rerun action for that historical selection
+
 ### Requirement: Human-review delivery guidance
 The opening-condition execution console SHALL show task-owned human-review progress and next action guidance after formal matching.
 
@@ -190,8 +195,8 @@ The opening-condition execution console SHALL show the current run's action owne
 - **THEN** it shows who currently owns the next step
 - **AND** it explains what action should be completed before the run can advance
 
-
 #### Scenario: Operator opens workspace overview
 - **WHEN** the workspace overview is backed by a current or selected run
 - **THEN** it can consume the same shared action ownership data as the execution console
 - **AND** it shows the operator which page should be opened next to continue the run
+

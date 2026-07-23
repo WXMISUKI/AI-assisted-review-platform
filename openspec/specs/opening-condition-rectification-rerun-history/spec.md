@@ -55,6 +55,11 @@ The system SHALL allow operators to inspect a specific historical run in detail 
 - **WHEN** the selected run or previous run contains human-reviewed checklist items
 - **THEN** the rectification difference uses normalized operator-facing states instead of raw `needs_human_review` values
 
+#### Scenario: History selection updates the delivery workbench
+- **WHEN** the operator switches the selected run from the history list
+- **THEN** the report delivery workbench updates its selected-run summary, findings, closure comparison, and decision ledger to match that run
+- **AND** it preserves read-only history semantics for non-current rounds
+
 ### Requirement: Historical action ownership snapshot
 The system SHALL preserve an operator-facing action ownership snapshot when a historical run is inspected.
 
@@ -67,3 +72,4 @@ The system SHALL preserve an operator-facing action ownership snapshot when a hi
 - **WHEN** the report page compares the selected round with a previous archived round
 - **THEN** the historical comparison keeps the archived round read-only
 - **AND** it does not suggest mutation actions against the historical round
+

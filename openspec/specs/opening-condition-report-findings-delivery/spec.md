@@ -14,6 +14,11 @@ The system SHALL render the opening-condition auxiliary report as a findings-ori
 - **WHEN** the report asset includes human-review decisions
 - **THEN** the report view shows which findings were confirmed, corrected, rejected, or deferred by a human reviewer
 
+#### Scenario: Report contains mixed delivery priorities
+- **WHEN** the selected run contains blocked, failed, pending-human-review, and warning findings
+- **THEN** the report view groups those findings by operator-facing delivery priority instead of one undifferentiated list
+- **AND** each group remains visually scannable as part of the report handoff
+
 ### Requirement: Rectification handoff summary
 The report SHALL provide a concise handoff summary for the next rectification round, including adjacent-run closure status when history is available.
 
