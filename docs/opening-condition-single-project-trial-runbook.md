@@ -156,3 +156,9 @@ npm run smoke:opening-condition:ui
 上传合同/资质依据后，平台现在会为依据记录保留 `Basis Preview`：来源文件、结构化事实摘要、缺失字段、置信度、人工确认状态和下一步动作。这个预览用于回答“平台准备把什么当作正式审核依据”，不是资料包缺失判断。
 
 试点快速初始化仍会为当前 run 写入可发布依据，但它会带上预览留痕。生产化时应升级为：OCR/Provider 先生成候选预览，监理或资料负责人确认/修正后再发布，正式核查只允许绑定已发布依据版本。
+
+## 2026-07-23 补充：依据预览结构化抽取
+
+本轮补齐了依据预览的确定性刷新语义：`POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/extract` 会基于依据来源文件 metadata 和可选 bounded text 生成 `Basis Preview`，并记录 extractor、来源文件、bounded text 摘要、匹配信号、缺失字段、置信度和下一步动作。
+
+刷新后的依据会回到 `needs_confirmation`，发布前必须重新人工确认。`trial-bootstrap` 仍可为了单项目试点快速写入已确认默认值，但它也使用同一套 preview/provenance 模型，避免“试点链路”和“正式治理链路”语义分叉。

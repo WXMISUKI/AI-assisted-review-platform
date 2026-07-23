@@ -21,6 +21,7 @@ import {
   generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotIntake,
   publishOpeningConditionPilotBasis,
+  refreshOpeningConditionPilotBasisPreview,
   runOpeningConditionPilotMatch,
   upsertOpeningConditionPilotBasis,
   upsertOpeningConditionPilotKnowledgeBase,
@@ -447,6 +448,43 @@ export function App() {
     }
   }
 
+  async function refreshOpeningPilotBasisPreview(basisId: string) {
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可抽取的依据记录，请先初始化试点任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，不能刷新依据预览；请发起新的整改复审 run。");
+      return;
+    }
+
+    setOpeningPilotBusy(true);
+    try {
+      const result = await refreshOpeningConditionPilotBasisPreview(openingPilotTask.context.workspaceId, basisId, {
+        projectId: openingPilotTask.context.projectId,
+        contractPackageId: openingPilotTask.context.contractPackageId,
+        participatingOrganizationId: openingPilotTask.context.participatingOrganizationId,
+        safeNote: "Operator refreshed the deterministic basis preview before publication.",
+      });
+      if (!result.ok) {
+        setOpeningPilotStatus(result.message ?? "依据预览抽取刷新失败。");
+        return;
+      }
+
+      await refreshOpeningPilotTask(openingPilotTask.id, { preserveStatus: true });
+      const missingCount = result.basisVersion?.ingestionPreview?.missingFields.length ?? 0;
+      setOpeningPilotStatus(
+        missingCount > 0
+          ? `依据预览已刷新，仍有 ${missingCount} 个字段需要人工补充或确认。`
+          : "依据预览已刷新，请人工确认后发布。",
+      );
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "依据预览抽取刷新失败。");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
   async function confirmOpeningPilotMasterDataRecords() {
     if (!openingPilotTask) {
       setOpeningPilotStatus("褰撳墠娌℃湁鍙‘璁ょ殑涓绘暟鎹褰曪紝璇峰厛鍒濆鍖栬瘯鐐逛换鍔°€?");
@@ -796,6 +834,7 @@ export function App() {
       onInitializePilotTask={() => void initializeOpeningPilotTask()}
       onPublishPilotBasis={() => void publishOpeningPilotBasisRecord()}
       onPublishPilotBasisDecision={(basisId, safeNote) => void publishOpeningPilotBasisRecord({ basisId, safeNote })}
+      onRefreshPilotBasisPreview={(basisId) => void refreshOpeningPilotBasisPreview(basisId)}
       onConfirmPilotMasterData={() => void confirmOpeningPilotMasterDataRecords()}
       onDecidePilotMasterDataCandidate={(recordId, decision, safeNote) =>
         void decideOpeningPilotMasterDataRecord(recordId, decision, safeNote)

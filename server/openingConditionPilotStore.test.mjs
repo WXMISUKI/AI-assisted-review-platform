@@ -24,6 +24,7 @@ import {
   listOpeningConditionPilotTasks,
   listOpeningConditionPilotMasterData,
   publishOpeningConditionPilotBasisVersion,
+  refreshOpeningConditionPilotBasisPreview,
   runOpeningConditionPilotChecklistMatch,
   sanitizeOpeningConditionPilotValue,
   transitionOpeningConditionPilotTask,
@@ -221,9 +222,27 @@ test("requires human-confirmed basis ingestion preview before publication", asyn
 
     assert.equal(upserted.ok, true);
     assert.equal(upserted.basisVersion.ingestionPreview.status, "needs_confirmation");
+    assert.equal(upserted.basisVersion.ingestionPreview.provenance.extractor, "deterministic_basis_preview_v1");
     assert.equal("privateUrl" in upserted.basisVersion.sourceObject, false);
     assert.equal("rawText" in upserted.basisVersion.ingestionPreview.facts, false);
     assert.equal("token" in upserted.basisVersion.ingestionPreview, false);
+
+    const refreshed = await refreshOpeningConditionPilotBasisPreview(
+      "ws-1",
+      "basis-preview-1",
+      {
+        projectId: "project-1",
+        contractPackageId: "contract-1",
+        participatingOrganizationId: "org-1",
+        previewText:
+          "项目名称：ws-1 trial project\n施工单位：Preview subcontract team\n资质范围：trial qualification boundary\n人员范围：project manager and safety officer\n设备范围：crane and pump equipment\n有效期：2026-07-23 至 2026-08-23",
+      },
+      { storePath },
+    );
+    assert.equal(refreshed.ok, true);
+    assert.equal(refreshed.basisVersion.status, "pending_confirmation");
+    assert.equal(refreshed.basisVersion.ingestionPreview.status, "needs_confirmation");
+    assert.equal(refreshed.basisVersion.ingestionPreview.provenance.source, "metadata_and_text");
 
     const blockedPublish = await publishOpeningConditionPilotBasisVersion(
       "ws-1",

@@ -119,8 +119,25 @@ test("HTTP smoke protects the opening-condition pilot delivery chain", async () 
     );
     assert.equal(previewBasis.statusCode, 200);
     assert.equal(previewBasis.payload.basisVersion.ingestionPreview.status, "needs_confirmation");
+    assert.equal(previewBasis.payload.basisVersion.ingestionPreview.provenance.extractor, "deterministic_basis_preview_v1");
     assert.equal("privateUrl" in previewBasis.payload.basisVersion.sourceObject, false);
     assert.equal("token" in previewBasis.payload.basisVersion.ingestionPreview.facts, false);
+
+    const refreshedPreview = await requestJson(
+      baseUrl,
+      "POST",
+      "/api/opening-condition/workspaces/ws-http-smoke/basis/basis-http-preview/extract",
+      {
+        projectId: context.projectId,
+        contractPackageId: context.contractPackageId,
+        participatingOrganizationId: context.participatingOrganizationId,
+        previewText:
+          "项目名称：HTTP smoke project\n施工单位：HTTP smoke subcontract team\n资质范围：HTTP smoke boundary\n人员范围：project manager and safety officer\n设备范围：crane and pump equipment\n有效期：2026-07-23 至 2026-08-23",
+      },
+    );
+    assert.equal(refreshedPreview.statusCode, 200);
+    assert.equal(refreshedPreview.payload.basisVersion.status, "pending_confirmation");
+    assert.equal(refreshedPreview.payload.basisVersion.ingestionPreview.provenance.source, "metadata_and_text");
 
     const blockedPreviewPublish = await requestJson(
       baseUrl,

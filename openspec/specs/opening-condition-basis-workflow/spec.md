@@ -100,7 +100,7 @@ The opening-condition portal SHALL store an operator-facing structured preview f
 
 #### Scenario: Basis upload creates a structured preview
 - **WHEN** a contract or qualification basis object is registered for a workspace
-- **THEN** the system records source file evidence, preview facts, confidence, missing fields, preview status, and safe operator notes without storing raw provider traces or private URLs
+- **THEN** the system records source file evidence, preview facts, confidence, missing fields, preview status, extraction provenance, and safe operator notes without storing raw provider traces or private URLs
 
 #### Scenario: Preview requires human confirmation
 - **WHEN** a basis record has preview facts but has not been confirmed by an operator

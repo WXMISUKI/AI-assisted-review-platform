@@ -75,6 +75,17 @@ export interface OpeningConditionBasisIngestionPreview {
   factSummary: string;
   missingFields: string[];
   confidence: "high" | "medium" | "low";
+  provenance?: {
+    extractor: string;
+    source: string;
+    extractedAt: string;
+    sourceObjectId?: string;
+    sourceFileName?: string;
+    sourceContentType?: string;
+    boundedTextLength?: number;
+    boundedTextExcerpt?: string;
+    matchedSignals?: string[];
+  };
   confirmedBy?: string;
   confirmedAt?: string;
   publishedBy?: string;

@@ -14,6 +14,7 @@ const MAX_CHECKLIST_ITEMS = 300;
 const MAX_STRING_LENGTH = 2000;
 const MAX_KNOWLEDGE_BASE_RECORDS = 300;
 const MAX_KNOWLEDGE_BASE_ENTRIES = 200;
+const MAX_BASIS_PREVIEW_TEXT_LENGTH = 4000;
 const DEFAULT_STORE_PATH = resolve(process.cwd(), ".local-data", "opening-condition-pilot-tasks.json");
 
 export const pilotTaskStates = [
@@ -238,6 +239,160 @@ function normalizeBasisPreviewFacts(value = {}) {
   });
 }
 
+function normalizeBasisPreviewProvenance(value = {}, sourceObject = null) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    extractor: normalizeString(value.extractor, "deterministic_basis_preview_v1", 80),
+    source: normalizeString(value.source, "metadata_only", 80),
+    extractedAt: normalizeString(value.extractedAt, new Date().toISOString(), 80),
+    sourceObjectId: normalizeString(value.sourceObjectId ?? sourceObject?.objectId, "", 180) || undefined,
+    sourceFileName: normalizeString(value.sourceFileName ?? sourceObject?.fileName, "", 240) || undefined,
+    sourceContentType: normalizeString(value.sourceContentType ?? sourceObject?.contentType, "", 120) || undefined,
+    boundedTextLength: normalizeNumber(value.boundedTextLength, 0, MAX_BASIS_PREVIEW_TEXT_LENGTH),
+    boundedTextExcerpt: normalizeString(value.boundedTextExcerpt, "", 500) || undefined,
+    matchedSignals: normalizeStringList(value.matchedSignals, 20, 120),
+  });
+}
+
+function escapeRegExp(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function firstTextMatch(text, patterns = []) {
+  const source = normalizeString(text, "", MAX_BASIS_PREVIEW_TEXT_LENGTH);
+  if (!source) {
+    return "";
+  }
+
+  for (const pattern of patterns) {
+    const regex = pattern instanceof RegExp ? pattern : new RegExp(pattern, "i");
+    const match = source.match(regex);
+    if (match?.[1]) {
+      return normalizeString(match[1], "", 240);
+    }
+  }
+
+  return "";
+}
+
+function deriveBasisPreviewFactsFromSourceObject(sourceObject, context = {}, input = {}) {
+  const safeText = normalizeString(
+    input.previewText ?? input.boundedText ?? input.textSnippet ?? "",
+    "",
+    MAX_BASIS_PREVIEW_TEXT_LENGTH,
+  );
+  const sourceSummary = normalizeString(sourceObject?.summary, "", 500) || normalizeString(sourceObject?.fileName, "", 240);
+  const projectName =
+    firstTextMatch(safeText, [
+      /项目名称[：:\s]+([^\n\r;；。]{2,80})/,
+      /工程名称[：:\s]+([^\n\r;；。]{2,80})/,
+      /项目[：:\s]+([^\n\r;；。]{2,80})/,
+    ]) ||
+    normalizeString(context.projectName, "", 240) ||
+    normalizeString(context.projectId, "", 180) ||
+    sourceSummary;
+  const participantEntityName =
+    firstTextMatch(safeText, [
+      /施工单位[：:\s]+([^\n\r;；。]{2,80})/,
+      /分包单位[：:\s]+([^\n\r;；。]{2,80})/,
+      /参建单位[：:\s]+([^\n\r;；。]{2,80})/,
+      /单位名称[：:\s]+([^\n\r;；。]{2,80})/,
+    ]) ||
+    normalizeString(context.participatingOrganizationName, "", 240) ||
+    normalizeString(context.participatingOrganizationId, "", 180);
+  const qualificationScope =
+    firstTextMatch(safeText, [
+      /资质边界[：:\s]+([^\n\r;；。]{2,120})/,
+      /资质范围[：:\s]+([^\n\r;；。]{2,120})/,
+      /合同主体[：:\s]+([^\n\r;；。]{2,120})/,
+      /承包范围[：:\s]+([^\n\r;；。]{2,120})/,
+    ]) ||
+    normalizeString(input.qualificationScope, "", 500);
+  const personnelScope =
+    firstTextMatch(safeText, [
+      /人员范围[：:\s]+([^\n\r;；。]{2,120})/,
+      /人员配置[：:\s]+([^\n\r;；。]{2,120})/,
+      /项目管理人员[：:\s]+([^\n\r;；。]{2,120})/,
+    ]) ||
+    normalizeString(input.personnelScope, "", 500);
+  const equipmentScope =
+    firstTextMatch(safeText, [
+      /设备范围[：:\s]+([^\n\r;；。]{2,120})/,
+      /机械设备[：:\s]+([^\n\r;；。]{2,120})/,
+      /起重设备[：:\s]+([^\n\r;；。]{2,120})/,
+    ]) ||
+    normalizeString(input.equipmentScope, "", 500);
+  const effectivePeriod =
+    firstTextMatch(safeText, [
+      /有效期[：:\s]+([^\n\r;；。]{2,80})/,
+      /起止时间[：:\s]+([^\n\r;；。]{2,80})/,
+      /有效期限[：:\s]+([^\n\r;；。]{2,80})/,
+    ]) ||
+    normalizeString(input.effectivePeriod, "", 240);
+
+  const facts = normalizeBasisPreviewFacts({
+    projectId: normalizeString(context.projectId, "", 180) || undefined,
+    contractPackageId: normalizeString(context.contractPackageId, "", 180) || undefined,
+    participatingOrganizationId: normalizeString(context.participatingOrganizationId, "", 180) || undefined,
+    participantEntityName: participantEntityName || undefined,
+    basisFileName: sourceObject?.fileName,
+    qualificationScope: qualificationScope || undefined,
+    personnelScope: personnelScope || undefined,
+    equipmentScope: equipmentScope || undefined,
+    effectivePeriod: effectivePeriod || undefined,
+    sourceSummary,
+  });
+
+  const missingFields = [];
+  if (!facts.projectId) missingFields.push("projectId");
+  if (!facts.contractPackageId) missingFields.push("contractPackageId");
+  if (!facts.participatingOrganizationId) missingFields.push("participatingOrganizationId");
+  if (!facts.participantEntityName) missingFields.push("participantEntityName");
+  if (!facts.qualificationScope) missingFields.push("qualificationScope");
+  if (!facts.personnelScope) missingFields.push("personnelScope");
+  if (!facts.equipmentScope) missingFields.push("equipmentScope");
+  if (!facts.effectivePeriod) missingFields.push("effectivePeriod");
+
+  const provenance = normalizeBasisPreviewProvenance(
+    {
+      extractor: "deterministic_basis_preview_v1",
+      source: safeText ? "metadata_and_text" : "metadata_only",
+      sourceObjectId: sourceObject?.objectId,
+      sourceFileName: sourceObject?.fileName,
+      sourceContentType: sourceObject?.contentType,
+      extractedAt: new Date().toISOString(),
+      boundedTextLength: safeText.length,
+      boundedTextExcerpt: safeText.slice(0, 240),
+      matchedSignals: [
+        projectName && projectName !== sourceSummary ? "project_name" : "",
+        participantEntityName ? "participant_entity" : "",
+        qualificationScope ? "qualification_scope" : "",
+        personnelScope ? "personnel_scope" : "",
+        equipmentScope ? "equipment_scope" : "",
+        effectivePeriod ? "effective_period" : "",
+      ].filter(Boolean),
+    },
+    sourceObject,
+  );
+
+  return {
+    facts,
+    missingFields,
+    confidence: safeText ? (missingFields.length > 2 ? "medium" : "high") : "medium",
+    factSummary:
+      normalizeString(
+        input.previewFactSummary,
+        "",
+        600,
+      ) ||
+      `Basis preview derived from ${sourceObject?.fileName || "uploaded basis object"}${safeText ? " and bounded text" : ""}.`,
+    provenance,
+  };
+}
+
 function normalizeBasisIngestionPreview(value, basisRecord = {}) {
   const fallbackConfirmed = basisRecord.status === "confirmed" || basisRecord.status === "published";
   const preview = isPlainObject(value) ? value : {};
@@ -275,6 +430,7 @@ function normalizeBasisIngestionPreview(value, basisRecord = {}) {
           : "Publish the confirmed basis version before formal matching.",
     500,
   );
+  const provenance = normalizeBasisPreviewProvenance(preview.provenance ?? basisRecord.ingestionPreview?.provenance, sourceObject);
 
   return sanitizeOpeningConditionPilotValue({
     status,
@@ -284,6 +440,7 @@ function normalizeBasisIngestionPreview(value, basisRecord = {}) {
     factSummary,
     missingFields,
     confidence,
+    provenance,
     confirmedBy: normalizeString(preview.confirmedBy ?? basisRecord.confirmedBy, "", 160) || undefined,
     confirmedAt: normalizeString(preview.confirmedAt ?? basisRecord.confirmedAt, "", 80) || undefined,
     publishedBy: normalizeString(preview.publishedBy ?? basisRecord.publishedBy, "", 160) || undefined,
@@ -294,34 +451,54 @@ function normalizeBasisIngestionPreview(value, basisRecord = {}) {
 }
 
 function buildBasisIngestionPreviewFromSourceObject(sourceObject, context = {}, input = {}) {
-  const basisFileName = sourceObject?.fileName ?? "";
-  const facts = normalizeBasisPreviewFacts({
-    projectId: context.projectId,
-    contractPackageId: context.contractPackageId,
-    participatingOrganizationId: context.participatingOrganizationId,
-    participantEntityName: input.participantEntityName,
-    basisFileName,
-    qualificationScope: input.qualificationScope ?? "Trial preview: qualification scope requires operator confirmation.",
-    personnelScope: input.personnelScope ?? "Trial preview: personnel scope requires operator confirmation.",
-    equipmentScope: input.equipmentScope ?? "Trial preview: equipment scope requires operator confirmation.",
-    sourceSummary: sourceObject?.summary ?? basisFileName,
-  });
+  const extraction = deriveBasisPreviewFactsFromSourceObject(sourceObject, context, input);
+  const facts =
+    input.previewConfirmed === false
+      ? extraction.facts
+      : normalizeBasisPreviewFacts({
+          ...extraction.facts,
+          qualificationScope:
+            extraction.facts.qualificationScope ??
+            input.qualificationScope ??
+            "Trial preview: qualification scope requires operator confirmation.",
+          personnelScope:
+            extraction.facts.personnelScope ??
+            input.personnelScope ??
+            "Trial preview: personnel scope requires operator confirmation.",
+          equipmentScope:
+            extraction.facts.equipmentScope ??
+            input.equipmentScope ??
+            "Trial preview: equipment scope requires operator confirmation.",
+          effectivePeriod:
+            extraction.facts.effectivePeriod ??
+            input.effectivePeriod ??
+            "Trial preview: effective period requires operator confirmation.",
+        });
 
   return normalizeBasisIngestionPreview({
     status: input.previewConfirmed === false ? "needs_confirmation" : "confirmed",
-    source: input.previewSource ?? "metadata_derived",
+    source: input.previewSource ?? (input.previewText ? "metadata_and_text" : "metadata_derived"),
     sourceObject,
     facts,
     factSummary:
       input.previewFactSummary ??
-      `Basis preview derived from ${basisFileName || "uploaded basis object"} for ${context.contractPackageId || "the current contract package"}.`,
-    missingFields: Array.isArray(input.previewMissingFields) ? input.previewMissingFields : [],
-    confidence: input.previewConfidence ?? "medium",
+      extraction.factSummary ??
+      `Basis preview derived from ${sourceObject?.fileName || "uploaded basis object"} for ${context.contractPackageId || "the current contract package"}.`,
+    missingFields:
+      input.previewConfirmed === false
+        ? Array.isArray(input.previewMissingFields)
+          ? input.previewMissingFields
+          : extraction.missingFields
+        : Array.isArray(input.previewMissingFields)
+          ? input.previewMissingFields
+          : [],
+    confidence: input.previewConfidence ?? extraction.confidence ?? "medium",
     confirmedBy: input.previewConfirmed === false ? undefined : input.submittedBy,
     confirmedAt: input.previewConfirmed === false ? undefined : new Date().toISOString(),
     safeNote:
       input.previewSafeNote ??
       "Trial metadata preview. Production should replace this with OCR/provider extraction plus human confirmation.",
+    provenance: extraction.provenance,
   });
 }
 
@@ -1622,7 +1799,7 @@ export async function publishOpeningConditionPilotBasisVersion(workspaceId, basi
 
     const existingBasis = normalizeBasisRecord(snapshot.basisVersions[index], workspaceId);
     const preview = existingBasis?.ingestionPreview;
-    if (!preview || preview.status === "needs_confirmation" || preview.status === "rejected" || preview.missingFields.length > 0) {
+    if (!preview || preview.status !== "confirmed" || preview.missingFields.length > 0) {
       return {
         snapshot,
         value: {
@@ -1677,6 +1854,92 @@ export async function publishOpeningConditionPilotBasisVersion(workspaceId, basi
       value: {
         ok: true,
         basisVersion: nextBasisVersions[index],
+      },
+    };
+  }, options.storePath);
+}
+
+export async function refreshOpeningConditionPilotBasisPreview(workspaceId, basisId, input = {}, options = {}) {
+  return mutateSnapshot((snapshot) => {
+    const index = snapshot.basisVersions.findIndex((item) => item.workspaceId === workspaceId && item.id === basisId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition basis version not found.",
+        },
+      };
+    }
+
+    const existingBasis = normalizeBasisRecord(snapshot.basisVersions[index], workspaceId);
+    const sourceObject = normalizeObjectRef(input.sourceObject ?? existingBasis.sourceObject);
+    if (!sourceObject) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "missing_source_object",
+          message: "Basis preview extraction requires a basis source object.",
+          basisVersion: existingBasis,
+        },
+      };
+    }
+
+    const extraction = buildBasisIngestionPreviewFromSourceObject(
+      sourceObject,
+      {
+        workspaceId,
+        projectId: input.projectId ?? input.context?.projectId,
+        contractPackageId: input.contractPackageId ?? input.context?.contractPackageId,
+        participatingOrganizationId: input.participatingOrganizationId ?? input.context?.participatingOrganizationId,
+        participatingOrganizationName:
+          input.participatingOrganizationName ?? input.context?.participatingOrganizationName,
+      },
+      {
+        ...input,
+        previewConfirmed: false,
+        previewSource: input.previewText || input.boundedText || input.textSnippet ? "metadata_and_text" : "metadata_derived",
+        previewSafeNote:
+          input.safeNote ??
+          "Deterministic extraction preview. Human confirmation is required before this basis can be published.",
+      },
+    );
+    const nextPreview = normalizeBasisIngestionPreview(
+      {
+        ...extraction,
+        status: "needs_confirmation",
+        nextAction: extraction.missingFields.length > 0
+          ? "Review extracted basis facts, fill missing fields, then confirm the preview."
+          : "Review and human-confirm the extracted basis preview before publication.",
+      },
+      existingBasis,
+    );
+    const now = new Date().toISOString();
+    const nextBasis = normalizeBasisRecord(
+      {
+        ...existingBasis,
+        status: "pending_confirmation",
+        sourceObject,
+        confidence: nextPreview.confidence,
+        safeNote: input.safeNote ?? existingBasis.safeNote,
+        ingestionPreview: nextPreview,
+        updatedAt: now,
+      },
+      workspaceId,
+    );
+    const nextBasisVersions = [...snapshot.basisVersions];
+    nextBasisVersions[index] = nextBasis;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        basisVersions: nextBasisVersions,
+      },
+      value: {
+        ok: true,
+        basisVersion: nextBasis,
       },
     };
   }, options.storePath);

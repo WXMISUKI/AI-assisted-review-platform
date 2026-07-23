@@ -47,6 +47,7 @@ import {
   listOpeningConditionPilotMasterData,
   listOpeningConditionPilotTasks,
   publishOpeningConditionPilotBasisVersion,
+  refreshOpeningConditionPilotBasisPreview,
   runOpeningConditionPilotChecklistMatch,
   transitionOpeningConditionPilotTask,
   upsertOpeningConditionPilotBasisVersion,
@@ -240,6 +241,7 @@ export function createBackendServer(options = {}) {
           "POST /api/opening-condition/pilot-tasks/:taskId/knowledge-base/:knowledgeBaseId/bind",
           "GET /api/opening-condition/workspaces/:workspaceId/basis",
           "PUT /api/opening-condition/workspaces/:workspaceId/basis/:basisId",
+          "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/extract",
           "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/decision",
           "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/publish",
           "GET /api/opening-condition/workspaces/:workspaceId/master-data",
@@ -637,6 +639,18 @@ export function createBackendServer(options = {}) {
           openingConditionStoreOptions,
         );
         sendJson(response, result.ok ? 200 : 400, result);
+        return;
+      }
+
+      if (request.method === "POST" && basisId && action === "extract") {
+        const body = await readJson(request);
+        const result = await refreshOpeningConditionPilotBasisPreview(
+          workspaceId,
+          basisId,
+          body,
+          openingConditionStoreOptions,
+        );
+        sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
         return;
       }
 

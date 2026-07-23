@@ -115,6 +115,17 @@ function summarizeBasisPreviewFacts(facts?: Record<string, string | undefined>) 
     .join(" / ") || "No structured preview facts recorded.";
 }
 
+function summarizeBasisPreviewProvenance(provenance?: NonNullable<OpeningConditionPilotBasisRecord["ingestionPreview"]>["provenance"]) {
+  if (!provenance) {
+    return "No extraction provenance recorded.";
+  }
+
+  const parts = [provenance.extractor, provenance.source, provenance.sourceFileName, provenance.boundedTextLength ? `${provenance.boundedTextLength} chars` : ""]
+    .filter(Boolean)
+    .join(" / ");
+  return parts || "No extraction provenance recorded.";
+}
+
 type ReportFinding = {
   id: string;
   title: string;
@@ -578,6 +589,7 @@ export function OpeningConditionWorkspaceShell({
   onInitializePilotTask,
   onPublishPilotBasis,
   onPublishPilotBasisDecision,
+  onRefreshPilotBasisPreview,
   onConfirmPilotMasterData,
   onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
@@ -612,6 +624,7 @@ export function OpeningConditionWorkspaceShell({
   onInitializePilotTask?: () => void;
   onPublishPilotBasis?: () => void;
   onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
+  onRefreshPilotBasisPreview?: (basisId: string) => void;
   onConfirmPilotMasterData?: () => void;
   onDecidePilotMasterDataCandidate?: (
     recordId: string,
@@ -730,6 +743,7 @@ export function OpeningConditionWorkspaceShell({
               onInitializePilotTask={onInitializePilotTask}
               onPublishPilotBasis={onPublishPilotBasis}
               onPublishPilotBasisDecision={onPublishPilotBasisDecision}
+              onRefreshPilotBasisPreview={onRefreshPilotBasisPreview}
               onConfirmPilotMasterData={onConfirmPilotMasterData}
               onDecidePilotMasterDataCandidate={onDecidePilotMasterDataCandidate}
               onRunPilotMatch={onRunPilotMatch}
@@ -748,6 +762,8 @@ export function OpeningConditionWorkspaceShell({
               masterDataRecords={pilotMasterDataRecords}
               knowledgeBases={pilotKnowledgeBases}
               pilotReadiness={pilotReadiness}
+              pilotBusy={pilotBusy}
+              onRefreshBasisPreview={onRefreshPilotBasisPreview}
             />
           )}
           {activePage === "check-tasks" && <OpeningConditionCheckTasksPage packet={packet} pilotTask={pilotTask} />}
@@ -1281,6 +1297,7 @@ function OpeningConditionMaterialIntakePage({
   onInitializePilotTask,
   onPublishPilotBasis,
   onPublishPilotBasisDecision,
+  onRefreshPilotBasisPreview,
   onConfirmPilotMasterData,
   onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
@@ -1304,6 +1321,7 @@ function OpeningConditionMaterialIntakePage({
   onInitializePilotTask?: () => void;
   onPublishPilotBasis?: () => void;
   onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
+  onRefreshPilotBasisPreview?: (basisId: string) => void;
   onConfirmPilotMasterData?: () => void;
   onDecidePilotMasterDataCandidate?: (
     recordId: string,
@@ -1378,6 +1396,7 @@ function OpeningConditionMaterialIntakePage({
         pilotBusy={pilotBusy}
         onPublishBasis={onPublishPilotBasis}
         onPublishBasisDecision={onPublishPilotBasisDecision}
+        onRefreshBasisPreview={onRefreshPilotBasisPreview}
         onConfirmMasterData={onConfirmPilotMasterData}
         onDecideMasterDataCandidate={onDecidePilotMasterDataCandidate}
       />
@@ -1510,6 +1529,10 @@ function OpeningConditionTrialIntakeOverviewPanel({
                 {basisPreviewStatusLabels[boundBasis.ingestionPreview.status] ?? boundBasis.ingestionPreview.status}
               </small>
               <small>
+                <strong>Extraction</strong>
+                {summarizeBasisPreviewProvenance(boundBasis.ingestionPreview.provenance)}
+              </small>
+              <small>
                 <strong>Facts</strong>
                 {summarizeBasisPreviewFacts(boundBasis.ingestionPreview.facts)}
               </small>
@@ -1571,6 +1594,7 @@ function OpeningConditionIntakeCandidatePreviewPanel({
   pilotBusy,
   onPublishBasis,
   onPublishBasisDecision,
+  onRefreshBasisPreview,
   onConfirmMasterData,
   onDecideMasterDataCandidate,
 }: {
@@ -1584,6 +1608,7 @@ function OpeningConditionIntakeCandidatePreviewPanel({
   pilotBusy?: boolean;
   onPublishBasis?: () => void;
   onPublishBasisDecision?: (basisId: string, safeNote?: string) => void;
+  onRefreshBasisPreview?: (basisId: string) => void;
   onConfirmMasterData?: () => void;
   onDecideMasterDataCandidate?: (
     recordId: string,
@@ -1720,6 +1745,28 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                   : "当前 run 依据候选"}
               </span>
               <p>{boundBasis?.applicability ?? basisMeta.description}</p>
+              {boundBasis?.ingestionPreview && (
+                <div className="opening-report-detail-list">
+                  <small>
+                    <strong>Extraction</strong>
+                    {summarizeBasisPreviewProvenance(boundBasis.ingestionPreview.provenance)}
+                  </small>
+                  <small>
+                    <strong>Facts</strong>
+                    {summarizeBasisPreviewFacts(boundBasis.ingestionPreview.facts)}
+                  </small>
+                  <small>
+                    <strong>Missing</strong>
+                    {boundBasis.ingestionPreview.missingFields.length > 0
+                      ? boundBasis.ingestionPreview.missingFields.join(" / ")
+                      : "None"}
+                  </small>
+                  <small>
+                    <strong>Next</strong>
+                    {boundBasis.ingestionPreview.nextAction}
+                  </small>
+                </div>
+              )}
               <small>
                 {boundBasis
                   ? `版本 ${boundBasis.version} · 后端状态：${boundBasis.status}`
@@ -1738,6 +1785,16 @@ function OpeningConditionIntakeCandidatePreviewPanel({
               )}
               {boundBasis && onPublishBasisDecision && (
                 <div className="dialog-actions compact">
+                  {onRefreshBasisPreview && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => onRefreshBasisPreview(boundBasis.id)}
+                      disabled={pilotBusy || portalState.currentRunMutationLocked || boundBasis.status === "published"}
+                    >
+                      刷新预览抽取
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="secondary"
@@ -1958,6 +2015,8 @@ function OpeningConditionPublicationGovernancePage({
   masterDataRecords,
   knowledgeBases,
   pilotReadiness,
+  pilotBusy,
+  onRefreshBasisPreview,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
@@ -1966,6 +2025,8 @@ function OpeningConditionPublicationGovernancePage({
   masterDataRecords?: OpeningConditionPilotMasterDataRecord[];
   knowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
+  pilotBusy?: boolean;
+  onRefreshBasisPreview?: (basisId: string) => void;
 }) {
   const displayedBasisRecords = basisRecords && basisRecords.length > 0 ? basisRecords : packet.basisVersions;
   const displayedMasterDataRecords = masterDataRecords && masterDataRecords.length > 0 ? masterDataRecords : packet.masterData;
@@ -1992,6 +2053,7 @@ function OpeningConditionPublicationGovernancePage({
       id: basis.id,
       title: basis.title,
       category: openingConditionBasisComponentTypeLabels[basis.componentType] ?? basis.componentType,
+      assetType: "basis" as const,
       statusLabel:
         openingConditionRecordStatusLabels[basis.status as keyof typeof openingConditionRecordStatusLabels] ?? basis.status,
       meta,
@@ -2011,6 +2073,7 @@ function OpeningConditionPublicationGovernancePage({
       id: record.id,
       title: record.label,
       category: openingConditionMasterDataTypeLabels[record.type] ?? record.type,
+      assetType: "master_data" as const,
       statusLabel:
         openingConditionRecordStatusLabels[record.status as keyof typeof openingConditionRecordStatusLabels] ?? record.status,
       meta,
@@ -2049,7 +2112,8 @@ function OpeningConditionPublicationGovernancePage({
       title: string;
       category: string;
       statusLabel: string;
-      meta: { label: string; description: string; tone: string };
+      meta: { label: string; description: string; tone: string; group?: string };
+      assetType?: "basis" | "master_data";
       secondary?: string;
       note?: string;
       safeNote?: string;
@@ -2096,6 +2160,10 @@ function OpeningConditionPublicationGovernancePage({
                   {item.preview.confidence}
                 </small>
                 <small>
+                  <strong>Extraction</strong>
+                  {summarizeBasisPreviewProvenance(item.preview.provenance)}
+                </small>
+                <small>
                   <strong>Facts</strong>
                   {summarizeBasisPreviewFacts(item.preview.facts)}
                 </small>
@@ -2107,6 +2175,13 @@ function OpeningConditionPublicationGovernancePage({
                   <strong>Next</strong>
                   {item.preview.nextAction}
                 </small>
+              </div>
+            )}
+            {item.assetType === "basis" && onRefreshBasisPreview && item.meta.group !== "published" && (
+              <div className="dialog-actions compact">
+                <button type="button" className="secondary" onClick={() => onRefreshBasisPreview(item.id)} disabled={pilotBusy}>
+                  刷新预览抽取
+                </button>
               </div>
             )}
             <small>后端状态：{item.statusLabel}</small>

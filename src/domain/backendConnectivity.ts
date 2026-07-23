@@ -850,6 +850,33 @@ export async function publishOpeningConditionPilotBasis(workspaceId: string, bas
   return readJson<OpeningConditionPilotBasisResult>(response);
 }
 
+export async function refreshOpeningConditionPilotBasisPreview(
+  workspaceId: string,
+  basisId: string,
+  input: {
+    previewText?: string;
+    boundedText?: string;
+    textSnippet?: string;
+    projectId?: string;
+    contractPackageId?: string;
+    participatingOrganizationId?: string;
+    participatingOrganizationName?: string;
+    safeNote?: string;
+  } = {},
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/basis/${encodeURIComponent(basisId)}/extract`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    },
+  );
+  return readJson<OpeningConditionPilotBasisResult>(response);
+}
+
 export async function decideOpeningConditionPilotBasisPreview(
   workspaceId: string,
   basisId: string,

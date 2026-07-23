@@ -38,7 +38,7 @@ The current run intake preview gate SHALL explain whether the run-bound basis is
 
 #### Scenario: Current run has provisional basis preview
 - **WHEN** the current run is bound to a basis record whose preview still needs human confirmation
-- **THEN** the intake gate shows the preview summary, missing facts, confirmation status, and a next action to confirm/publish basis before formal matching
+- **THEN** the intake gate shows the preview summary, extracted candidate facts, missing facts, confirmation status, extraction provenance, and a next action to confirm/publish basis before formal matching
 
 #### Scenario: Current run has published basis preview
 - **WHEN** the current run is bound to a basis record whose confirmed preview has been published

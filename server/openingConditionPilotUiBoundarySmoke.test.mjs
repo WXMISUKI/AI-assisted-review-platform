@@ -37,4 +37,7 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
   assert.match(source, /rectification/);
   assert.match(source, /opening-report-finding-detail-grid/);
   assert.match(source, /Basis Preview/);
+  assert.match(source, /Extraction/);
+  assert.match(source, /summarizeBasisPreviewProvenance/);
+  assert.match(source, /onRefreshBasisPreview/);
 });

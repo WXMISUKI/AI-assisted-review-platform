@@ -50,7 +50,7 @@ The opening-condition publication governance workspace SHALL distinguish basis r
 #### Scenario: Operator reviews basis preview queue
 - **WHEN** basis records exist for the selected workspace
 - **THEN** the governance page groups or labels them as needs-preview-confirmation, publish-ready, published, or exception records
-- **AND** each basis record shows source file, preview fact summary, missing fields, confidence, and next action
+- **AND** each basis record shows source file, preview fact summary, missing fields, confidence, extraction provenance, and next action
 
 #### Scenario: Operator reviews current-run basis preview
 - **WHEN** a pilot run is selected and bound to a basis record or basis version
