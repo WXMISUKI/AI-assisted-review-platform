@@ -1,8 +1,5 @@
-# opening-condition-responsibility-workqueue Specification
+## MODIFIED Requirements
 
-## Purpose
-Define the workspace-level responsibility workqueue for the opening-condition pilot so operators can see who owns the next step, what is blocking progress, and where to go next.
-## Requirements
 ### Requirement: Workspace responsibility workqueue
 The system SHALL expose a workspace-level responsibility workqueue for the current opening-condition run.
 
@@ -28,4 +25,3 @@ The system SHALL organize human-review work by operator-facing processing priori
 - **WHEN** a human-review item appears in a priority group
 - **THEN** the item shows checklist name, category, status, reason, expected evidence hints, linked evidence, and safe note when available
 - **AND** only open or deferred items expose decision actions
-

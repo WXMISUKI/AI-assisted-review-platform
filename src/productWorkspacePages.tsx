@@ -155,7 +155,7 @@ function getActionOwnershipTone(dueState: OpeningConditionRunActionOwnership["du
 function OpeningConditionActionOwnershipSummary({
   summary,
   eyebrow = "Action Ownership",
-  title = "??????",
+  title = "责任人与下一动作",
   description,
 }: {
   summary?: OpeningConditionRunActionOwnership | null;
@@ -180,30 +180,30 @@ function OpeningConditionActionOwnershipSummary({
             {summary.dueStateLabel}
           </span>
           <span className="opening-report-chip tone-muted">{summary.dueWindowLabel}</span>
-          {summary.readOnly && <span className="opening-report-chip tone-muted">????</span>}
+          {summary.readOnly && <span className="opening-report-chip tone-muted">只读</span>}
         </div>
       </div>
       {description ? <p>{description}</p> : null}
       <div className="opening-action-summary-grid">
         <div className="opening-action-summary-item">
-          <strong>?????</strong>
+          <strong>当前责任人</strong>
           <p>{summary.currentOwner}</p>
         </div>
         <div className="opening-action-summary-item">
-          <strong>????</strong>
+          <strong>下一动作</strong>
           <p>{summary.nextAction}</p>
         </div>
         <div className="opening-action-summary-item">
-          <strong>????</strong>
+          <strong>卡点原因</strong>
           <p>{summary.actionReason}</p>
-          {summary.activeReviewCount > 0 && <small>???? {summary.activeReviewCount} ?????????</small>}
+          {summary.activeReviewCount > 0 && <small>仍有 {summary.activeReviewCount} 项人工复核阻塞报告交付。</small>}
         </div>
         <div className="opening-action-summary-item">
-          <strong>????</strong>
+          <strong>推荐入口</strong>
           <p>{summary.recommendedPageLabel}</p>
           <small>
             {summary.primaryActionLabel}
-            {summary.blockingCount > 0 ? ` ? ?? ${summary.blockingCount} ?` : ""}
+            {summary.blockingCount > 0 ? ` / 阻塞 ${summary.blockingCount} 项` : ""}
           </small>
         </div>
       </div>
@@ -223,15 +223,24 @@ function OpeningConditionResponsibilityBoard({
   }
 
   return (
-    <article className="opening-panel opening-panel-wide">
+    <article className="opening-panel opening-panel-wide opening-responsibility-board">
       <span className="eyebrow">Responsibility Workqueue</span>
-      <h2>???????????</h2>
-      <p>??? run ????????????????????????????????????</p>
+      <h2>责任人与时效工作台</h2>
+      <p>围绕当前 run 展示谁负责、卡在哪里、是否临近超时，以及下一步应该进入哪个页面继续处理。</p>
       <div className="opening-report-summary-grid">
-        <MetricBlock label="????" value={summary.currentOwner} />
-        <MetricBlock label="????" value={summary.dueStateLabel} tone={summary.dueState === "overdue" ? "danger" : summary.dueState === "on_track" ? "success" : "neutral"} />
-        <MetricBlock label="???" value={summary.blockingCount} tone={summary.blockingCount > 0 ? "danger" : "success"} />
-        <MetricBlock label="????" value={summary.recommendedPageLabel} />
+        <MetricBlock label="当前责任人" value={summary.currentOwner} />
+        <MetricBlock
+          label="时效状态"
+          value={summary.dueStateLabel}
+          tone={summary.dueState === "overdue" ? "danger" : summary.dueState === "on_track" ? "success" : "neutral"}
+        />
+        <MetricBlock label="阻塞项" value={summary.blockingCount} tone={summary.blockingCount > 0 ? "danger" : "success"} />
+        <MetricBlock label="推荐入口" value={summary.recommendedPageLabel} />
+      </div>
+      <div className="opening-responsibility-handoff">
+        <strong>{summary.stageLabel}</strong>
+        <p>{summary.nextAction}</p>
+        <small>{summary.actionReason}</small>
       </div>
       {onNavigate ? (
         <div className="dialog-actions">
@@ -2127,32 +2136,32 @@ function OpeningConditionHumanReviewQueuePage({
       .join(" / ");
 
     return (
-      <div key={item.id}>
+      <div key={item.id} className="opening-human-review-item">
         <strong>{item.targetLabel ?? fallbackContext?.name ?? item.targetId}</strong>
         <span>
-          {(item.category ?? fallbackContext?.category ?? "?????")}
+          {(item.category ?? fallbackContext?.category ?? "未分类")}
           {(item.subCategory ?? fallbackContext?.subCategory) ? ` / ${item.subCategory ?? fallbackContext?.subCategory}` : ""} | {item.status}
         </span>
         <p>{item.reason}</p>
-        {item.ruleExplanation && <small>?????{item.ruleExplanation}</small>}
+        {item.ruleExplanation && <small>核查规则：{item.ruleExplanation}</small>}
         {item.expectedEvidenceHints && item.expectedEvidenceHints.length > 0 && (
-          <small>?????{item.expectedEvidenceHints.join(" / ")}</small>
+          <small>期望资料：{item.expectedEvidenceHints.join(" / ")}</small>
         )}
-        {evidenceSummary && <small>???{evidenceSummary}</small>}
+        {evidenceSummary && <small>关联证据：{evidenceSummary}</small>}
         {item.safeNote && <small>{item.safeNote}</small>}
         {onReviewDecision && (item.status === "open" || item.status === "deferred") && (
           <div className="dialog-actions">
             <button type="button" className="primary" onClick={() => onReviewDecision(item.id, "confirm")} disabled={pilotBusy}>
-              ??
+              确认通过
             </button>
             <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "correct")} disabled={pilotBusy}>
-              ??
+              修正结论
             </button>
             <button type="button" className="secondary" onClick={() => onReviewDecision(item.id, "defer")} disabled={pilotBusy}>
-              ??
+              延期处理
             </button>
             <button type="button" className="danger subtle" onClick={() => onReviewDecision(item.id, "reject")} disabled={pilotBusy}>
-              ??
+              驳回整改
             </button>
           </div>
         )}
@@ -2163,50 +2172,50 @@ function OpeningConditionHumanReviewQueuePage({
   const groups = [
     {
       key: "pending",
-      title: "???",
-      description: "???????????????????????????",
+      title: "待处理复核",
+      description: "这些事项仍阻塞报告生成，需要监理给出确认、修正、延期或驳回结论。",
       items: pendingQueue,
     },
     {
       key: "deferred",
-      title: "???",
-      description: "?????????????????????",
+      title: "延期但仍阻塞",
+      description: "这些事项暂缓处理，但在关闭前仍应视为报告交付阻塞项。",
       items: deferredQueue,
     },
     {
       key: "resolved",
-      title: "???",
-      description: "????????????????????????????",
+      title: "已处理留痕",
+      description: "这些事项已经形成处理结论，作为本轮人工复核证据留存。",
       items: resolvedQueue,
     },
   ];
 
   return (
     <section className="opening-panel opening-panel-wide">
-      <span className="eyebrow">????</span>
-      <h2>??????????</h2>
+      <span className="eyebrow">Human Review</span>
+      <h2>人工复核工作台</h2>
       <div className="opening-condition-meta">
-        <span>??? {pendingQueue.length}</span>
-        <span>??? {deferredQueue.length}</span>
-        <span>??? {resolvedQueue.length}</span>
-        <span>?? {pilotTask?.trialPackage?.reportStatus ?? "missing"}</span>
+        <span>待处理 {pendingQueue.length}</span>
+        <span>延期阻塞 {deferredQueue.length}</span>
+        <span>已处理 {resolvedQueue.length}</span>
+        <span>报告 {pilotTask?.trialPackage?.reportStatus ?? "missing"}</span>
       </div>
       <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />
       <OpeningConditionActionOwnershipSummary
         summary={actionOwnership}
         eyebrow="Human Review Ownership"
-        title="????????"
-        description="????????????????????????????????????????"
+        title="人工复核责任"
+        description="先关闭待处理和延期复核项，再进入报告生成、归档和下一轮整改复审。"
       />
       {queue.length > 0 ? (
         groups.map((group) => (
-          <div key={group.key} className="opening-record-list">
+          <div key={group.key} className="opening-record-list opening-human-review-group">
             <div>
               <strong>{group.title}</strong>
-              <span>{group.items.length} ?</span>
+              <span>{group.items.length} 项</span>
               <p>{group.description}</p>
             </div>
-            {group.items.length > 0 ? group.items.map(renderQueueItem) : <div><small>?????????</small></div>}
+            {group.items.length > 0 ? group.items.map(renderQueueItem) : <div><small>当前分组暂无复核项。</small></div>}
           </div>
         ))
       ) : (

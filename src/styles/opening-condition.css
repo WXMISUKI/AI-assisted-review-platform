@@ -269,6 +269,39 @@
   background: color-mix(in srgb, var(--surface) 80%, var(--surface-muted));
 }
 
+.opening-responsibility-board {
+  gap: 14px;
+}
+
+.opening-responsibility-handoff {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.opening-responsibility-handoff p,
+.opening-responsibility-handoff small {
+  margin: 0;
+}
+
+.opening-human-review-group {
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-muted) 62%, var(--surface));
+}
+
+.opening-human-review-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-left: 3px solid var(--primary);
+  background: var(--surface);
+}
+
 .opening-intake-guidance-card {
   gap: 14px;
   border-style: dashed;

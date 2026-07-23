@@ -35,8 +35,9 @@ export type OpeningConditionPortalViewState = {
 };
 
 const activeHumanReviewStatuses = new Set(["open", "deferred"]);
+
 const recommendedPageLabels: Record<OpeningConditionPortalPage, string> = {
-  "workspace-context": "工作台概览",
+  "workspace-context": "工作区概览",
   "material-intake": "资料接入",
   "basis-sets": "依据与主数据",
   "master-data": "依据与主数据",
@@ -48,7 +49,7 @@ const recommendedPageLabels: Record<OpeningConditionPortalPage, string> = {
 const dueStateLabels: Record<OpeningConditionRunDueState, string> = {
   on_track: "正常推进",
   due_soon: "即将超时",
-  overdue: "已拖期",
+  overdue: "已经超时",
   readonly: "历史只读",
 };
 
@@ -75,7 +76,10 @@ function getStageWindowHours(state: OpeningConditionPilotTask["state"]) {
   }
 }
 
-function deriveDueState(updatedAt?: string, state?: OpeningConditionPilotTask["state"]): {
+function deriveDueState(
+  updatedAt?: string,
+  state?: OpeningConditionPilotTask["state"],
+): {
   dueState: OpeningConditionRunDueState;
   dueWindowLabel: string;
 } {
@@ -123,7 +127,8 @@ export function deriveOpeningConditionRunActionOwnership(args: {
 
   const readiness = args.readiness?.preflightReadiness ?? pilotTask.preflightReadiness;
   const activeReviewCount = pilotTask.humanReviewQueue.filter((item) => activeHumanReviewStatuses.has(item.status)).length;
-  const blockingCount = (readiness?.blockingReasons?.length ?? 0) + activeReviewCount;
+  const readinessBlockingCount = readiness?.blockingReasons?.length ?? 0;
+  const blockingCount = readinessBlockingCount + activeReviewCount;
 
   if (pilotTask.state === "archived") {
     return {
@@ -147,17 +152,17 @@ export function deriveOpeningConditionRunActionOwnership(args: {
     const due = deriveDueState(pilotTask.updatedAt, pilotTask.state);
     return {
       currentOwner: "资料接入责任人",
-      nextAction: "检查失败原因并重新初始化本轮资料接入，再重新推进正式核查。",
+      nextAction: "检查失败或取消原因，重新回到资料接入恢复本轮或发起新一轮。",
       dueState: due.dueState,
       dueStateLabel: dueStateLabels[due.dueState],
       dueWindowLabel: due.dueWindowLabel,
-      actionReason: "当前 run 未处于可继续流转状态，需要先恢复到可执行链路。",
+      actionReason: "当前 run 不处于可继续流转状态，需要先恢复到可执行链路。",
       stageLabel: pilotTask.state === "failed" ? "异常恢复" : "已取消待重启",
       activeReviewCount,
       blockingCount,
       recommendedPage: "material-intake",
       recommendedPageLabel: recommendedPageLabels["material-intake"],
-      primaryActionLabel: "回到资料接入恢复本轮",
+      primaryActionLabel: "回到资料接入",
       readOnly: false,
     };
   }
@@ -166,7 +171,7 @@ export function deriveOpeningConditionRunActionOwnership(args: {
     const due = deriveDueState(pilotTask.updatedAt, "awaiting_human_review");
     return {
       currentOwner: "监理人工复核",
-      nextAction: `关闭 ${activeReviewCount} 项待处理人工复核项，再进入报告生成与归档。`,
+      nextAction: `关闭 ${activeReviewCount} 项待处理或延期的人工复核项，再进入报告生成与归档。`,
       dueState: due.dueState,
       dueStateLabel: dueStateLabels[due.dueState],
       dueWindowLabel: due.dueWindowLabel,
@@ -179,7 +184,7 @@ export function deriveOpeningConditionRunActionOwnership(args: {
       blockingCount: activeReviewCount,
       recommendedPage: "human-review",
       recommendedPageLabel: recommendedPageLabels["human-review"],
-      primaryActionLabel: "去处理人工复核",
+      primaryActionLabel: "处理人工复核",
       readOnly: false,
     };
   }
@@ -188,17 +193,20 @@ export function deriveOpeningConditionRunActionOwnership(args: {
     const due = deriveDueState(pilotTask.updatedAt, "report_ready");
     return {
       currentOwner: "报告交付责任人",
-      nextAction: pilotTask.reportAsset?.status === "ready" ? "确认报告结论后执行归档，或发起下一轮整改复审。" : "生成报告摘要并完成本轮归档。",
+      nextAction:
+        pilotTask.reportAsset?.status === "ready"
+          ? "确认报告结论后归档任务；如需补件，从报告归档页发起下一轮整改复审。"
+          : "生成报告摘要并完成本轮归档。",
       dueState: due.dueState,
       dueStateLabel: dueStateLabels[due.dueState],
       dueWindowLabel: due.dueWindowLabel,
-      actionReason: "正式核查与人工复核已收敛到可交付状态，当前重点转为报告输出和结果留痕。",
+      actionReason: "正式核查与人工复核已经收敛到可交付状态，当前重点转为报告输出和结果留痕。",
       stageLabel: "报告交付",
       activeReviewCount,
       blockingCount,
       recommendedPage: "reports",
       recommendedPageLabel: recommendedPageLabels.reports,
-      primaryActionLabel: pilotTask.reportAsset?.status === "ready" ? "去报告归档完成交付" : "去生成报告",
+      primaryActionLabel: pilotTask.reportAsset?.status === "ready" ? "完成报告归档" : "生成报告",
       readOnly: false,
     };
   }
@@ -211,13 +219,13 @@ export function deriveOpeningConditionRunActionOwnership(args: {
       dueState: due.dueState,
       dueStateLabel: dueStateLabels[due.dueState],
       dueWindowLabel: due.dueWindowLabel,
-      actionReason: "当前 run 已进入自动处理阶段，操作者主要负责观察结果与异常。",
+      actionReason: "当前 run 正在自动处理，操作员主要负责观察结果与异常。",
       stageLabel: pilotTask.state === "extracting" ? "资料提取" : "正式核查匹配",
       activeReviewCount,
       blockingCount,
       recommendedPage: "check-tasks",
       recommendedPageLabel: recommendedPageLabels["check-tasks"],
-      primaryActionLabel: "去看核查进度",
+      primaryActionLabel: "查看核查进度",
       readOnly: false,
     };
   }
@@ -226,9 +234,7 @@ export function deriveOpeningConditionRunActionOwnership(args: {
   const blockingReasons = readiness?.blockingReasons ?? [];
   return {
     currentOwner: "资料接入责任人",
-    nextAction:
-      readiness?.nextAction ??
-      "补齐依据、主数据、知识库和资料包门禁后，再执行正式核查。",
+    nextAction: readiness?.nextAction ?? "补齐依据、主数据、知识库和资料包门禁后，再执行正式核查。",
     dueState: due.dueState,
     dueStateLabel: dueStateLabels[due.dueState],
     dueWindowLabel: due.dueWindowLabel,
@@ -241,7 +247,7 @@ export function deriveOpeningConditionRunActionOwnership(args: {
     blockingCount,
     recommendedPage: "material-intake",
     recommendedPageLabel: recommendedPageLabels["material-intake"],
-    primaryActionLabel: "去完成资料接入",
+    primaryActionLabel: "完成资料接入",
     readOnly: false,
   };
 }
