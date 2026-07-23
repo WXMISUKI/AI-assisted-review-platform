@@ -140,6 +140,20 @@ export interface OpeningConditionBasisVersion {
   score?: number;
   applicability: string;
   confidence: "high" | "medium" | "low";
+  ingestionPreview?: {
+    status: "needs_confirmation" | "confirmed" | "rejected" | "published";
+    source: string;
+    facts: Record<string, string | undefined>;
+    factSummary: string;
+    missingFields: string[];
+    confidence: "high" | "medium" | "low";
+    confirmedBy?: string;
+    confirmedAt?: string;
+    publishedBy?: string;
+    publishedAt?: string;
+    safeNote?: string;
+    nextAction: string;
+  };
 }
 
 export interface OpeningConditionEvidence {

@@ -90,6 +90,69 @@ test("HTTP smoke protects the opening-condition pilot delivery chain", async () 
 
   try {
     const baseUrl = await listen(server);
+    const previewBasis = await requestJson(
+      baseUrl,
+      "PUT",
+      "/api/opening-condition/workspaces/ws-http-smoke/basis/basis-http-preview",
+      {
+        title: "HTTP preview basis",
+        status: "pending_confirmation",
+        sourceObject: {
+          objectId: "basis-preview-object-http",
+          kind: "basis",
+          fileName: "preview-basis.pdf",
+          privateUrl: "must-redact",
+        },
+        ingestionPreview: {
+          status: "needs_confirmation",
+          source: "metadata_derived",
+          facts: {
+            projectId: "project-http-smoke",
+            contractPackageId: "contract-http-smoke",
+            token: "must-redact",
+          },
+          factSummary: "HTTP smoke preview basis facts.",
+          missingFields: [],
+          confidence: "medium",
+        },
+      },
+    );
+    assert.equal(previewBasis.statusCode, 200);
+    assert.equal(previewBasis.payload.basisVersion.ingestionPreview.status, "needs_confirmation");
+    assert.equal("privateUrl" in previewBasis.payload.basisVersion.sourceObject, false);
+    assert.equal("token" in previewBasis.payload.basisVersion.ingestionPreview.facts, false);
+
+    const blockedPreviewPublish = await requestJson(
+      baseUrl,
+      "POST",
+      "/api/opening-condition/workspaces/ws-http-smoke/basis/basis-http-preview/publish",
+      { actorId: "http-smoke-reviewer" },
+    );
+    assert.equal(blockedPreviewPublish.statusCode, 400);
+    assert.equal(blockedPreviewPublish.payload.status, "basis_preview_confirmation_required");
+
+    const confirmedPreview = await requestJson(
+      baseUrl,
+      "POST",
+      "/api/opening-condition/workspaces/ws-http-smoke/basis/basis-http-preview/decision",
+      {
+        decision: "confirm",
+        actorId: "http-smoke-reviewer",
+        safeNote: "HTTP smoke confirmed preview facts.",
+      },
+    );
+    assert.equal(confirmedPreview.statusCode, 200);
+    assert.equal(confirmedPreview.payload.basisVersion.ingestionPreview.status, "confirmed");
+
+    const publishedPreview = await requestJson(
+      baseUrl,
+      "POST",
+      "/api/opening-condition/workspaces/ws-http-smoke/basis/basis-http-preview/publish",
+      { actorId: "http-smoke-reviewer" },
+    );
+    assert.equal(publishedPreview.statusCode, 200);
+    assert.equal(publishedPreview.payload.basisVersion.ingestionPreview.status, "published");
+
     await seedWorkspaceFacts(baseUrl);
 
     const intake = await requestJson(baseUrl, "POST", "/api/opening-condition/pilot-tasks/intake-init", {

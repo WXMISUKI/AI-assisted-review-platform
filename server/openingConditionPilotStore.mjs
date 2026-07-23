@@ -59,6 +59,7 @@ const finalDispositionValues = new Set(["pass", "fail", "needs_human_review", "b
 const visualAssertionTypes = new Set(["stamp", "signature", "checkbox", "handwritten_date", "seal", "other"]);
 const visualAssertionStatuses = new Set(["detected", "missing", "uncertain", "confirmed", "rejected", "not_required"]);
 const knowledgeBaseStatusValues = new Set(["draft", "ready", "needs_review", "archived"]);
+const basisPreviewStatusValues = new Set(["needs_confirmation", "confirmed", "rejected", "published"]);
 
 let writeQueue = Promise.resolve();
 
@@ -213,6 +214,114 @@ function normalizeBasisVersion(value) {
     evidenceRefs: Array.isArray(value.evidenceRefs)
       ? value.evidenceRefs.map(normalizeObjectRef).filter(Boolean).slice(0, 50)
       : [],
+    ingestionPreview: normalizeBasisIngestionPreview(value.ingestionPreview, value) ?? undefined,
+  });
+}
+
+function normalizeBasisPreviewFacts(value = {}) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    projectName: normalizeString(value.projectName, "", 240) || undefined,
+    projectId: normalizeString(value.projectId, "", 180) || undefined,
+    contractPackageId: normalizeString(value.contractPackageId, "", 180) || undefined,
+    participatingOrganizationId: normalizeString(value.participatingOrganizationId, "", 180) || undefined,
+    participantEntityName: normalizeString(value.participantEntityName, "", 240) || undefined,
+    basisFileName: normalizeString(value.basisFileName, "", 240) || undefined,
+    qualificationScope: normalizeString(value.qualificationScope, "", 500) || undefined,
+    personnelScope: normalizeString(value.personnelScope, "", 500) || undefined,
+    equipmentScope: normalizeString(value.equipmentScope, "", 500) || undefined,
+    effectivePeriod: normalizeString(value.effectivePeriod, "", 240) || undefined,
+    sourceSummary: normalizeString(value.sourceSummary, "", 500) || undefined,
+  });
+}
+
+function normalizeBasisIngestionPreview(value, basisRecord = {}) {
+  const fallbackConfirmed = basisRecord.status === "confirmed" || basisRecord.status === "published";
+  const preview = isPlainObject(value) ? value : {};
+  const status = basisPreviewStatusValues.has(preview.status)
+    ? preview.status
+    : fallbackConfirmed
+      ? basisRecord.status === "published"
+        ? "published"
+        : "confirmed"
+      : "needs_confirmation";
+  const sourceObject = normalizeObjectRef(preview.sourceObject ?? basisRecord.sourceObject);
+  const facts = normalizeBasisPreviewFacts({
+    ...(isPlainObject(preview.facts) ? preview.facts : {}),
+    basisFileName: preview.facts?.basisFileName ?? sourceObject?.fileName,
+  });
+  const missingFields = normalizeStringList(preview.missingFields, 30, 120);
+  const confidence = ["high", "medium", "low"].includes(preview.confidence)
+    ? preview.confidence
+    : ["high", "medium", "low"].includes(basisRecord.confidence)
+      ? basisRecord.confidence
+      : "medium";
+  const factSummary = normalizeString(
+    preview.factSummary,
+    basisRecord.applicability || sourceObject?.summary || "Basis preview awaits human confirmation.",
+    600,
+  );
+  const nextAction = normalizeString(
+    preview.nextAction,
+    status === "needs_confirmation"
+      ? "Human-confirm the basis preview before publication."
+      : status === "rejected"
+        ? "Upload or correct the basis source before it can be published."
+        : status === "published"
+          ? "Basis preview has been published for formal matching."
+          : "Publish the confirmed basis version before formal matching.",
+    500,
+  );
+
+  return sanitizeOpeningConditionPilotValue({
+    status,
+    source: normalizeString(preview.source, "operator_input", 80),
+    sourceObject: sourceObject ?? undefined,
+    facts,
+    factSummary,
+    missingFields,
+    confidence,
+    confirmedBy: normalizeString(preview.confirmedBy ?? basisRecord.confirmedBy, "", 160) || undefined,
+    confirmedAt: normalizeString(preview.confirmedAt ?? basisRecord.confirmedAt, "", 80) || undefined,
+    publishedBy: normalizeString(preview.publishedBy ?? basisRecord.publishedBy, "", 160) || undefined,
+    publishedAt: normalizeString(preview.publishedAt ?? basisRecord.publishedAt, "", 80) || undefined,
+    safeNote: normalizeString(preview.safeNote ?? basisRecord.safeNote, "", 500) || undefined,
+    nextAction,
+  });
+}
+
+function buildBasisIngestionPreviewFromSourceObject(sourceObject, context = {}, input = {}) {
+  const basisFileName = sourceObject?.fileName ?? "";
+  const facts = normalizeBasisPreviewFacts({
+    projectId: context.projectId,
+    contractPackageId: context.contractPackageId,
+    participatingOrganizationId: context.participatingOrganizationId,
+    participantEntityName: input.participantEntityName,
+    basisFileName,
+    qualificationScope: input.qualificationScope ?? "Trial preview: qualification scope requires operator confirmation.",
+    personnelScope: input.personnelScope ?? "Trial preview: personnel scope requires operator confirmation.",
+    equipmentScope: input.equipmentScope ?? "Trial preview: equipment scope requires operator confirmation.",
+    sourceSummary: sourceObject?.summary ?? basisFileName,
+  });
+
+  return normalizeBasisIngestionPreview({
+    status: input.previewConfirmed === false ? "needs_confirmation" : "confirmed",
+    source: input.previewSource ?? "metadata_derived",
+    sourceObject,
+    facts,
+    factSummary:
+      input.previewFactSummary ??
+      `Basis preview derived from ${basisFileName || "uploaded basis object"} for ${context.contractPackageId || "the current contract package"}.`,
+    missingFields: Array.isArray(input.previewMissingFields) ? input.previewMissingFields : [],
+    confidence: input.previewConfidence ?? "medium",
+    confirmedBy: input.previewConfirmed === false ? undefined : input.submittedBy,
+    confirmedAt: input.previewConfirmed === false ? undefined : new Date().toISOString(),
+    safeNote:
+      input.previewSafeNote ??
+      "Trial metadata preview. Production should replace this with OCR/provider extraction plus human confirmation.",
   });
 }
 
@@ -251,6 +360,7 @@ function normalizeBasisRecord(value, workspaceId = "") {
     applicability: normalizeString(value.applicability, "", 500),
     confidence: ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "medium",
     safeNote: normalizeString(value.safeNote, "", 500) || undefined,
+    ingestionPreview: normalizeBasisIngestionPreview(value.ingestionPreview, value),
   });
 }
 
@@ -1510,6 +1620,21 @@ export async function publishOpeningConditionPilotBasisVersion(workspaceId, basi
       };
     }
 
+    const existingBasis = normalizeBasisRecord(snapshot.basisVersions[index], workspaceId);
+    const preview = existingBasis?.ingestionPreview;
+    if (!preview || preview.status === "needs_confirmation" || preview.status === "rejected" || preview.missingFields.length > 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "basis_preview_confirmation_required",
+          message: "Basis preview must be human-confirmed before publication.",
+          basisVersion: existingBasis,
+          nextAction: preview?.nextAction ?? "Human-confirm the basis preview before publication.",
+        },
+      };
+    }
+
     const now = new Date().toISOString();
     const nextBasisVersions = snapshot.basisVersions.map((item, itemIndex) => {
       if (item.workspaceId !== workspaceId) {
@@ -1525,6 +1650,14 @@ export async function publishOpeningConditionPilotBasisVersion(workspaceId, basi
           publishedBy: input.publishedBy ?? input.actorId ?? item.publishedBy,
           publishedAt: now,
           safeNote: input.safeNote ?? item.safeNote,
+          ingestionPreview: {
+            ...item.ingestionPreview,
+            status: "published",
+            publishedBy: input.publishedBy ?? input.actorId ?? item.publishedBy,
+            publishedAt: now,
+            safeNote: input.safeNote ?? item.ingestionPreview?.safeNote ?? item.safeNote,
+            nextAction: "Basis preview has been published for formal matching.",
+          },
         });
       }
 
@@ -1544,6 +1677,77 @@ export async function publishOpeningConditionPilotBasisVersion(workspaceId, basi
       value: {
         ok: true,
         basisVersion: nextBasisVersions[index],
+      },
+    };
+  }, options.storePath);
+}
+
+export async function decideOpeningConditionPilotBasisPreview(workspaceId, basisId, input = {}, options = {}) {
+  const allowedDecisions = new Set(["confirm", "reject"]);
+  const decision = allowedDecisions.has(input.decision) ? input.decision : "";
+  if (!decision) {
+    return {
+      ok: false,
+      status: "invalid_input",
+      message: "Basis preview decision must be confirm or reject.",
+    };
+  }
+
+  return mutateSnapshot((snapshot) => {
+    const index = snapshot.basisVersions.findIndex((item) => item.workspaceId === workspaceId && item.id === basisId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition basis version not found.",
+        },
+      };
+    }
+
+    const now = new Date().toISOString();
+    const existingBasis = normalizeBasisRecord(snapshot.basisVersions[index], workspaceId);
+    const nextPreview = normalizeBasisIngestionPreview(
+      {
+        ...existingBasis.ingestionPreview,
+        facts: input.facts ?? existingBasis.ingestionPreview?.facts,
+        factSummary: input.factSummary ?? existingBasis.ingestionPreview?.factSummary,
+        missingFields: input.missingFields ?? existingBasis.ingestionPreview?.missingFields,
+        confidence: input.confidence ?? existingBasis.ingestionPreview?.confidence,
+        status: decision === "confirm" ? "confirmed" : "rejected",
+        confirmedBy: input.actorId ?? input.reviewerId ?? existingBasis.confirmedBy,
+        confirmedAt: decision === "confirm" ? now : existingBasis.confirmedAt,
+        safeNote: input.safeNote ?? existingBasis.safeNote,
+        nextAction:
+          decision === "confirm"
+            ? "Publish the confirmed basis version before formal matching."
+            : "Upload or correct the basis source before it can be published.",
+      },
+      existingBasis,
+    );
+    const nextBasis = normalizeBasisRecord(
+      {
+        ...existingBasis,
+        status: decision === "confirm" ? "confirmed" : "rejected",
+        confirmedBy: decision === "confirm" ? input.actorId ?? input.reviewerId ?? existingBasis.confirmedBy : existingBasis.confirmedBy,
+        confirmedAt: decision === "confirm" ? now : existingBasis.confirmedAt,
+        safeNote: input.safeNote ?? existingBasis.safeNote,
+        ingestionPreview: nextPreview,
+      },
+      workspaceId,
+    );
+    const nextBasisVersions = [...snapshot.basisVersions];
+    nextBasisVersions[index] = nextBasis;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        basisVersions: nextBasisVersions,
+      },
+      value: {
+        ok: true,
+        basisVersion: nextBasis,
       },
     };
   }, options.storePath);
@@ -2316,6 +2520,10 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
   const explicitKnowledgeBaseId = normalizeString(input.knowledgeBaseId, "", 180);
   const defaultKnowledgeBaseId = normalizeString(input.defaultKnowledgeBaseId, `${context.workspaceId}-subcontract-kb`, 180);
   const submittedBy = normalizeString(input.submittedBy, "pilot-user", 160);
+  const basisIngestionPreview = buildBasisIngestionPreviewFromSourceObject(basisObject, context, {
+    ...input,
+    submittedBy,
+  });
   const masterDataRecords = (
     Array.isArray(input.masterDataRecords) && input.masterDataRecords.length > 0
       ? input.masterDataRecords
@@ -2340,6 +2548,7 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
         500,
       ),
       confidence: "medium",
+      ingestionPreview: basisIngestionPreview,
       safeNote: "由单项目试点初始化入口写入，生产环境需经过正式依据确认流程。",
     },
     options,

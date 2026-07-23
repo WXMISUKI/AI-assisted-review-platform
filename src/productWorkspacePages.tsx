@@ -82,6 +82,39 @@ const readinessLabels: Record<string, string> = {
   unreachable: "不可达",
 };
 
+const basisPreviewStatusLabels: Record<string, string> = {
+  needs_confirmation: "Preview needs confirmation",
+  confirmed: "Preview confirmed",
+  rejected: "Preview rejected",
+  published: "Preview published",
+};
+
+function getBasisPreviewTone(status?: string) {
+  switch (status) {
+    case "published":
+    case "confirmed":
+      return "success";
+    case "rejected":
+      return "danger";
+    case "needs_confirmation":
+      return "warning";
+    default:
+      return "muted";
+  }
+}
+
+function summarizeBasisPreviewFacts(facts?: Record<string, string | undefined>) {
+  if (!facts) {
+    return "No structured preview facts recorded.";
+  }
+
+  return Object.entries(facts)
+    .filter(([, value]) => typeof value === "string" && value.trim())
+    .slice(0, 5)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(" / ") || "No structured preview facts recorded.";
+}
+
 type ReportFinding = {
   id: string;
   title: string;
@@ -1470,6 +1503,28 @@ function OpeningConditionTrialIntakeOverviewPanel({
           <strong>Basis</strong>
           <span>{boundBasis?.title ?? pilotTask.basisVersion?.id ?? "No backend basis record"}</span>
           <p>{boundBasis?.applicability ?? "Current run keeps the bound basis version."}</p>
+          {boundBasis?.ingestionPreview && (
+            <div className="opening-report-detail-list">
+              <small>
+                <strong>Basis Preview</strong>
+                {basisPreviewStatusLabels[boundBasis.ingestionPreview.status] ?? boundBasis.ingestionPreview.status}
+              </small>
+              <small>
+                <strong>Facts</strong>
+                {summarizeBasisPreviewFacts(boundBasis.ingestionPreview.facts)}
+              </small>
+              <small>
+                <strong>Missing</strong>
+                {boundBasis.ingestionPreview.missingFields.length > 0
+                  ? boundBasis.ingestionPreview.missingFields.join(" / ")
+                  : "None"}
+              </small>
+              <small>
+                <strong>Next</strong>
+                {boundBasis.ingestionPreview.nextAction}
+              </small>
+            </div>
+          )}
         </div>
         <div>
           <strong>Master Data</strong>
@@ -1946,6 +2001,7 @@ function OpeningConditionPublicationGovernancePage({
           ? `版本 ${basis.version} · ${basis.publishedAt ? `发布于 ${basis.publishedAt}` : `确认于 ${basis.confirmedAt}`}`
           : `版本 ${basis.version}`,
       isBound: basis.id === boundBasisId,
+      preview: basis.ingestionPreview,
     };
   });
 
@@ -1999,6 +2055,7 @@ function OpeningConditionPublicationGovernancePage({
       safeNote?: string;
       isBound?: boolean;
       isCurrentRun?: boolean;
+      preview?: OpeningConditionPilotBasisRecord["ingestionPreview"];
     }>,
     emptyTitle: string,
     emptyDescription: string,
@@ -2028,6 +2085,30 @@ function OpeningConditionPublicationGovernancePage({
             {item.secondary && <small>{item.secondary}</small>}
             <p>{item.note ?? item.meta.description}</p>
             {item.safeNote && <small>{item.safeNote}</small>}
+            {item.preview && (
+              <div className="opening-report-detail-list">
+                <small>
+                  <strong>Basis Preview</strong>
+                  {basisPreviewStatusLabels[item.preview.status] ?? item.preview.status}
+                </small>
+                <small>
+                  <strong>Confidence</strong>
+                  {item.preview.confidence}
+                </small>
+                <small>
+                  <strong>Facts</strong>
+                  {summarizeBasisPreviewFacts(item.preview.facts)}
+                </small>
+                <small>
+                  <strong>Missing</strong>
+                  {item.preview.missingFields.length > 0 ? item.preview.missingFields.join(" / ") : "None"}
+                </small>
+                <small>
+                  <strong>Next</strong>
+                  {item.preview.nextAction}
+                </small>
+              </div>
+            )}
             <small>后端状态：{item.statusLabel}</small>
           </div>
         ))}

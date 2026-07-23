@@ -1,4 +1,5 @@
 import type {
+  OpeningConditionBasisIngestionPreview,
   OpeningConditionObjectRef,
   OpeningConditionPilotChecklistDefinitionItem,
   OpeningConditionPilotIntakeDiagnostics,
@@ -441,6 +442,8 @@ export interface OpeningConditionPilotBasisRecord {
   publishedBy?: string;
   publishedAt?: string;
   safeNote?: string;
+  sourceObject?: OpeningConditionObjectRef;
+  ingestionPreview?: OpeningConditionBasisIngestionPreview;
 }
 
 export interface OpeningConditionPilotBasisResult {
@@ -842,6 +845,26 @@ export async function publishOpeningConditionPilotBasis(workspaceId: string, bas
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ actorId }),
+    },
+  );
+  return readJson<OpeningConditionPilotBasisResult>(response);
+}
+
+export async function decideOpeningConditionPilotBasisPreview(
+  workspaceId: string,
+  basisId: string,
+  decision: "confirm" | "reject",
+  actorId: string,
+  safeNote?: string,
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/basis/${encodeURIComponent(basisId)}/decision`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ decision, actorId, safeNote }),
     },
   );
   return readJson<OpeningConditionPilotBasisResult>(response);

@@ -64,6 +64,23 @@ export interface OpeningConditionBasisVersionRef {
   publishedAt: string;
   sourceObject?: OpeningConditionObjectRef;
   evidenceRefs?: OpeningConditionObjectRef[];
+  ingestionPreview?: OpeningConditionBasisIngestionPreview;
+}
+
+export interface OpeningConditionBasisIngestionPreview {
+  status: "needs_confirmation" | "confirmed" | "rejected" | "published";
+  source: string;
+  sourceObject?: OpeningConditionObjectRef;
+  facts: Record<string, string | undefined>;
+  factSummary: string;
+  missingFields: string[];
+  confidence: "high" | "medium" | "low";
+  confirmedBy?: string;
+  confirmedAt?: string;
+  publishedBy?: string;
+  publishedAt?: string;
+  safeNote?: string;
+  nextAction: string;
 }
 
 export interface OpeningConditionMasterDataRef {

@@ -10,6 +10,7 @@ import {
   bindOpeningConditionPilotKnowledgeBase,
   bootstrapOpeningConditionPilotTrial,
   canTransitionOpeningConditionPilotTask,
+  decideOpeningConditionPilotBasisPreview,
   decideOpeningConditionPilotHumanReviewItem,
   decideOpeningConditionPilotMasterDataRecord,
   deriveOpeningConditionPilotPreflightReadiness,
@@ -179,6 +180,130 @@ test("publishes one basis version per workspace and supersedes the previous publ
     assert.equal(first.status, "superseded");
     assert.equal(second.status, "published");
     assert.equal("privateUrl" in first.sourceObject, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("requires human-confirmed basis ingestion preview before publication", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-basis-preview-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    const upserted = await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-preview-1",
+      {
+        title: "Contract and qualification basis",
+        status: "pending_confirmation",
+        sourceObject: {
+          objectId: "basis-object-1",
+          kind: "basis",
+          fileName: "contract-basis.pdf",
+          privateUrl: "must-redact",
+        },
+        ingestionPreview: {
+          status: "needs_confirmation",
+          source: "metadata_derived",
+          facts: {
+            projectId: "project-1",
+            contractPackageId: "contract-1",
+            rawText: "must-redact",
+          },
+          factSummary: "Preview generated from uploaded basis metadata.",
+          missingFields: [],
+          confidence: "medium",
+          token: "must-redact",
+        },
+      },
+      { storePath },
+    );
+
+    assert.equal(upserted.ok, true);
+    assert.equal(upserted.basisVersion.ingestionPreview.status, "needs_confirmation");
+    assert.equal("privateUrl" in upserted.basisVersion.sourceObject, false);
+    assert.equal("rawText" in upserted.basisVersion.ingestionPreview.facts, false);
+    assert.equal("token" in upserted.basisVersion.ingestionPreview, false);
+
+    const blockedPublish = await publishOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-preview-1",
+      { actorId: "reviewer-1" },
+      { storePath },
+    );
+    assert.equal(blockedPublish.ok, false);
+    assert.equal(blockedPublish.status, "basis_preview_confirmation_required");
+
+    const confirmed = await decideOpeningConditionPilotBasisPreview(
+      "ws-1",
+      "basis-preview-1",
+      {
+        decision: "confirm",
+        actorId: "reviewer-1",
+        safeNote: "Preview facts are acceptable for trial publication.",
+      },
+      { storePath },
+    );
+    assert.equal(confirmed.ok, true);
+    assert.equal(confirmed.basisVersion.status, "confirmed");
+    assert.equal(confirmed.basisVersion.ingestionPreview.status, "confirmed");
+
+    const published = await publishOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-preview-1",
+      { actorId: "reviewer-1" },
+      { storePath },
+    );
+    assert.equal(published.ok, true);
+    assert.equal(published.basisVersion.status, "published");
+    assert.equal(published.basisVersion.ingestionPreview.status, "published");
+
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "personnel",
+        label: "Safety officer",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "Preview smoke KB",
+        status: "ready",
+      },
+      { storePath },
+    );
+
+    const initialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-preview-1",
+        context: validTaskInput().context,
+        basisVersionId: "basis-preview-1",
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "opening-condition-checklist.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "source_archive",
+            fileName: "safety-officer-certificate.pdf",
+          },
+        ],
+      },
+      { storePath },
+    );
+    assert.equal(initialized.ok, true);
+    assert.equal(initialized.preflightReadiness.status, "ready");
+    assert.equal(initialized.task.basisVersion.ingestionPreview.status, "published");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
