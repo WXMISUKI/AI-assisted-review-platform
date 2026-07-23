@@ -174,3 +174,14 @@ opening-condition-http-ui-smoke-and-report-handoff
 - 明确真实样本试点前后如何验收。
 
 这组完成后，再进入“依据入库预览与发布治理”和“前端工作台体验重构”会更稳。
+## 2026-07-23 补充：本轮验收护栏完成后的排序
+
+`opening-condition-http-ui-smoke-and-report-handoff` 完成后，P0 的重点不再是继续加更多按钮，而是先把三层护栏跑顺：
+
+1. `npm run smoke:opening-condition`：守住后端领域状态机。
+2. `npm run smoke:opening-condition:http`：守住公开 API 链路和 archived 不可变。
+3. `npm run smoke:opening-condition:ui`：守住 archived 只读、历史详情只读、报告页交付语义这些前端边界。
+
+如果三层 smoke 都通过，下一阶段优先进入 `依据入库预览与发布治理`：上传合同/资质依据后先展示平台准备入库的结构化事实，由人工确认后发布为正式依据和主数据。只有当依据治理足够清楚后，再进入更大范围的前端体验重构；否则 UI 做得再漂亮，也仍然解释不清“平台到底把什么当成正式审核依据”。
+
+前端体验重构仍保留在路线图内，但定位为 P4：等链路验收和依据治理稳定后，再基于已有成熟平台调研与设计系统统一重做工作区密度、报告列表层级、状态色和组件拆分。

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import Busboy from "busboy";
 import { config, getSafeProviderStatus } from "./config.mjs";
 import { checkLlmConnectivity } from "./llmClient.mjs";
@@ -192,7 +193,12 @@ function buildKnowledgeBaseProviderRefFromReadiness(readiness) {
   };
 }
 
-const server = createServer(async (request, response) => {
+export function createBackendServer(options = {}) {
+  const openingConditionStoreOptions = options.openingConditionStorePath
+    ? { ...(options.openingConditionStoreOptions ?? {}), storePath: options.openingConditionStorePath }
+    : (options.openingConditionStoreOptions ?? {});
+
+  return createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
 
   if (request.method === "OPTIONS") {
@@ -320,7 +326,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/opening-condition/pilot-tasks") {
       sendJson(response, 200, {
         ok: true,
-        ...(await listOpeningConditionPilotTasks()),
+        ...(await listOpeningConditionPilotTasks(openingConditionStoreOptions)),
         store: getOpeningConditionPilotStoreInfo(),
       });
       return;
@@ -328,7 +334,7 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && url.pathname === "/api/opening-condition/pilot-tasks/intake-init") {
       const body = await readJson(request);
-      const result = await initializeOpeningConditionPilotTaskIntake(body);
+      const result = await initializeOpeningConditionPilotTaskIntake(body, openingConditionStoreOptions);
       sendJson(response, result.ok ? 200 : result.status === "invalid_state" ? 409 : 400, result);
       return;
     }
@@ -336,10 +342,13 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/opening-condition/pilot-tasks/trial-bootstrap") {
       const body = await readJson(request);
       const providerReadiness = await getKnowledgeBaseProviderReadiness();
-      const result = await bootstrapOpeningConditionPilotTrial({
-        ...body,
-        knowledgeBaseProviderRef: body.knowledgeBaseProviderRef ?? buildKnowledgeBaseProviderRefFromReadiness(providerReadiness),
-      });
+      const result = await bootstrapOpeningConditionPilotTrial(
+        {
+          ...body,
+          knowledgeBaseProviderRef: body.knowledgeBaseProviderRef ?? buildKnowledgeBaseProviderRefFromReadiness(providerReadiness),
+        },
+        openingConditionStoreOptions,
+      );
       sendJson(response, result.ok ? 200 : result.status === "invalid_state" ? 409 : 400, result);
       return;
     }
@@ -459,7 +468,7 @@ const server = createServer(async (request, response) => {
     if (openingConditionPilotTaskMatch) {
       const taskId = decodeURIComponent(openingConditionPilotTaskMatch[1]);
       if (request.method === "GET") {
-        const task = await getOpeningConditionPilotTask(taskId);
+        const task = await getOpeningConditionPilotTask(taskId, openingConditionStoreOptions);
         sendJson(response, task ? 200 : 404, task
           ? {
               ok: true,
@@ -475,7 +484,7 @@ const server = createServer(async (request, response) => {
 
       if (request.method === "PUT") {
         const body = await readJson(request);
-        const result = await upsertOpeningConditionPilotTask(taskId, body.task ?? body);
+        const result = await upsertOpeningConditionPilotTask(taskId, body.task ?? body, openingConditionStoreOptions);
         sendJson(response, result.ok ? 200 : 400, result);
         return;
       }
@@ -490,6 +499,7 @@ const server = createServer(async (request, response) => {
         decodeURIComponent(openingConditionPilotTaskTransitionMatch[1]),
         body.toState,
         body.event ?? {},
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -501,6 +511,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && openingConditionPilotTaskReadinessMatch) {
       const result = await getOpeningConditionPilotTaskReadiness(
         decodeURIComponent(openingConditionPilotTaskReadinessMatch[1]),
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -513,6 +524,7 @@ const server = createServer(async (request, response) => {
       const result = await bindOpeningConditionPilotKnowledgeBase(
         decodeURIComponent(openingConditionPilotTaskKnowledgeBaseBindMatch[1]),
         decodeURIComponent(openingConditionPilotTaskKnowledgeBaseBindMatch[2]),
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -526,6 +538,7 @@ const server = createServer(async (request, response) => {
       const result = await intakeOpeningConditionPilotPacket(
         decodeURIComponent(openingConditionPilotTaskPacketMatch[1]),
         body,
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -539,6 +552,7 @@ const server = createServer(async (request, response) => {
       const result = await runOpeningConditionPilotChecklistMatch(
         decodeURIComponent(openingConditionPilotTaskMatchRunMatch[1]),
         body,
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -550,6 +564,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && openingConditionPilotHumanReviewListMatch) {
       const result = await listOpeningConditionPilotHumanReviewItems(
         decodeURIComponent(openingConditionPilotHumanReviewListMatch[1]),
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -564,6 +579,7 @@ const server = createServer(async (request, response) => {
         decodeURIComponent(openingConditionPilotHumanReviewDecisionMatch[1]),
         decodeURIComponent(openingConditionPilotHumanReviewDecisionMatch[2]),
         body,
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -577,6 +593,7 @@ const server = createServer(async (request, response) => {
       const result = await generateOpeningConditionPilotReport(
         decodeURIComponent(openingConditionPilotReportMatch[1]),
         body,
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -590,6 +607,7 @@ const server = createServer(async (request, response) => {
       const result = await archiveOpeningConditionPilotTask(
         decodeURIComponent(openingConditionPilotArchiveMatch[1]),
         body,
+        openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
       return;
@@ -604,20 +622,30 @@ const server = createServer(async (request, response) => {
       const action = openingConditionBasisMatch[3];
 
       if (request.method === "GET" && !basisId) {
-        sendJson(response, 200, await listOpeningConditionPilotBasisVersions(workspaceId));
+        sendJson(response, 200, await listOpeningConditionPilotBasisVersions(workspaceId, openingConditionStoreOptions));
         return;
       }
 
       if (request.method === "PUT" && basisId && !action) {
         const body = await readJson(request);
-        const result = await upsertOpeningConditionPilotBasisVersion(workspaceId, basisId, body.basisVersion ?? body);
+        const result = await upsertOpeningConditionPilotBasisVersion(
+          workspaceId,
+          basisId,
+          body.basisVersion ?? body,
+          openingConditionStoreOptions,
+        );
         sendJson(response, result.ok ? 200 : 400, result);
         return;
       }
 
       if (request.method === "POST" && basisId && action === "publish") {
         const body = await readJson(request);
-        const result = await publishOpeningConditionPilotBasisVersion(workspaceId, basisId, body);
+        const result = await publishOpeningConditionPilotBasisVersion(
+          workspaceId,
+          basisId,
+          body,
+          openingConditionStoreOptions,
+        );
         sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
         return;
       }
@@ -632,20 +660,30 @@ const server = createServer(async (request, response) => {
       const action = openingConditionMasterDataMatch[3];
 
       if (request.method === "GET" && !recordId) {
-        sendJson(response, 200, await listOpeningConditionPilotMasterData(workspaceId));
+        sendJson(response, 200, await listOpeningConditionPilotMasterData(workspaceId, openingConditionStoreOptions));
         return;
       }
 
       if (request.method === "PUT" && recordId && !action) {
         const body = await readJson(request);
-        const result = await upsertOpeningConditionPilotMasterDataRecord(workspaceId, recordId, body.masterDataRecord ?? body);
+        const result = await upsertOpeningConditionPilotMasterDataRecord(
+          workspaceId,
+          recordId,
+          body.masterDataRecord ?? body,
+          openingConditionStoreOptions,
+        );
         sendJson(response, result.ok ? 200 : 400, result);
         return;
       }
 
       if (request.method === "POST" && recordId && action === "decision") {
         const body = await readJson(request);
-        const result = await decideOpeningConditionPilotMasterDataRecord(workspaceId, recordId, body);
+        const result = await decideOpeningConditionPilotMasterDataRecord(
+          workspaceId,
+          recordId,
+          body,
+          openingConditionStoreOptions,
+        );
         sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
         return;
       }
@@ -661,7 +699,7 @@ const server = createServer(async (request, response) => {
         : "";
 
       if (request.method === "GET" && !knowledgeBaseId) {
-        sendJson(response, 200, await listOpeningConditionPilotKnowledgeBases(workspaceId));
+        sendJson(response, 200, await listOpeningConditionPilotKnowledgeBases(workspaceId, openingConditionStoreOptions));
         return;
       }
 
@@ -671,6 +709,7 @@ const server = createServer(async (request, response) => {
           workspaceId,
           knowledgeBaseId,
           body.knowledgeBase ?? body,
+          openingConditionStoreOptions,
         );
         sendJson(response, result.ok ? 200 : 400, result);
         return;
@@ -841,10 +880,15 @@ const server = createServer(async (request, response) => {
       message: error instanceof Error ? error.message : "Unexpected backend error.",
     });
   }
-});
+  });
+}
 
-startReviewWorkerLoop();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const server = createBackendServer();
 
-server.listen(config.port, "127.0.0.1", () => {
-  console.log(`AI-assisted review backend listening on http://127.0.0.1:${config.port}`);
-});
+  startReviewWorkerLoop();
+
+  server.listen(config.port, "127.0.0.1", () => {
+    console.log(`AI-assisted review backend listening on http://127.0.0.1:${config.port}`);
+  });
+}

@@ -133,3 +133,20 @@
 如果需要用同一工作区再次上传合同依据、核查表和资料包 ZIP，直接回到“资料接入”页重新选择三份文件并点击“上传并初始化试点”。页面会为本次上传创建新的运行任务，例如 `oc-pilot-{workspaceId}-run-{timestamp}`，后续“执行正式核查 -> 人工复核 -> 报告生成 -> 归档”都应围绕这个新任务继续。
 
 联调时请记录页面显示的新任务 ID，以及是否仍出现 `Cannot reinitialize opening-condition pilot task while task is archived.`。修复后的预期是：已归档旧任务保持不变，新上传进入新的 `packet_uploaded` 或后端派生状态。
+## 自动化验收 smoke
+
+每次修改开工条件链路的状态、按钮边界、报告页或后端路由后，至少执行：
+
+```bash
+npm run smoke:opening-condition
+npm run smoke:opening-condition:http
+npm run smoke:opening-condition:ui
+```
+
+预期结果：
+
+- 后端 domain smoke 验证本地状态机：资料接入、正式核查、人工复核、报告生成、归档、归档不可变、下一轮 run 隔离。
+- HTTP smoke 验证公开 API 路由：`intake-init -> match -> human-review decision -> report -> archive`，并确认 archived run 后续 mutation 返回安全失败。
+- UI smoke 只验证关键语义边界：archived run mutation 按钮不可作为有效动作、历史轮次只读、报告页展示选中轮次、问题清单、人工决策留痕和下一轮复审入口。
+
+这三类 smoke 不是替代真实样本试跑，而是用于在你进入页面手工联调前先排除“代码已经把链路打断”的低级回归。
