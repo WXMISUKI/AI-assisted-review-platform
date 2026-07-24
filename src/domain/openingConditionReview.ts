@@ -11,6 +11,7 @@ export type OpeningConditionRecordStatus =
   | "provisional"
   | "confirmed"
   | "published"
+  | "human_approved"
   | "pending-human-review"
   | "rejected"
   | "invalid"
@@ -361,6 +362,7 @@ export interface OpeningConditionReviewPacket {
   masterData: OpeningConditionMasterDataRecord[];
   masterDataReadiness: {
     published: number;
+    currentRunConfirmed: number;
     provisional: number;
     rejected: number;
     reviewNeeded: number;
@@ -414,6 +416,7 @@ export const openingConditionRecordStatusLabels: Record<OpeningConditionRecordSt
   provisional: "待确认",
   confirmed: "已确认",
   published: "已发布",
+  human_approved: "当前 run 已确认",
   "pending-human-review": "待人工复核",
   rejected: "已驳回",
   invalid: "无效",
@@ -424,6 +427,7 @@ export type OpeningConditionPublicationTone = "danger" | "warning" | "success" |
 
 export type OpeningConditionPublicationGroup =
   | "pending_confirmation"
+  | "current_run_confirmed"
   | "ready_to_publish"
   | "published"
   | "exception";
@@ -510,10 +514,10 @@ export function getOpeningConditionMasterDataPublicationStatusMeta(status?: stri
       };
     case "human_approved":
       return {
-        label: "已人工确认",
-        description: "该主数据已被人工确认，可用于当前试点 run。",
+        label: "当前 run 已确认",
+        description: "该主数据已被人工确认，可用于当前试点 run；如需后续复用，还应发布为工作区正式目录事实。",
         tone: "success",
-        group: "ready_to_publish",
+        group: "current_run_confirmed",
       };
     case "published":
       return {
@@ -750,6 +754,7 @@ export const openingConditionReviewPacket: OpeningConditionReviewPacket = {
   ],
   masterDataReadiness: {
     published: 2,
+    currentRunConfirmed: 0,
     provisional: 0,
     rejected: 0,
     reviewNeeded: 1,
@@ -976,12 +981,14 @@ export function getOpeningConditionWorkspacePacket(workspaceId: string): Opening
   const preflightReadiness: OpeningConditionPreflightReadiness = {
     status: workspace.activeBasisSetVersionId && knowledgeBase ? "ready" : "blocked",
     basis: workspace.activeBasisSetVersionId ? "ready" : "missing",
-    masterData: masterDataReadiness.published > 0 ? "ready" : "missing",
+    masterData: masterDataReadiness.published + masterDataReadiness.currentRunConfirmed > 0 ? "ready" : "missing",
     knowledgeBase: knowledgeBase ? "ready" : "missing",
     materialPacket: "ready",
     blockingReasons: [
       ...(workspace.activeBasisSetVersionId ? [] : ["published_basis_required"]),
-      ...(masterDataReadiness.published > 0 ? [] : ["published_master_data_required"]),
+      ...(masterDataReadiness.published + masterDataReadiness.currentRunConfirmed > 0
+        ? []
+        : ["published_master_data_required"]),
       ...(knowledgeBase ? [] : ["subcontract_knowledge_base_required"]),
     ],
     nextAction: workspace.activeBasisSetVersionId
@@ -1118,10 +1125,14 @@ export function buildOpeningConditionWorkspaceAssetRegistry(
       masterData: {
         total: packet.masterData.length,
         published: packet.masterDataReadiness.published,
+        currentRunConfirmed: packet.masterDataReadiness.currentRunConfirmed,
         provisional: packet.masterDataReadiness.provisional,
         reviewNeeded: packet.masterDataReadiness.reviewNeeded,
         rejected: packet.masterDataReadiness.rejected,
-        status: packet.masterDataReadiness.published > 0 ? "ready" : "attention",
+        status:
+          packet.masterDataReadiness.published + packet.masterDataReadiness.currentRunConfirmed > 0
+            ? "ready"
+            : "attention",
       },
       knowledgeBase: {
         present: Boolean(packet.knowledgeBase),
@@ -1156,6 +1167,7 @@ export function getOpeningConditionMasterDataReadiness(
   return records.reduce(
     (summary, record) => {
       if (record.status === "published") summary.published += 1;
+      if (record.status === "human_approved") summary.currentRunConfirmed += 1;
       if (record.status === "provisional" || record.status === "confirmed") summary.provisional += 1;
       if (record.status === "rejected") summary.rejected += 1;
       if (record.status === "pending-human-review") summary.reviewNeeded += 1;
@@ -1163,6 +1175,7 @@ export function getOpeningConditionMasterDataReadiness(
     },
     {
       published: 0,
+      currentRunConfirmed: 0,
       provisional: 0,
       rejected: 0,
       reviewNeeded: 0,

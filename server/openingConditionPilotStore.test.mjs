@@ -348,6 +348,24 @@ test("records master-data decisions with safe notes only", async () => {
       { storePath },
     );
 
+    const approved = await decideOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        decision: "approve",
+        actorId: "reviewer-1",
+        safeNote: "current run checked",
+      },
+      { storePath },
+    );
+
+    assert.equal(approved.ok, true);
+    assert.equal(approved.masterDataRecord.status, "human_approved");
+    assert.equal(approved.masterDataRecord.publishedAt, undefined);
+    assert.equal(approved.masterDataRecord.readinessGroup, "current_run_confirmed");
+    assert.equal(approved.masterDataRecord.preview.lifecycleLabel, "Confirmed for current pilot run");
+    assert.equal(approved.masterDataRecord.preview.facts.some((fact) => fact.label === "name"), true);
+
     const decided = await decideOpeningConditionPilotMasterDataRecord(
       "ws-1",
       "md-1",
@@ -362,6 +380,8 @@ test("records master-data decisions with safe notes only", async () => {
 
     assert.equal(decided.ok, true);
     assert.equal(decided.masterDataRecord.status, "published");
+    assert.equal(decided.masterDataRecord.readinessGroup, "published");
+    assert.equal(decided.masterDataRecord.preview.lifecycleLabel, "Published reusable workspace fact");
     assert.equal(listed.masterDataRecords[0].normalizedFields.name, "张工");
     assert.equal("token" in listed.masterDataRecords[0].normalizedFields, false);
   } finally {

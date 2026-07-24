@@ -604,9 +604,12 @@ export function ConstructionPlanReviewApp({
         }
 
         if (jobStatus.state === "done") {
-          const recoveryResult = jobStatus.resultUrl?.jsonUrl
-            ? await hydrateOcrResultStructure({ jsonUrl: jobStatus.resultUrl.jsonUrl })
-            : { ok: false, message: "OCR 结果未返回可用的结构化地址。" };
+          const docxStructure = jobStatus.result?.recoveredStructure;
+          const recoveryResult: { ok: boolean; recoveredStructure?: typeof docxStructure; message?: string } = docxStructure
+            ? { ok: true, recoveredStructure: docxStructure }
+            : jobStatus.resultUrl?.jsonUrl
+              ? await hydrateOcrResultStructure({ jsonUrl: jobStatus.resultUrl.jsonUrl })
+              : { ok: false, message: "OCR 结果未返回可用的结构化地址。" };
 
           if (cancelled) {
             return;
@@ -635,9 +638,20 @@ export function ConstructionPlanReviewApp({
             state: "done",
             recoveredStructure: recoveryResult.recoveredStructure,
           });
-          const hydratedDocument = nextDocuments.find((doc) => doc.id === loadingDocId);
-          documentsRef.current = nextDocuments;
-          setDocuments(nextDocuments);
+
+          let mergedDocuments = nextDocuments;
+          const docxLlmIssues = jobStatus.result?.llmIssues;
+          if (docxLlmIssues && docxLlmIssues.length > 0) {
+            mergedDocuments = mergeGeneratedReviewIssues(nextDocuments, loadingDocId, docxLlmIssues, {
+              source: "llm",
+              status: "ready",
+              diagnostics: { status: "docx-llm", message: `${docxLlmIssues.length} LLM issues from DOCX analysis.` },
+            });
+          }
+
+          const hydratedDocument = mergedDocuments.find((doc) => doc.id === loadingDocId);
+          documentsRef.current = mergedDocuments;
+          setDocuments(mergedDocuments);
           startBackendReviewPreparation(hydratedDocument ?? currentDocument);
           return;
         }

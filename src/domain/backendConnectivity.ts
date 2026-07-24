@@ -181,6 +181,11 @@ export interface OcrJobStatusResult {
   resultUrl?: {
     jsonUrl?: string;
   } | null;
+  result?: {
+    recoveredStructure?: import("./reviewTypes").RecoveredDocumentStructure;
+    ruleFindings?: Array<{ paragraphId: string; section: string; riskCount: number; highestSeverity: string; titles: string[] }>;
+    llmIssues?: import("./reviewTypes").ReviewIssue[];
+  };
   errorMsg?: string | null;
   message?: string;
   statusCode?: number;
@@ -473,6 +478,26 @@ export interface OpeningConditionPilotMasterDataRecord {
   status: "provisional" | "confirmed" | "published" | "human_approved" | "rejected" | "expired";
   validity?: string;
   confidence?: "high" | "medium" | "low";
+  preview?: {
+    status: string;
+    lifecycleLabel: string;
+    readinessGroup: string;
+    sourceEvidence: string[];
+    facts: Array<{
+      label: string;
+      value: string;
+      confidence?: "high" | "medium" | "low";
+      source?: string;
+    }>;
+    missingFields: string[];
+    confidence: "high" | "medium" | "low";
+    nextAction: string;
+    safeNote?: string;
+    provenance?: Record<string, unknown>;
+  };
+  lifecycleLabel?: string;
+  readinessGroup?: string;
+  nextAction?: string;
   confirmedBy?: string;
   confirmedAt?: string;
   publishedBy?: string;

@@ -1098,6 +1098,7 @@ export function OpeningConditionMasterDataPage({
     <div className="opening-condition-page">
       <section className="opening-metric-grid">
         <MetricBlock label="已发布" value={readiness.published} tone="success" />
+        <MetricBlock label="当前 run 已确认" value={readiness.currentRunConfirmed} tone="success" />
         <MetricBlock label="待发布" value={readiness.provisional} />
         <MetricBlock label="待复核" value={readiness.reviewNeeded} tone="danger" />
         <MetricBlock label="已驳回" value={readiness.rejected} />

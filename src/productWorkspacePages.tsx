@@ -82,7 +82,7 @@ const openingWorkspaceNav: Array<{
 }> = [
   { id: "workspace-context", label: "工作台概览" },
   { id: "material-intake", label: "资料接入" },
-  { id: "basis-sets", label: "依据与主数据" },
+  { id: "basis-sets", label: "资产治理（后续）" },
   { id: "check-tasks", label: "资料核查" },
   { id: "human-review", label: "人工复核" },
   { id: "reports", label: "报告归档" },
@@ -103,6 +103,94 @@ const basisPreviewStatusLabels: Record<string, string> = {
   rejected: "Preview rejected",
   published: "Preview published",
 };
+
+type OpeningConditionMvpClosureStep = {
+  key: "intake" | "match" | "humanReview" | "report" | "archive" | "rerun";
+  label: string;
+  done: boolean;
+};
+
+function deriveOpeningConditionMvpClosureState(pilotTask?: OpeningConditionPilotTask | null): {
+  title: string;
+  description: string;
+  nextPage: OpeningConditionPortalPage;
+  nextPageLabel: string;
+  steps: OpeningConditionMvpClosureStep[];
+} {
+  const hasTask = Boolean(pilotTask);
+  const hasChecklistResult = Boolean((pilotTask?.checkItems ?? []).length > 0);
+  const activeHumanReviewCount = (pilotTask?.humanReviewQueue ?? []).filter((item) => item.status === "open" || item.status === "deferred").length;
+  const reportReady = pilotTask?.reportAsset?.status === "ready";
+  const archived = pilotTask?.state === "archived";
+  const hasReportStage = reportReady || pilotTask?.state === "report_ready" || archived;
+
+  const steps: OpeningConditionMvpClosureStep[] = [
+    { key: "intake", label: "资料接入", done: hasTask && !["draft", "ready_for_packet"].includes(pilotTask?.state ?? "") },
+    { key: "match", label: "正式核查", done: hasChecklistResult || ["awaiting_human_review", "report_ready", "archived"].includes(pilotTask?.state ?? "") },
+    { key: "humanReview", label: "人工复核", done: hasChecklistResult && activeHumanReviewCount === 0 && ["report_ready", "archived"].includes(pilotTask?.state ?? "") },
+    { key: "report", label: "报告生成/导出", done: hasReportStage },
+    { key: "archive", label: "归档留痕", done: archived },
+    { key: "rerun", label: "下一轮复审", done: archived },
+  ];
+
+  if (!hasTask || ["draft", "ready_for_packet", "blocked_missing_basis", "blocked_missing_master_data", "packet_uploaded"].includes(pilotTask?.state ?? "")) {
+    return {
+      title: "当前还在 MVP 资料接入门禁阶段",
+      description: "最小 MVP 不是先完成资产治理页，而是先让当前 run 进入正式核查。请优先回到资料接入，完成初始化、依据/主数据/知识库门禁和正式核查。",
+      nextPage: "material-intake",
+      nextPageLabel: "回到资料接入",
+      steps,
+    };
+  }
+
+  if (pilotTask?.state === "awaiting_human_review" || activeHumanReviewCount > 0) {
+    return {
+      title: "当前 MVP 已进入人工复核阶段",
+      description: "正式核查已经产生结果，下一步要关闭 open/deferred 人工复核项，再生成报告。",
+      nextPage: "human-review",
+      nextPageLabel: "处理人工复核",
+      steps,
+    };
+  }
+
+  if (pilotTask?.state === "report_ready" && !reportReady) {
+    return {
+      title: "当前 MVP 已到报告生成阶段",
+      description: "人工复核阻塞已收口，下一步生成报告资产，并按需导出 DOCX。",
+      nextPage: "reports",
+      nextPageLabel: "生成报告",
+      steps,
+    };
+  }
+
+  if (reportReady && !archived) {
+    return {
+      title: "当前 MVP 已生成报告，等待归档",
+      description: "报告资产已经形成。下一步在报告归档页确认并归档本轮，形成历史留痕。",
+      nextPage: "reports",
+      nextPageLabel: "去报告归档",
+      steps,
+    };
+  }
+
+  if (archived) {
+    return {
+      title: "当前 MVP 单轮闭环已完成",
+      description: "本轮已经归档。下一步如需验证多轮次能力，请从报告归档页发起下一轮整改复审。",
+      nextPage: "reports",
+      nextPageLabel: "查看归档/发起复审",
+      steps,
+    };
+  }
+
+  return {
+    title: "当前 MVP 正在正式核查阶段",
+    description: "请查看资料核查矩阵，确认缺失、匹配和待复核项是否符合预期。",
+    nextPage: "check-tasks",
+    nextPageLabel: "查看资料核查",
+    steps,
+  };
+}
 
 function getBasisPreviewTone(status?: string) {
   switch (status) {
@@ -147,6 +235,25 @@ function summarizeBasisPreviewProvenance(provenance?: NonNullable<OpeningConditi
     .filter(Boolean)
     .join(" / ");
   return parts || "No extraction provenance recorded.";
+}
+
+function summarizeMasterDataPreviewFacts(preview?: OpeningConditionPilotMasterDataRecord["preview"]) {
+  if (!preview || preview.facts.length === 0) {
+    return "No structured master-data facts recorded.";
+  }
+
+  return preview.facts
+    .slice(0, 6)
+    .map((fact) => `${fact.label}: ${fact.value}`)
+    .join(" / ");
+}
+
+function summarizeMasterDataPreviewSources(preview?: OpeningConditionPilotMasterDataRecord["preview"]) {
+  if (!preview || preview.sourceEvidence.length === 0) {
+    return "No source evidence label recorded.";
+  }
+
+  return preview.sourceEvidence.slice(0, 4).join(" / ");
 }
 
 function getOpeningActionGateTitle(gate: { enabled: boolean; disabledReason: string }, fallback = "") {
@@ -815,6 +922,7 @@ export function OpeningConditionWorkspaceShell({
               pilotBusy={pilotBusy}
               onRefreshBasisPreview={onRefreshPilotBasisPreview}
               onIngestProviderPreview={onIngestPilotBasisProviderPreview}
+              onGoToPage={onSelectPage}
             />
           )}
           {activePage === "check-tasks" && <OpeningConditionCheckTasksPage packet={packet} pilotTask={pilotTask} />}
@@ -1797,6 +1905,8 @@ function OpeningConditionIntakeCandidatePreviewPanel({
       safeNote:
         ("safeNote" in record && typeof record.safeNote === "string" ? record.safeNote : undefined) ??
         ("rejectionReason" in record && typeof record.rejectionReason === "string" ? record.rejectionReason : undefined),
+      masterPreview: "preview" in record ? record.preview : undefined,
+      nextAction: "nextAction" in record && typeof record.nextAction === "string" ? record.nextAction : undefined,
     };
   });
 
@@ -1991,6 +2101,30 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                   <span>{item.category}</span>
                   <p>{item.note}</p>
                   {item.safeNote && <small>{item.safeNote}</small>}
+                  {item.masterPreview && (
+                    <div className="opening-report-detail-list">
+                      <small>
+                        <strong>Lifecycle</strong>
+                        {item.masterPreview.lifecycleLabel}
+                      </small>
+                      <small>
+                        <strong>Source</strong>
+                        {summarizeMasterDataPreviewSources(item.masterPreview)}
+                      </small>
+                      <small>
+                        <strong>Facts</strong>
+                        {summarizeMasterDataPreviewFacts(item.masterPreview)}
+                      </small>
+                      <small>
+                        <strong>Missing</strong>
+                        {item.masterPreview.missingFields.length > 0 ? item.masterPreview.missingFields.join(" / ") : "None"}
+                      </small>
+                      <small>
+                        <strong>Next</strong>
+                        {item.nextAction ?? item.masterPreview.nextAction}
+                      </small>
+                    </div>
+                  )}
                   <small>后端状态：{item.statusLabel}</small>
                   {onDecideMasterDataCandidate && item.meta.group !== "published" && item.meta.group !== "exception" && (
                     <>
@@ -2005,15 +2139,28 @@ function OpeningConditionIntakeCandidatePreviewPanel({
                         />
                       </label>
                       <div className="dialog-actions compact">
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => onDecideMasterDataCandidate(item.id, "approve", masterDataNotes[item.id])}
-                          disabled={pilotBusy || !portalState.actions.confirmMasterData.enabled}
-                          title={getOpeningActionGateTitle(portalState.actions.confirmMasterData)}
-                        >
-                          逐条确认
-                        </button>
+                        {item.meta.group === "pending_confirmation" && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => onDecideMasterDataCandidate(item.id, "approve", masterDataNotes[item.id])}
+                            disabled={pilotBusy || !portalState.actions.confirmMasterData.enabled}
+                            title={getOpeningActionGateTitle(portalState.actions.confirmMasterData)}
+                          >
+                            逐条确认
+                          </button>
+                        )}
+                        {(item.meta.group === "current_run_confirmed" || item.meta.group === "ready_to_publish") && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => onDecideMasterDataCandidate(item.id, "publish", masterDataNotes[item.id])}
+                            disabled={pilotBusy || !portalState.actions.confirmMasterData.enabled}
+                            title={getOpeningActionGateTitle(portalState.actions.confirmMasterData)}
+                          >
+                            发布为目录事实
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="secondary danger"
@@ -2202,6 +2349,7 @@ function OpeningConditionPublicationGovernancePage({
   pilotBusy,
   onRefreshBasisPreview,
   onIngestProviderPreview,
+  onGoToPage,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
@@ -2213,6 +2361,7 @@ function OpeningConditionPublicationGovernancePage({
   pilotBusy?: boolean;
   onRefreshBasisPreview?: (basisId: string) => void;
   onIngestProviderPreview?: (basisId: string) => void;
+  onGoToPage?: (page: OpeningConditionPortalPage) => void;
 }) {
   const displayedBasisRecords = basisRecords && basisRecords.length > 0 ? basisRecords : packet.basisVersions;
   const displayedMasterDataRecords = masterDataRecords && masterDataRecords.length > 0 ? masterDataRecords : packet.masterData;
@@ -2232,6 +2381,7 @@ function OpeningConditionPublicationGovernancePage({
   const knowledgeBaseReady = readiness?.knowledgeBase === "ready";
   const blockingReasons = readiness?.blockingReasons ?? [];
   const reviewObjectLabel = getReviewObjectTypeLabel(packet.workspaceContext.reviewObjectType);
+  const mvpClosure = deriveOpeningConditionMvpClosureState(pilotTask);
 
   const basisEntries = displayedBasisRecords.map((basis) => {
     const meta = getOpeningConditionBasisPublicationStatusMeta(basis.status);
@@ -2274,6 +2424,8 @@ function OpeningConditionPublicationGovernancePage({
         ("safeNote" in record && typeof record.safeNote === "string" ? record.safeNote : undefined) ??
         ("rejectionReason" in record && typeof record.rejectionReason === "string" ? record.rejectionReason : undefined),
       isCurrentRun: requiredMasterDataIds.has(record.id),
+      masterPreview: "preview" in record ? record.preview : undefined,
+      nextAction: "nextAction" in record && typeof record.nextAction === "string" ? record.nextAction : undefined,
     };
   });
 
@@ -2288,7 +2440,9 @@ function OpeningConditionPublicationGovernancePage({
   const basisExceptions = basisEntries.filter((entry) => entry.meta.group === "exception");
 
   const masterPending = masterEntries.filter((entry) => entry.meta.group === "pending_confirmation");
-  const masterReadyToPublish = masterEntries.filter((entry) => entry.meta.group === "ready_to_publish");
+  const masterReadyToPublish = masterEntries.filter(
+    (entry) => entry.meta.group === "ready_to_publish" || entry.meta.group === "current_run_confirmed",
+  );
   const masterPublished = masterEntries.filter((entry) => entry.meta.group === "published");
   const masterExceptions = masterEntries.filter((entry) => entry.meta.group === "exception");
 
@@ -2305,6 +2459,8 @@ function OpeningConditionPublicationGovernancePage({
       safeNote?: string;
       isBound?: boolean;
       isCurrentRun?: boolean;
+      masterPreview?: OpeningConditionPilotMasterDataRecord["preview"];
+      nextAction?: string;
       preview?: OpeningConditionPilotBasisRecord["ingestionPreview"];
     }>,
     emptyTitle: string,
@@ -2335,6 +2491,30 @@ function OpeningConditionPublicationGovernancePage({
             {item.secondary && <small>{item.secondary}</small>}
             <p>{item.note ?? item.meta.description}</p>
             {item.safeNote && <small>{item.safeNote}</small>}
+            {item.masterPreview && (
+              <div className="opening-report-detail-list">
+                <small>
+                  <strong>Lifecycle</strong>
+                  {item.masterPreview.lifecycleLabel}
+                </small>
+                <small>
+                  <strong>Source</strong>
+                  {summarizeMasterDataPreviewSources(item.masterPreview)}
+                </small>
+                <small>
+                  <strong>Facts</strong>
+                  {summarizeMasterDataPreviewFacts(item.masterPreview)}
+                </small>
+                <small>
+                  <strong>Missing</strong>
+                  {item.masterPreview.missingFields.length > 0 ? item.masterPreview.missingFields.join(" / ") : "None"}
+                </small>
+                <small>
+                  <strong>Next</strong>
+                  {item.nextAction ?? item.masterPreview.nextAction}
+                </small>
+              </div>
+            )}
             {item.preview && (
               <div className="opening-report-detail-list">
                 <small>
@@ -2386,6 +2566,31 @@ function OpeningConditionPublicationGovernancePage({
 
   return (
     <div className="opening-condition-page">
+      <section className="opening-panel opening-panel-wide opening-intake-guidance-card">
+        <div className="section-title row">
+          <div>
+            <span className="eyebrow">MVP Closure Path</span>
+            <h2>{mvpClosure.title}</h2>
+          </div>
+          {onGoToPage && (
+            <button type="button" className="primary" onClick={() => onGoToPage(mvpClosure.nextPage)}>
+              {mvpClosure.nextPageLabel}
+            </button>
+          )}
+        </div>
+        <p>{mvpClosure.description}</p>
+        <div className="opening-report-chip-row">
+          {mvpClosure.steps.map((step: OpeningConditionMvpClosureStep) => (
+            <span key={step.key} className={`opening-report-chip tone-${step.done ? "success" : "muted"}`}>
+              {step.done ? "已到达" : "未完成"} · {step.label}
+            </span>
+          ))}
+        </div>
+        <small>
+          当前页是依据、主数据和知识库资产治理工作台，属于 MVP 跑通后的治理能力；最小 MVP 验收请优先按资料接入、资料核查、人工复核、报告归档推进。
+        </small>
+      </section>
+
       <section className="opening-panel opening-panel-wide">
         <span className="eyebrow">Publication Governance</span>
         <h2>依据与主数据发布治理面</h2>

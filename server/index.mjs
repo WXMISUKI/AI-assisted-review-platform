@@ -12,6 +12,9 @@ import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs"
 import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
 import { getKnowledgeBaseProviderReadiness } from "./knowledgeBaseProvider.mjs";
 import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
+import { parseDocxFile } from "./docxParser.mjs";
+import { runRuleEngine, summarizeRuleFindings } from "./reviewRuleEngine.mjs";
+import { generateReviewIssuesForDocument } from "./reviewLlmGenerator.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
 import { exportHtmlToDocxUrl } from "./httpToolsDocumentConversionAdapter.mjs";
@@ -403,6 +406,71 @@ export function createBackendServer(options = {}) {
     if (request.method === "POST" && url.pathname === "/api/ocr/jobs/object") {
       const body = await readJson(request);
       const presigned = await createPresignedDocumentUrl(body.key, body.expiresIn);
+      const isDocx = (body.key ?? "").toLowerCase().endsWith(".docx");
+
+      if (isDocx) {
+        try {
+          const { readFile } = await import("node:fs/promises");
+          const { tmpdir } = await import("node:os");
+          const { join } = await import("node:path");
+          const fetch = (await import("node-fetch")).default ?? globalThis.fetch;
+
+          const response2 = await fetch(presigned.url);
+          const buffer = Buffer.from(await response2.arrayBuffer());
+          const tmpFile = join(tmpdir(), `docx-parse-${Date.now()}.docx`);
+          await (await import("node:fs/promises")).writeFile(tmpFile, buffer);
+
+          const recoveredStructure = await parseDocxFile(tmpFile);
+          const ruleFindings = runRuleEngine(recoveredStructure.paragraphs);
+          const ruleSummaries = summarizeRuleFindings(ruleFindings);
+
+          let llmResult = { ok: false, issues: [] };
+          try {
+            llmResult = await generateReviewIssuesForDocument(
+              recoveredStructure.sections,
+              recoveredStructure.paragraphs,
+              ruleSummaries,
+            );
+          } catch {
+            // LLM is optional; rule-based issues are the fallback
+          }
+
+          const jobId = `docx-${Date.now().toString(36)}`;
+          sendJson(response, 200, {
+            ok: true,
+            jobId,
+            status: "done",
+            message: `DOCX parsed: ${recoveredStructure.paragraphs.length} paragraphs, ${recoveredStructure.sections.length} sections. ${ruleFindings.length} rule findings, ${llmResult.issues?.length ?? 0} LLM issues.`,
+            sourceObject: {
+              bucket: presigned.bucket,
+              key: presigned.key,
+              expiresIn: presigned.expiresIn,
+            },
+            result: {
+              recoveredStructure,
+              ruleFindings: ruleSummaries,
+              llmIssues: llmResult.issues ?? [],
+            },
+          });
+
+          try { await (await import("node:fs/promises")).unlink(tmpFile); } catch {}
+          return;
+        } catch (docxError) {
+          sendJson(response, 200, {
+            ok: false,
+            jobId: null,
+            status: "failed",
+            message: `DOCX parsing failed: ${docxError instanceof Error ? docxError.message : "Unknown error"}`,
+            sourceObject: {
+              bucket: presigned.bucket,
+              key: presigned.key,
+              expiresIn: presigned.expiresIn,
+            },
+          });
+          return;
+        }
+      }
+
       sendJson(response, 200, {
         ...(await submitOcrUrlJob({
           fileUrl: presigned.url,
@@ -419,6 +487,13 @@ export function createBackendServer(options = {}) {
 
     if (request.method === "POST" && url.pathname === "/api/ocr/results/hydrate") {
       const body = await readJson(request);
+      if (body.recoveredStructure && body.recoveredStructure.paragraphs) {
+        sendJson(response, 200, {
+          ok: true,
+          recoveredStructure: body.recoveredStructure,
+        });
+        return;
+      }
       sendJson(response, 200, await hydrateOcrResultStructure(body));
       return;
     }

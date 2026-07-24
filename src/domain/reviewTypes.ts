@@ -85,7 +85,7 @@ export interface StructureRecoveryProgress {
 
 export interface RecoveredDocumentStructure {
   status: StructureRecoveryStatus;
-  sourceFormat: "mock" | "ocr-markdown" | "ocr-jsonl" | "ocr-text";
+  sourceFormat: "mock" | "ocr-markdown" | "ocr-jsonl" | "ocr-text" | "docx-xml";
   recoveredAt: string | null;
   progress: StructureRecoveryProgress;
   sections: RecoveredDocumentSection[];

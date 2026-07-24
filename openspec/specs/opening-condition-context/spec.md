@@ -58,3 +58,11 @@ The opening-condition portal SHALL isolate review data by selected hierarchical 
 - **WHEN** a user is about to switch workspace context
 - **THEN** the portal shows which basis, master-data readiness, knowledge-base readiness, and run-history facts belong to that workspace
 - **AND** the operator can see that those assets are isolated from neighboring contexts before switching
+
+### Requirement: Navigation distinguishes MVP execution from governance
+The opening-condition workspace navigation SHALL distinguish the current MVP execution path from follow-up governance workspaces.
+
+#### Scenario: Operator scans navigation
+- **WHEN** the operator views the opening-condition workspace navigation
+- **THEN** pages required for the minimum closure loop are labeled as execution steps
+- **AND** governance pages are labeled as follow-up asset governance rather than primary MVP completion pages

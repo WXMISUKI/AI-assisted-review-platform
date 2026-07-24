@@ -861,6 +861,143 @@ function normalizeKnowledgeBaseRecord(value, workspaceId = "") {
   });
 }
 
+function deriveMasterDataLifecycle(status) {
+  switch (status) {
+    case "published":
+      return {
+        lifecycleLabel: "Published reusable workspace fact",
+        readinessGroup: "published",
+        nextAction: "Use this record as reusable master data for future runs in this workspace.",
+      };
+    case "human_approved":
+      return {
+        lifecycleLabel: "Confirmed for current pilot run",
+        readinessGroup: "current_run_confirmed",
+        nextAction: "Formal matching can use this run-scoped confirmation; publish later if it should become reusable.",
+      };
+    case "confirmed":
+      return {
+        lifecycleLabel: "Confirmed, waiting for publication",
+        readinessGroup: "ready_to_publish",
+        nextAction: "Publish this confirmed record to the reusable workspace catalog.",
+      };
+    case "rejected":
+      return {
+        lifecycleLabel: "Rejected candidate",
+        readinessGroup: "exception",
+        nextAction: "Exclude this candidate and upload or extract a corrected source if the fact is still required.",
+      };
+    case "expired":
+      return {
+        lifecycleLabel: "Expired or invalid candidate",
+        readinessGroup: "exception",
+        nextAction: "Upload current evidence and create a corrected candidate before formal reuse.",
+      };
+    default:
+      return {
+        lifecycleLabel: "Candidate awaiting confirmation",
+        readinessGroup: "pending_confirmation",
+        nextAction: "Review the candidate facts, then confirm, publish, or reject this record.",
+      };
+  }
+}
+
+function normalizeMasterDataPreviewFact(value, fallbackIndex = 0) {
+  if (isPlainObject(value)) {
+    const label = normalizeString(value.label ?? value.name ?? value.key, `fact-${fallbackIndex + 1}`, 120);
+    const factValue = normalizeString(value.value ?? value.text ?? value.summary, "", 240);
+    if (!label && !factValue) {
+      return null;
+    }
+    return {
+      label,
+      value: factValue || label,
+      confidence: ["high", "medium", "low"].includes(value.confidence) ? value.confidence : undefined,
+      source: normalizeString(value.source, "", 180) || undefined,
+    };
+  }
+
+  const factValue = normalizeString(value, "", 240);
+  return factValue
+    ? {
+        label: `fact-${fallbackIndex + 1}`,
+        value: factValue,
+      }
+    : null;
+}
+
+function deriveMasterDataFacts(normalizedFields) {
+  if (!isPlainObject(normalizedFields)) {
+    return [];
+  }
+
+  return Object.entries(normalizedFields)
+    .filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    .map(([key, value]) =>
+      normalizeMasterDataPreviewFact({
+        label: key,
+        value: String(value),
+      }),
+    )
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function normalizeMasterDataSourceEvidence(value, fallbackEvidenceRefs = []) {
+  const explicitSources = Array.isArray(value)
+    ? value
+        .map((item) => {
+          if (isPlainObject(item)) {
+            return (
+              normalizeString(item.fileName ?? item.objectName ?? item.id ?? item.summary, "", 180) ||
+              normalizeString(item.safeLabel, "", 180)
+            );
+          }
+          return normalizeString(item, "", 180);
+        })
+        .filter(Boolean)
+    : [];
+
+  if (explicitSources.length > 0) {
+    return explicitSources.slice(0, 8);
+  }
+
+  return fallbackEvidenceRefs
+    .map((item) => normalizeString(item.fileName ?? item.objectName ?? item.id, "", 180))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function normalizeMasterDataPreview(value, fallback = {}) {
+  const preview = isPlainObject(value) ? value : {};
+  const lifecycle = deriveMasterDataLifecycle(fallback.status);
+  const facts = Array.isArray(preview.facts)
+    ? preview.facts.map(normalizeMasterDataPreviewFact).filter(Boolean).slice(0, 12)
+    : deriveMasterDataFacts(fallback.normalizedFields);
+  const sourceEvidence = normalizeMasterDataSourceEvidence(preview.sourceEvidence, fallback.evidenceRefs);
+  const missingFields = Array.isArray(preview.missingFields)
+    ? preview.missingFields.map((item) => normalizeString(item, "", 120)).filter(Boolean).slice(0, 20)
+    : facts.length === 0
+      ? ["structured_fact_summary"]
+      : [];
+
+  return sanitizeOpeningConditionPilotValue({
+    status: normalizeString(preview.status, fallback.status ?? "provisional", 80),
+    lifecycleLabel: lifecycle.lifecycleLabel,
+    readinessGroup: lifecycle.readinessGroup,
+    sourceEvidence,
+    facts,
+    missingFields,
+    confidence: ["high", "medium", "low"].includes(preview.confidence) ? preview.confidence : fallback.confidence ?? "medium",
+    nextAction: lifecycle.nextAction,
+    safeNote: normalizeString(preview.safeNote, fallback.safeNote ?? fallback.rejectionReason ?? "", 500) || undefined,
+    provenance: sanitizeOpeningConditionPilotValue(preview.provenance ?? {
+      extractor: "opening-condition-pilot-store",
+      source: facts.length > 0 ? "normalized_fields" : "record_metadata",
+    }),
+  });
+}
+
 function normalizeMasterDataRecord(value, workspaceId = "") {
   if (!isPlainObject(value)) {
     return null;
@@ -877,25 +1014,46 @@ function normalizeMasterDataRecord(value, workspaceId = "") {
   )
     ? value.status
     : "provisional";
+  const confidence = ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "medium";
+  const normalizedFields = sanitizeOpeningConditionPilotValue(value.normalizedFields ?? {});
+  const evidenceRefs = Array.isArray(value.evidenceRefs)
+    ? value.evidenceRefs.map(normalizeObjectRef).filter(Boolean).slice(0, 50)
+    : [];
+  const validity = normalizeString(value.validity, "", 300);
+  const safeNote = normalizeString(value.safeNote, "", 500) || undefined;
+  const rejectionReason = normalizeString(value.rejectionReason, "", 500) || undefined;
+  const preview = normalizeMasterDataPreview(value.preview, {
+    status,
+    type: value.type,
+    label: value.label,
+    normalizedFields,
+    evidenceRefs,
+    validity,
+    confidence,
+    safeNote,
+    rejectionReason,
+  });
 
   return sanitizeOpeningConditionPilotValue({
     id,
     workspaceId: resolvedWorkspaceId,
     type: normalizeString(value.type, "system_document", 100),
     label: normalizeString(value.label, id, 240),
-    normalizedFields: sanitizeOpeningConditionPilotValue(value.normalizedFields ?? {}),
+    normalizedFields,
     status,
-    evidenceRefs: Array.isArray(value.evidenceRefs)
-      ? value.evidenceRefs.map(normalizeObjectRef).filter(Boolean).slice(0, 50)
-      : [],
-    validity: normalizeString(value.validity, "", 300),
-    confidence: ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "medium",
+    evidenceRefs,
+    validity,
+    confidence,
     confirmedBy: normalizeString(value.confirmedBy, "", 160) || undefined,
     confirmedAt: normalizeString(value.confirmedAt, "", 80) || undefined,
     publishedBy: normalizeString(value.publishedBy, "", 160) || undefined,
     publishedAt: normalizeString(value.publishedAt, "", 80) || undefined,
-    rejectionReason: normalizeString(value.rejectionReason, "", 500) || undefined,
-    safeNote: normalizeString(value.safeNote, "", 500) || undefined,
+    rejectionReason,
+    safeNote,
+    preview,
+    lifecycleLabel: preview.lifecycleLabel,
+    readinessGroup: preview.readinessGroup,
+    nextAction: preview.nextAction,
   });
 }
 
@@ -3052,7 +3210,15 @@ export async function upsertOpeningConditionPilotMasterDataRecord(workspaceId, r
 }
 
 export async function decideOpeningConditionPilotMasterDataRecord(workspaceId, recordId, input = {}, options = {}) {
-  const nextStatus = input.decision === "reject" ? "rejected" : input.decision === "approve" ? "human_approved" : "published";
+  const decision = normalizeString(input.decision, "confirm", 40);
+  const nextStatus =
+    decision === "reject"
+      ? "rejected"
+      : decision === "publish"
+        ? "published"
+        : decision === "approve" || decision === "confirm"
+          ? "human_approved"
+          : "human_approved";
   return mutateSnapshot((snapshot) => {
     const index = snapshot.masterDataRecords.findIndex((item) => item.workspaceId === workspaceId && item.id === recordId);
     if (index < 0) {
@@ -3073,9 +3239,13 @@ export async function decideOpeningConditionPilotMasterDataRecord(workspaceId, r
       confirmedBy: input.actorId ?? input.confirmedBy ?? snapshot.masterDataRecords[index].confirmedBy,
       confirmedAt: snapshot.masterDataRecords[index].confirmedAt ?? now,
       publishedBy: nextStatus === "published" || nextStatus === "human_approved" ? input.actorId ?? input.publishedBy : undefined,
-      publishedAt: nextStatus === "published" || nextStatus === "human_approved" ? now : undefined,
+      publishedAt: nextStatus === "published" ? now : snapshot.masterDataRecords[index].publishedAt,
       rejectionReason: nextStatus === "rejected" ? input.safeNote ?? input.rejectionReason : undefined,
       safeNote: input.safeNote ?? snapshot.masterDataRecords[index].safeNote,
+      preview: {
+        ...snapshot.masterDataRecords[index].preview,
+        safeNote: input.safeNote ?? snapshot.masterDataRecords[index].preview?.safeNote,
+      },
     });
     const nextRecords = [...snapshot.masterDataRecords];
     nextRecords[index] = nextRecord;
