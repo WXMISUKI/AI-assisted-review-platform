@@ -1397,10 +1397,49 @@ function normalizeReportPackageDiagnostics(value) {
       ? value.summaryByIssueType.map(normalizeReportIssueTypeSummary).filter(Boolean).slice(0, 50)
       : [],
     nextRectificationAdvice: normalizeNextRectificationAdvice(value.nextRectificationAdvice),
+    deliveryHandoff: normalizeReportDeliveryHandoff(value.deliveryHandoff),
     exportHandoff: normalizeReportExportHandoff(value.exportHandoff),
     providerReadiness: normalizeTrialPackageProviderReadiness(value.providerReadiness),
     blockingReasons: normalizeStringList(value.blockingReasons, 30, 240),
     archiveStatus: ["pending", "ready", "archived"].includes(value.archiveStatus) ? value.archiveStatus : "pending",
+    generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
+  });
+}
+
+function normalizeReportDeliveryHandoff(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const status = normalizeString(value.status, "", 80);
+  const allowedStatuses = new Set([
+    "blocked",
+    "awaiting_human_review",
+    "ready_for_report",
+    "ready_for_archive",
+    "archived",
+    "failed",
+  ]);
+  const recommendedPage = normalizeString(value.recommendedPage, "", 80);
+  const allowedPages = new Set(["material-intake", "check-tasks", "human-review", "reports"]);
+  const statusLabel = normalizeString(value.statusLabel, "", 160);
+  const currentOwner = normalizeString(value.currentOwner, "", 160);
+  const nextAction = normalizeString(value.nextAction, "", 500);
+  const actionReason = normalizeString(value.actionReason, "", 500);
+
+  if (!allowedStatuses.has(status) || !statusLabel || !currentOwner || !nextAction || !actionReason) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    status,
+    statusLabel,
+    currentOwner,
+    nextAction,
+    recommendedPage: allowedPages.has(recommendedPage) ? recommendedPage : "reports",
+    readOnly: Boolean(value.readOnly),
+    blockingCount: normalizeNumber(value.blockingCount, 0, 10000),
+    actionReason,
     generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
   });
 }
@@ -1842,6 +1881,7 @@ function deriveTrialPackageSummary(task) {
 function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") {
   const trialPackage = task.trialPackage ?? deriveTrialPackageSummary(task);
   const findings = deriveReportPackageFindings(task);
+  const humanReview = summarizeHumanReviewQueue(task.humanReviewQueue ?? []);
   return normalizeReportPackageDiagnostics({
     inputObjects: {
       ...trialPackage.inputObjects,
@@ -1857,17 +1897,107 @@ function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") 
       ...summary,
       evidenceCount: task.evidence?.length ?? 0,
     },
-    humanReview: summarizeHumanReviewQueue(task.humanReviewQueue ?? []),
+    humanReview,
     decisionLedger: deriveHumanReviewDecisionLedger(task),
     findings,
     summaryByIssueType: deriveReportIssueTypeSummary(findings),
     nextRectificationAdvice: deriveNextRectificationAdvice(findings, trialPackage.blockingReasons ?? []),
+    deliveryHandoff: deriveReportDeliveryHandoff(task, findings, humanReview, archiveStatus),
     exportHandoff: deriveReportExportHandoff(task, findings, trialPackage, archiveStatus),
     providerReadiness: trialPackage.providerReadiness,
     blockingReasons: trialPackage.blockingReasons,
     archiveStatus,
     generatedAt: new Date().toISOString(),
   });
+}
+
+function deriveReportDeliveryHandoff(task, findings = [], humanReview = summarizeHumanReviewQueue(task.humanReviewQueue ?? []), archiveStatus = "ready") {
+  const blockingFindingCount = findings.filter((finding) =>
+    ["blocked", "fail", "reject", "needs_human_review"].includes(finding.disposition),
+  ).length;
+  const blockingCount = humanReview.blockingCount + blockingFindingCount;
+
+  if (archiveStatus === "archived" || task.state === "archived") {
+    return {
+      status: "archived",
+      statusLabel: "已归档，只读历史",
+      currentOwner: "无活动责任人",
+      nextAction: "如需继续补件，请从报告归档页发起下一轮整改复审，创建新的 run。",
+      recommendedPage: "reports",
+      readOnly: true,
+      blockingCount,
+      actionReason: "当前 run 已归档，平台仅保留报告、问题清单、人工决策和导出记录，不允许直接修改历史。",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (task.state === "awaiting_human_review" || humanReview.blockingCount > 0) {
+    return {
+      status: "awaiting_human_review",
+      statusLabel: "待人工复核",
+      currentOwner: "监理人工复核",
+      nextAction: `关闭 ${humanReview.blockingCount} 项待处理或延期的人工复核项，再生成报告并归档。`,
+      recommendedPage: "human-review",
+      readOnly: false,
+      blockingCount,
+      actionReason: "仍存在 open 或 deferred 的人工复核项，报告交付不能绕过人工结论。",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (archiveStatus === "ready" || task.reportAsset?.status === "ready") {
+    return {
+      status: "ready_for_archive",
+      statusLabel: "报告已生成，待归档",
+      currentOwner: "报告交付责任人",
+      nextAction: "确认报告问题清单、人工决策和导出结果后，归档本轮任务；需要补件时再发起下一轮整改复审。",
+      recommendedPage: "reports",
+      readOnly: false,
+      blockingCount,
+      actionReason: "本轮已形成平台报告资产，当前重点是交付确认、导出和归档留痕。",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (task.state === "report_ready") {
+    return {
+      status: "ready_for_report",
+      statusLabel: "可生成报告",
+      currentOwner: "报告交付责任人",
+      nextAction: "生成报告资产，确认不符合项、整改建议和人工决策账本后再归档。",
+      recommendedPage: "reports",
+      readOnly: false,
+      blockingCount,
+      actionReason: "正式核查和人工复核已收敛，可以进入报告交付。",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (task.state === "failed" || task.state === "canceled") {
+    return {
+      status: "failed",
+      statusLabel: task.state === "failed" ? "异常待恢复" : "已取消待重启",
+      currentOwner: "资料接入责任人",
+      nextAction: "检查失败或取消原因，回到资料接入恢复本轮或重新创建下一轮 run。",
+      recommendedPage: "material-intake",
+      readOnly: false,
+      blockingCount,
+      actionReason: "当前 run 未形成可交付报告，需要先恢复到可执行链路。",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    status: "blocked",
+    statusLabel: "尚未到达报告交付",
+    currentOwner: "资料接入责任人",
+    nextAction: task.preflightReadiness?.nextAction ?? "补齐依据、主数据、知识库和资料包门禁后，再执行正式核查。",
+    recommendedPage: task.state === "matching" || task.state === "extracting" ? "check-tasks" : "material-intake",
+    readOnly: false,
+    blockingCount,
+    actionReason: "当前 run 仍处于资料接入、门禁确认或正式核查阶段，报告交付尚未形成。",
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 function deriveReportExportHandoff(task, findings = [], trialPackage = null, archiveStatus = "ready") {
@@ -4670,6 +4800,19 @@ export async function archiveOpeningConditionPilotTask(taskId, input = {}, optio
         packageDiagnostics: {
           ...existingTask.reportAsset.packageDiagnostics,
           archiveStatus: "archived",
+          deliveryHandoff: deriveReportDeliveryHandoff(
+            {
+              ...existingTask,
+              state: "archived",
+              reportAsset: {
+                ...existingTask.reportAsset,
+                status: "archived",
+              },
+            },
+            existingTask.reportAsset.packageDiagnostics?.findings ?? deriveReportPackageFindings(existingTask),
+            existingTask.reportAsset.packageDiagnostics?.humanReview ?? summarizeHumanReviewQueue(existingTask.humanReviewQueue ?? []),
+            "archived",
+          ),
         },
       },
       taskId,

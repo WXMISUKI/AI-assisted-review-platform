@@ -418,6 +418,18 @@ export interface OpeningConditionPilotReportNextRectificationAdvice {
   actions: string[];
 }
 
+export interface OpeningConditionPilotReportDeliveryHandoff {
+  status: "blocked" | "awaiting_human_review" | "ready_for_report" | "ready_for_archive" | "archived" | "failed";
+  statusLabel: string;
+  currentOwner: string;
+  nextAction: string;
+  recommendedPage: "material-intake" | "check-tasks" | "human-review" | "reports";
+  readOnly: boolean;
+  blockingCount: number;
+  actionReason: string;
+  generatedAt: string;
+}
+
 export interface OpeningConditionPilotReportExportHandoff {
   adapterId: string;
   adapterLabel: string;
@@ -460,6 +472,7 @@ export interface OpeningConditionPilotReportPackageDiagnostics {
   findings?: OpeningConditionPilotReportFinding[];
   summaryByIssueType?: OpeningConditionPilotReportIssueTypeSummary[];
   nextRectificationAdvice?: OpeningConditionPilotReportNextRectificationAdvice;
+  deliveryHandoff?: OpeningConditionPilotReportDeliveryHandoff;
   exportHandoff?: OpeningConditionPilotReportExportHandoff;
   providerReadiness?: OpeningConditionPilotProviderReadinessSummary;
   blockingReasons: string[];

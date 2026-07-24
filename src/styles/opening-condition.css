@@ -185,6 +185,15 @@
   background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface));
 }
 
+.opening-report-delivery-handoff {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary-soft) 38%, var(--surface));
+}
+
 .opening-report-workbench-header,
 .opening-finding-group-header {
   display: flex;

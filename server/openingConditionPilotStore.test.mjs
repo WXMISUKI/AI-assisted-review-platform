@@ -1679,6 +1679,8 @@ test("generates and archives auxiliary report assets after human review is clear
     assert.equal(report.reportAsset.packageDiagnostics.inputObjects.sourceCount, 1);
     assert.equal(report.reportAsset.packageDiagnostics.matching.total, 1);
     assert.equal(report.reportAsset.packageDiagnostics.humanReview.blockingCount, 0);
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.status, "ready_for_archive");
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.readOnly, false);
     assert.equal("privateUrl" in report.reportAsset.objectRef, false);
 
     const archived = await archiveOpeningConditionPilotTask("task-1", { message: "归档完成。" }, { storePath });
@@ -1687,6 +1689,8 @@ test("generates and archives auxiliary report assets after human review is clear
     assert.equal(archived.reportAsset.status, "archived");
     assert.equal(archived.task.trialPackage.status, "archived");
     assert.equal(archived.reportAsset.packageDiagnostics.archiveStatus, "archived");
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.status, "archived");
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.readOnly, true);
 
     const regenerated = await generateOpeningConditionPilotReport("task-1", {}, { storePath });
     assert.equal(regenerated.ok, false);
@@ -1811,6 +1815,8 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
     assert.equal(report.reportAsset.status, "ready");
     assert.equal(report.reportAsset.packageDiagnostics.humanReview.blockingCount, 0);
     assert.equal(report.reportAsset.packageDiagnostics.decisionLedger.length, 1);
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.status, "ready_for_archive");
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.recommendedPage, "reports");
     assert.equal("token" in report.reportAsset.objectRef, false);
 
     const archived = await archiveOpeningConditionPilotTask(
@@ -1822,6 +1828,8 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
     assert.equal(archived.task.state, "archived");
     assert.equal(archived.reportAsset.status, "archived");
     assert.equal(archived.reportAsset.packageDiagnostics.archiveStatus, "archived");
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.status, "archived");
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.readOnly, true);
     const archivedEventCount = archived.task.events.length;
 
     const rematchArchived = await runOpeningConditionPilotChecklistMatch("task-smoke-run-1", {}, { storePath });

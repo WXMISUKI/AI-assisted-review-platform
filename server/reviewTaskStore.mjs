@@ -120,25 +120,25 @@ async function writeSnapshot(snapshot, storePath = DEFAULT_STORE_PATH) {
   return normalized;
 }
 
-async function mutateSnapshot(mutator) {
-  const snapshot = await readSnapshot();
+async function mutateSnapshot(mutator, storePath = DEFAULT_STORE_PATH) {
+  const snapshot = await readSnapshot(storePath);
   const result = await mutator(snapshot);
   const nextSnapshot = result?.snapshot ?? snapshot;
-  await writeSnapshot(nextSnapshot);
+  await writeSnapshot(nextSnapshot, storePath);
   return result?.value;
 }
 
-export async function listReviewTasks() {
-  return readSnapshot();
+export async function listReviewTasks(storePath = DEFAULT_STORE_PATH) {
+  return readSnapshot(storePath);
 }
 
-export async function getReviewTask(taskId) {
-  const snapshot = await readSnapshot();
+export async function getReviewTask(taskId, storePath = DEFAULT_STORE_PATH) {
+  const snapshot = await readSnapshot(storePath);
   const task = snapshot.tasks.find((item) => item.id === taskId);
   return task ?? null;
 }
 
-export async function upsertReviewTask(taskId, task) {
+export async function upsertReviewTask(taskId, task, storePath = DEFAULT_STORE_PATH) {
   const normalizedTask = normalizeTask({
     ...task,
     id: taskId,
@@ -150,12 +150,12 @@ export async function upsertReviewTask(taskId, task) {
     };
   }
 
-  const snapshot = await readSnapshot();
+  const snapshot = await readSnapshot(storePath);
   const nextTasks = [normalizedTask, ...snapshot.tasks.filter((item) => item.id !== taskId)].slice(0, MAX_TASKS);
   await writeSnapshot({
     schemaVersion: STORAGE_VERSION,
     tasks: nextTasks,
-  });
+  }, storePath);
 
   return {
     ok: true,
@@ -163,7 +163,7 @@ export async function upsertReviewTask(taskId, task) {
   };
 }
 
-export async function mutateReviewTask(taskId, updater) {
+export async function mutateReviewTask(taskId, updater, storePath = DEFAULT_STORE_PATH) {
   if (typeof updater !== "function") {
     return {
       ok: false,
@@ -210,16 +210,16 @@ export async function mutateReviewTask(taskId, updater) {
         task: nextTask,
       },
     };
-  });
+  }, storePath);
 
   return value;
 }
 
-export async function replaceReviewTasks(tasks) {
+export async function replaceReviewTasks(tasks, storePath = DEFAULT_STORE_PATH) {
   const snapshot = await writeSnapshot({
     schemaVersion: STORAGE_VERSION,
     tasks: normalizeTasks(tasks),
-  });
+  }, storePath);
 
   return {
     ok: true,

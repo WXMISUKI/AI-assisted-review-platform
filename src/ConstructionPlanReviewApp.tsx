@@ -58,6 +58,7 @@ import {
   updateReviewTaskViewContext,
   updateTaskIssueDraft,
 } from "./domain/reviewSessionService";
+import { hydrateReviewTasksFromBackend } from "./domain/reviewTaskRepository";
 import { getReviewTaskOrchestrationSnapshot } from "./domain/reviewTaskOrchestration";
 import { buildReviewPreparationStages } from "./domain/reviewPreparationStages";
 import {
@@ -110,10 +111,12 @@ export function ConstructionPlanReviewApp({
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
   const [streamStageIndex, setStreamStageIndex] = useState(0);
+  const [rereviewTargetId, setRereviewTargetId] = useState<string | null>(null);
   const documentsRef = useRef<LibraryDocument[]>(documents);
 
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId) ?? documents[0];
   const deleteTargetDocument = documents.find((doc) => doc.id === deleteTargetId) ?? null;
+  const rereviewTargetDocument = documents.find((doc) => doc.id === rereviewTargetId) ?? null;
   const allowedModes: ReviewMode[] = session ? roleModes[session.role] : ["review", "revise"];
 
   function replaceDocumentFromBackend(task: LibraryDocument | undefined) {
@@ -146,6 +149,20 @@ export function ConstructionPlanReviewApp({
   useEffect(() => {
     documentsRef.current = documents;
   }, [documents]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    hydrateReviewTasksFromBackend().then((backendTasks) => {
+      if (!cancelled && backendTasks) {
+        setDocuments(backendTasks);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (activePage !== "review-loading" || !loadingDocId) {
@@ -793,6 +810,38 @@ export function ConstructionPlanReviewApp({
     setDeleteTargetId(null);
   }
 
+  function requestRereviewDocument(documentId: string) {
+    setRereviewTargetId(documentId);
+  }
+
+  function confirmRereviewDocument() {
+    if (!rereviewTargetId) {
+      return;
+    }
+
+    const original = documents.find((doc) => doc.id === rereviewTargetId);
+    if (!original) {
+      setRereviewTargetId(null);
+      return;
+    }
+
+    const nextDocuments = createDocumentTask(documents, {
+      name: original.name,
+      project: original.project,
+      uploader: session?.username ?? "当前用户",
+      mode: session?.role === "contractor" ? "revise" : "review",
+      status: "uploaded",
+      sourceObject: original.sourceObject,
+      recoveredStructure: original.recoveredStructure,
+      previousTaskId: original.id,
+    });
+    const newDoc = nextDocuments[0];
+    setDocuments(nextDocuments);
+    setSelectedDocId(newDoc.id);
+    setRereviewTargetId(null);
+    startReview(newDoc.id);
+  }
+
   function startReview(documentId: string) {
     setSelectedDocId(documentId);
     setLoadingDocId(documentId);
@@ -995,6 +1044,7 @@ export function ConstructionPlanReviewApp({
         themeMode={themeMode}
         onToggleTheme={onToggleTheme}
         onComplete={completeReview}
+        readonly={selectedDocument.status === "completed"}
         sessionSnapshot={selectedDocumentSession ?? undefined}
         paragraphs={selectedDocumentSession?.paragraphs ?? selectedDocument.paragraphs}
         initialIssues={selectedDocumentSession?.issues ?? selectedDocument.issues}
@@ -1020,6 +1070,7 @@ export function ConstructionPlanReviewApp({
         }}
         themeMode={themeMode}
         onToggleTheme={onToggleTheme}
+        onRereview={() => requestRereviewDocument(selectedDocument.id)}
       />
     );
   }
@@ -1122,6 +1173,7 @@ export function ConstructionPlanReviewApp({
               onOpenDocument={openDocument}
               onOpenResult={openResult}
               onDeleteDocument={requestDeleteDocument}
+              onRereview={requestRereviewDocument}
             />
           )}
 
@@ -1158,6 +1210,25 @@ export function ConstructionPlanReviewApp({
               </button>
               <button type="button" className="danger" onClick={confirmDeleteDocument}>
                 确认删除
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {rereviewTargetDocument && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="rereview-doc-title">
+            <span className="eyebrow">重新审查</span>
+            <h2 id="rereview-doc-title">基于上轮结果发起新一轮审查？</h2>
+            <p>
+              将基于"{rereviewTargetDocument.name}"的 OCR 结果重新生成审查问题。上轮审查结果将保留，新轮次独立进行。
+            </p>
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setRereviewTargetId(null)}>
+                取消
+              </button>
+              <button type="button" className="primary" onClick={confirmRereviewDocument}>
+                确认发起
               </button>
             </div>
           </section>

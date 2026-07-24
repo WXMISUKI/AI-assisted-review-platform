@@ -97,28 +97,6 @@ function cacheBackendReviewTasks(tasks: ReviewTask[]) {
   window.localStorage.setItem(`${STORAGE_KEY}.backend-cache`, JSON.stringify(snapshot));
 }
 
-function refreshBackendTaskCache() {
-  if (typeof window === "undefined" || typeof window.fetch !== "function") {
-    return;
-  }
-
-  window.fetch(BACKEND_TASKS_ENDPOINT)
-    .then((response) => (response.ok ? response.json() : null))
-    .then((payload: unknown) => {
-      if (!isValidSnapshot(payload)) {
-        return;
-      }
-
-      const tasks = payload.tasks.map(normalizeLoadedTask);
-      if (tasks.length > 0) {
-        cacheBackendReviewTasks(tasks);
-      }
-    })
-    .catch(() => {
-      // Backend persistence is a best-effort foundation in this slice.
-    });
-}
-
 function syncBackendReviewTasks(tasks: ReviewTask[]) {
   if (typeof window === "undefined" || typeof window.fetch !== "function") {
     return;
@@ -131,18 +109,59 @@ function syncBackendReviewTasks(tasks: ReviewTask[]) {
     },
     body: JSON.stringify({ tasks }),
   }).catch(() => {
-    // Keep local state authoritative when the backend is unavailable.
+    // Keep local state as fallback when the backend is unavailable.
   });
 }
 
+/**
+ * Synchronous load for first render. Returns localStorage or backend cache.
+ * Use hydrateReviewTasksFromBackend() in useEffect to get authoritative backend data.
+ */
 export function loadReviewTasks(): ReviewTask[] {
   const backendCachedTasks = loadBackendCachedReviewTasks();
-  refreshBackendTaskCache();
   if (backendCachedTasks.length > 0) {
     return backendCachedTasks;
   }
 
   return loadLocalReviewTasks();
+}
+
+/**
+ * Async hydration from backend. Call in useEffect after initial render.
+ * Returns backend tasks on success, null on failure (caller keeps existing state).
+ * Updates both localStorage and backend cache when successful.
+ */
+export async function hydrateReviewTasksFromBackend(): Promise<ReviewTask[] | null> {
+  if (typeof window === "undefined" || typeof window.fetch !== "function") {
+    return null;
+  }
+
+  try {
+    const response = await window.fetch(BACKEND_TASKS_ENDPOINT);
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload: unknown = await response.json();
+    if (!isValidSnapshot(payload)) {
+      return null;
+    }
+
+    const tasks = (payload as ReviewStorageSnapshot).tasks.map(normalizeLoadedTask);
+
+    cacheBackendReviewTasks(tasks);
+    if (canUseStorage()) {
+      const snapshot: ReviewStorageSnapshot = {
+        schemaVersion: STORAGE_VERSION,
+        tasks,
+      };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    }
+
+    return tasks;
+  } catch {
+    return null;
+  }
 }
 
 export function saveReviewTasks(tasks: ReviewTask[]): ReviewTask[] {

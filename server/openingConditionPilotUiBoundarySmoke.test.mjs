@@ -42,6 +42,9 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
   assert.match(source, /function buildReportFindings/);
   assert.match(source, /function buildReportFindingGroups/);
   assert.match(source, /decisionLedger/);
+  assert.match(source, /deliveryHandoff/);
+  assert.match(source, /Delivery Handoff/);
+  assert.match(source, /recommendedPage/);
   assert.match(snapshotSource, /buildRectificationClosureDiff/);
   assert.match(snapshotSource, /case "rejected":\s+return "reject";/);
   assert.match(snapshotSource, /case "open":\s+case "deferred":\s+return "needs_human_review";/);

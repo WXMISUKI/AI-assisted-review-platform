@@ -55,6 +55,7 @@ export interface ReviewWorkbenchPageProps {
   themeMode?: "light" | "dark";
   onToggleTheme?: () => void;
   onComplete?: (payload: ReviewCompletionPayload) => void;
+  readonly?: boolean;
   paragraphs?: DocumentParagraph[];
   initialIssues?: ReviewIssue[];
   onIssueResolve?: (
@@ -232,6 +233,7 @@ export function ReviewWorkbenchPage({
   onViewContextChange,
   recoveredStructure,
   sessionSnapshot,
+  readonly = false,
 }: ReviewWorkbenchPageProps = {}) {
   const sessionIssues = sessionSnapshot?.issues ?? initialIssuesProp;
   const sessionRecoveredStructure = sessionSnapshot?.recoveredStructure ?? recoveredStructure;
@@ -841,7 +843,7 @@ export function ReviewWorkbenchPage({
           <p>{modeCopy[reviewMode].note}</p>
         </div>
         <div className="mode-actions">
-          <div className="mode-switch" role="tablist" aria-label="工作模式">
+          <div className="mode-switch" role="tablist" aria-label="工作模式" style={readonly ? { display: "none" } : undefined}>
             {visibleModes.map((mode) => (
               <button
                 key={mode}
@@ -859,6 +861,7 @@ export function ReviewWorkbenchPage({
             className="completion-button"
             disabled={!reviewComplete}
             onClick={() => setCompletionConfirmOpen(true)}
+            style={readonly ? { display: "none" } : undefined}
           >
             <ClipboardCheck size={16} />
             {reviewComplete
@@ -947,7 +950,7 @@ export function ReviewWorkbenchPage({
             draft={selectionDraft}
             message={selectionMessage}
           />
-          {selectionDraft && (
+          {!readonly && selectionDraft && (
             <ManualAnnotationPopover
               draft={selectionDraft}
               form={manualForm}
@@ -1042,6 +1045,7 @@ export function ReviewWorkbenchPage({
                       refSetter={(node) => {
                         cardRefs.current[issue.id] = node;
                       }}
+                      readonly={readonly}
                     />
                   ))}
                 </div>
@@ -1080,7 +1084,7 @@ export function ReviewWorkbenchPage({
         />
       )}
 
-      {completionConfirmOpen && (
+      {!readonly && completionConfirmOpen && (
         <CompletionConfirmDialog
           mode={reviewMode}
           counts={counts}
@@ -1411,6 +1415,7 @@ function IssueCard({
   onReject,
   onRequestDelete,
   refSetter,
+  readonly,
 }: {
   issue: ReviewIssue;
   sectionLabel: string;
@@ -1424,6 +1429,7 @@ function IssueCard({
   onReject: () => void;
   onRequestDelete: () => void;
   refSetter: (node: HTMLDivElement | null) => void;
+  readonly?: boolean;
 }) {
   const primaryReference = issue.kernel?.basisReferences[0];
 
@@ -1572,7 +1578,7 @@ function IssueCard({
           />
         </label>
 
-        <div className="action-row">
+        <div className="action-row" style={readonly ? { display: "none" } : undefined}>
           <button
             type="button"
             className={issue.status === "accepted" ? "selected" : ""}

@@ -281,7 +281,7 @@ function createReviewResultAsset(task, mode, createdAt = nowIsoString()) {
   };
 }
 
-export async function resolveReviewTaskIssue(taskId, issueId, input = {}) {
+export async function resolveReviewTaskIssue(taskId, issueId, input = {}, storePath) {
   const status = input.status;
   if (status !== "accepted" && status !== "rejected") {
     return invalidInputResult("Issue status must be accepted or rejected.");
@@ -307,7 +307,7 @@ export async function resolveReviewTaskIssue(taskId, issueId, input = {}) {
       decision: status,
       message: status === "accepted" ? "Issue accepted by reviewer." : "Issue rejected by reviewer.",
     });
-  });
+  }, storePath);
 
   if (!result.ok || !resolvedIssue) {
     return result.ok ? issueNotFoundResult() : result;
@@ -320,7 +320,7 @@ export async function resolveReviewTaskIssue(taskId, issueId, input = {}) {
   };
 }
 
-export async function updateReviewTaskIssueDraft(taskId, issueId, input = {}) {
+export async function updateReviewTaskIssueDraft(taskId, issueId, input = {}, storePath) {
   const suggestion = normalizeString(input.suggestion, "", MAX_TEXT_LENGTH);
   if (!suggestion) {
     return invalidInputResult("Issue suggestion is required.");
@@ -352,7 +352,7 @@ export async function updateReviewTaskIssueDraft(taskId, issueId, input = {}) {
       issueTitle: issue.finding?.title,
       message: "Issue suggestion draft updated.",
     });
-  });
+  }, storePath);
 
   if (!result.ok || !updatedIssue) {
     return result.ok ? issueNotFoundResult() : result;
@@ -365,7 +365,7 @@ export async function updateReviewTaskIssueDraft(taskId, issueId, input = {}) {
   };
 }
 
-export async function addManualReviewTaskIssue(taskId, input = {}) {
+export async function addManualReviewTaskIssue(taskId, input = {}, storePath) {
   const manualIssue = normalizeManualIssue(input.issue ?? input);
   if (!manualIssue) {
     return invalidInputResult("A valid manual review issue is required.");
@@ -385,7 +385,7 @@ export async function addManualReviewTaskIssue(taskId, input = {}) {
       issueTitle: manualIssue.finding?.title,
       message: "Manual review issue added.",
     });
-  });
+  }, storePath);
 
   if (!result.ok) {
     return result;
@@ -398,7 +398,7 @@ export async function addManualReviewTaskIssue(taskId, input = {}) {
   };
 }
 
-export async function deleteManualReviewTaskIssue(taskId, issueId) {
+export async function deleteManualReviewTaskIssue(taskId, issueId, storePath) {
   let deletedIssue = null;
   let blocked = false;
   const result = await mutateReviewTask(taskId, (task) => {
@@ -426,7 +426,7 @@ export async function deleteManualReviewTaskIssue(taskId, issueId) {
       issueTitle: issue.finding?.title,
       message: "Manual review issue deleted.",
     });
-  });
+  }, storePath);
 
   if (!result.ok) {
     return result;
@@ -451,7 +451,7 @@ export async function deleteManualReviewTaskIssue(taskId, issueId) {
   };
 }
 
-export async function completeReviewTaskDecision(taskId, input = {}) {
+export async function completeReviewTaskDecision(taskId, input = {}, storePath) {
   let resultAsset = null;
   let pendingCount = 0;
   let issueCount = 0;
@@ -481,7 +481,7 @@ export async function completeReviewTaskDecision(taskId, input = {}) {
       resultAssetId: resultAsset.id,
       message: "Review task completed.",
     });
-  });
+  }, storePath);
 
   if (!result.ok) {
     return result;
@@ -505,8 +505,8 @@ export async function completeReviewTaskDecision(taskId, input = {}) {
   };
 }
 
-export async function getReviewTaskDecisionActivities(taskId, options = {}) {
-  const task = await getReviewTask(taskId);
+export async function getReviewTaskDecisionActivities(taskId, options = {}, storePath) {
+  const task = await getReviewTask(taskId, storePath);
   if (!task) {
     return {
       ok: false,

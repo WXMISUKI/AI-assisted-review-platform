@@ -3297,6 +3297,7 @@ function OpeningConditionReportDeliveryWorkbench({
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
   const issueTypeSummary = packageDiagnostics?.summaryByIssueType ?? [];
   const nextRectificationAdvice = packageDiagnostics?.nextRectificationAdvice;
+  const deliveryHandoff = packageDiagnostics?.deliveryHandoff;
   const exportHandoff = packageDiagnostics?.exportHandoff;
   const isCurrentRun = runSnapshot.isCurrentRun;
   const selectedActionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask: selectedTask });
@@ -3379,6 +3380,40 @@ function OpeningConditionReportDeliveryWorkbench({
                 : "历史轮次只保留当时的责任边界与处理语义，便于复盘和对比，不再提供直接变更入口。"
             }
           />
+
+          {deliveryHandoff && (
+            <div className="opening-report-delivery-handoff">
+              <div className="opening-report-finding-header">
+                <div>
+                  <span className="eyebrow">Delivery Handoff</span>
+                  <strong>{deliveryHandoff.statusLabel}</strong>
+                </div>
+                <div className="opening-report-chip-row">
+                  <span className={`opening-report-chip tone-${deliveryHandoff.readOnly ? "muted" : deliveryHandoff.blockingCount > 0 ? "warning" : "success"}`}>
+                    {deliveryHandoff.readOnly ? "只读历史" : "当前交付"}
+                  </span>
+                  <span className="opening-report-chip tone-info">{deliveryHandoff.currentOwner}</span>
+                  {deliveryHandoff.blockingCount > 0 && (
+                    <span className="opening-report-chip tone-warning">阻塞 {deliveryHandoff.blockingCount} 项</span>
+                  )}
+                </div>
+              </div>
+              <div className="opening-report-context-grid">
+                <div className="opening-action-summary-item">
+                  <strong>下一动作</strong>
+                  <small>{deliveryHandoff.nextAction}</small>
+                </div>
+                <div className="opening-action-summary-item">
+                  <strong>推荐入口</strong>
+                  <small>{deliveryHandoff.recommendedPage}</small>
+                </div>
+                <div className="opening-action-summary-item">
+                  <strong>交付依据</strong>
+                  <small>{deliveryHandoff.actionReason}</small>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="opening-report-summary-grid">
             <div className="opening-report-summary-card tone-danger">

@@ -440,6 +440,7 @@ export function DocumentLibraryPage({
   onOpenDocument,
   onOpenResult,
   onDeleteDocument,
+  onRereview,
 }: {
   documents: LibraryDocument[];
   uploadDraft: UploadDraft;
@@ -456,6 +457,7 @@ export function DocumentLibraryPage({
   onOpenDocument: (documentId: string) => void;
   onOpenResult: (documentId: string) => void;
   onDeleteDocument: (documentId: string) => void;
+  onRereview?: (documentId: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recentDocs = useMemo(() => documents.slice(0, 5), [documents]);
@@ -639,10 +641,18 @@ export function DocumentLibraryPage({
                       开始审查
                     </button>
                   ) : hasResult ? (
-                    <button type="button" className="primary" onClick={() => onOpenResult(doc.id)}>
-                      <FileText size={16} />
-                      查看结果
-                    </button>
+                    <>
+                      <button type="button" className="primary" onClick={() => onOpenResult(doc.id)}>
+                        <FileText size={16} />
+                        查看结果
+                      </button>
+                      {onRereview && (
+                        <button type="button" className="secondary" onClick={() => onRereview(doc.id)}>
+                          <GitCompareArrows size={16} />
+                          重新审查
+                        </button>
+                      )}
+                    </>
                   ) : null}
                 </div>
               </article>
@@ -729,6 +739,7 @@ export function ResultPreviewPage({
   sessionSnapshot,
   onBack,
   onOpenWorkbench,
+  onRereview,
   themeMode,
   onToggleTheme,
 }: {
@@ -736,6 +747,7 @@ export function ResultPreviewPage({
   sessionSnapshot?: ReviewSession;
   onBack: () => void;
   onOpenWorkbench: () => void;
+  onRereview?: () => void;
   themeMode: ThemeMode;
   onToggleTheme: () => void;
 }) {
@@ -765,6 +777,12 @@ export function ResultPreviewPage({
             <FileText size={16} />
             返回工作台
           </button>
+          {onRereview && (
+            <button type="button" className="theme-toggle subtle" onClick={onRereview}>
+              <GitCompareArrows size={16} />
+              重新审查
+            </button>
+          )}
           <span>{statusLabels[document.status]}</span>
           <span>{modeName(document.mode)}</span>
         </div>

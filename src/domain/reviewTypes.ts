@@ -477,6 +477,7 @@ export interface ReviewTask {
   sourceObject?: ReviewTaskSourceObject;
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
+  previousTaskId?: string;
   resultAsset?: ReviewResultAsset;
 }
 
@@ -512,4 +513,5 @@ export interface CreateReviewTaskInput {
   ocrJob?: ReviewTaskOcrJob;
   failure?: ReviewTaskFailure;
   recoveredStructure?: RecoveredDocumentStructure;
+  previousTaskId?: string;
 }

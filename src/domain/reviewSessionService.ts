@@ -464,6 +464,7 @@ export function createDocumentTask(
     sourceObject: input.sourceObject,
     ocrJob: input.ocrJob,
     failure: input.status === "failed" ? input.failure : undefined,
+    previousTaskId: input.previousTaskId,
   };
 
   return saveReviewTasks([newTask, ...tasks]);
