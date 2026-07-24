@@ -5,6 +5,7 @@ import test from "node:test";
 const portalStateSourcePath = new URL("../src/openingConditionPortalState.ts", import.meta.url);
 const workspacePagesSourcePath = new URL("../src/productWorkspacePages.tsx", import.meta.url);
 const reviewDomainSourcePath = new URL("../src/domain/openingConditionReview.ts", import.meta.url);
+const runSnapshotSourcePath = new URL("../src/openingConditionRunSnapshot.ts", import.meta.url);
 
 test("UI smoke keeps archived opening-condition runs read-only in the shared portal state", async () => {
   const source = await readFile(portalStateSourcePath, "utf8");
@@ -22,22 +23,28 @@ test("UI smoke keeps archived opening-condition runs read-only in the shared por
 
 test("UI smoke keeps report and history actions scoped to current mutable runs", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
+  const snapshotSource = await readFile(runSnapshotSourcePath, "utf8");
 
-  assert.match(source, /const selectedTask = historyTasks\.find\(\(task\) => task\.id === selectedHistoryTaskId\) \?\? pilotTask/);
-  assert.match(source, /const isCurrentRun = Boolean\(selectedTask && pilotTask && selectedTask\.id === pilotTask\.id\);/);
+  assert.match(source, /const runSnapshot = deriveOpeningConditionRunSnapshot\(/);
+  assert.match(source, /const selectedTask = runSnapshot\.selectedTask;/);
+  assert.match(source, /const isCurrentRun = runSnapshot\.isCurrentRun;/);
   assert.match(source, /selectedTask\?\.id === pilotTask\.id && pilotTask\.state === "report_ready"/);
   assert.match(source, /reportAsset\?\.status === "ready" && isCurrentRun/);
-  assert.match(source, /onStartRectificationRerun && isCurrentRun && selectedTask\?\.state === "archived"/);
+  assert.match(source, /runSnapshot\.canStartRectificationRerun/);
+  assert.match(snapshotSource, /canStartRectificationRerun: Boolean\(isCurrentRun && selectedTask\?\.state === "archived" && currentRunArchived\)/);
   assert.match(source, /"历史轮次详情"|历史轮次详情|Historical Run Snapshot/);
 });
 
 test("UI smoke preserves report handoff semantics without pixel-level assertions", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
+  const snapshotSource = await readFile(runSnapshotSourcePath, "utf8");
 
   assert.match(source, /function buildReportFindings/);
   assert.match(source, /function buildReportFindingGroups/);
   assert.match(source, /decisionLedger/);
-  assert.match(source, /buildRectificationClosureDiff/);
+  assert.match(snapshotSource, /buildRectificationClosureDiff/);
+  assert.match(snapshotSource, /case "rejected":\s+return "reject";/);
+  assert.match(snapshotSource, /case "open":\s+case "deferred":\s+return "needs_human_review";/);
   assert.match(source, /expectedEvidenceHints/);
   assert.match(source, /rectification/);
   assert.match(source, /opening-report-finding-detail-grid/);

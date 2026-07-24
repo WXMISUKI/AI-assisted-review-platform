@@ -55,11 +55,18 @@ The system SHALL allow operators to inspect a specific historical run in detail 
 #### Scenario: Historical difference uses final operator-facing state
 - **WHEN** the selected run or previous run contains human-reviewed checklist items
 - **THEN** the rectification difference uses normalized operator-facing states instead of raw `needs_human_review` values
+- **AND** an item already rejected by human review is not counted as pending human judgement
 
 #### Scenario: History selection updates the delivery workbench
 - **WHEN** the operator switches the selected run from the history list
 - **THEN** the report delivery workbench updates its selected-run summary, findings, closure comparison, and decision ledger to match that run
 - **AND** it preserves read-only history semantics for non-current rounds
+
+#### Scenario: Historical selection preserves single rerun entrance
+- **WHEN** the operator selects a historical archived run from the history list
+- **THEN** the detail view remains read-only
+- **AND** the portal does not expose a new-rerun mutation entrance from that historical selection
+- **AND** the next rectification rerun can only be started from the current archived run context
 
 ### Requirement: Historical action ownership snapshot
 The system SHALL preserve an operator-facing action ownership snapshot when a historical run is inspected.

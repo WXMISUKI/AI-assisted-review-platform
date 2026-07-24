@@ -19,6 +19,11 @@ The system SHALL keep the report detail area synchronized with the run selected 
 - **THEN** the report detail area updates to that run's findings, decision ledger, closure comparison, and metadata
 - **AND** the page clearly indicates that the selected round is read-only history rather than the active current run
 
+#### Scenario: Report and archive views share selected-run semantics
+- **WHEN** the operator opens the report workbench or archive workbench for the same workspace
+- **THEN** both pages use the same selected-run, current-run, and historical-readonly semantics
+- **AND** the operator does not see conflicting rerun-entry or mutation guidance between those views
+
 ### Requirement: Prioritized delivery findings
 The system SHALL group report findings by delivery priority rather than only rendering one flat list.
 
@@ -44,4 +49,4 @@ The opening-condition report workbench SHALL prioritize acceptance and handoff a
 - **WHEN** the selected run is not the active current run
 - **THEN** the report workbench presents it as historical detail only
 - **AND** it does not show report generation, archive, or next-rerun mutation actions for that historical selection
-
+- **AND** if a rerun entry is shown anywhere on the page, it is tied only to the current archived run rather than the selected historical snapshot

@@ -51,6 +51,16 @@ The system SHALL expose the current run's owner, next action, due-state, and act
 - **THEN** the summary can also expose the recommended page and primary action label for continuing the workflow
 - **AND** that routing guidance remains consistent with the current run state
 
+#### Scenario: Historical snapshot renders action ownership
+- **WHEN** a page renders action ownership for a selected historical run
+- **THEN** the summary preserves that run's owner/next-action semantics in read-only form
+- **AND** the page can distinguish those historical semantics from the current run's live mutation context
+
+#### Scenario: Shared snapshot drives routing guidance
+- **WHEN** report and archive views derive action ownership for selected runs
+- **THEN** the routing guidance remains consistent with the shared run-snapshot semantics
+- **AND** the action summary does not imply that a historical selection can mutate the current workspace run
+
 #### Scenario: Action summary is operator-readable
 - **WHEN** the action summary is rendered on workspace, human-review, or report delivery views
 - **THEN** it shows readable labels for current owner, next action, action reason, due state, due window, recommended page, and primary action

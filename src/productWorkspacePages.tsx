@@ -63,6 +63,14 @@ import {
   deriveOpeningConditionRerunAssetDiff,
   getOpeningConditionAssetReuseStatusMeta,
 } from "./openingConditionRerunAssetReuse";
+import {
+  buildHumanReviewMap as buildRunSnapshotHumanReviewMap,
+  deriveOpeningConditionRunSnapshot,
+  getCheckItemDisposition as getRunSnapshotCheckItemDisposition,
+  type FinalReviewDisposition,
+  type RectificationClosureCategory,
+  type RectificationClosureDiff,
+} from "./openingConditionRunSnapshot";
 
 const openingWorkspaceNav: Array<{
   id: OpeningConditionPortalPage;
@@ -167,20 +175,6 @@ type ReportFindingGroup = {
   findings: ReportFinding[];
 };
 
-type FinalReviewDisposition =
-  | "blocked"
-  | "fail"
-  | "warning"
-  | "needs_human_review"
-  | "pass"
-  | "not_applicable"
-  | "missing_in_current_run"
-  | "confirm"
-  | "correct"
-  | "reject";
-
-type RectificationClosureCategory = "rectified" | "carried_over" | "newly_added" | "pending_human_review";
-
 type RectificationClosureItem = {
   id: string;
   title: string;
@@ -189,13 +183,6 @@ type RectificationClosureItem = {
   previousStatus: string;
   currentStatus: string;
   nextAction: string;
-};
-
-type RectificationClosureDiff = {
-  previousTask: OpeningConditionPilotTask;
-  selectedTask: OpeningConditionPilotTask;
-  items: RectificationClosureItem[];
-  summary: Record<RectificationClosureCategory, number>;
 };
 
 function getActionOwnershipTone(dueState: OpeningConditionRunActionOwnership["dueState"]) {
@@ -2793,14 +2780,14 @@ function buildReportFindings(pilotTask?: OpeningConditionPilotTask | null): Repo
   }
 
   const evidenceById = new Map<string, OpeningConditionPilotEvidence>(pilotTask.evidence.map((item) => [item.id, item]));
-  const reviewByTargetId = buildHumanReviewMap(pilotTask.humanReviewQueue);
+  const reviewByTargetId = buildRunSnapshotHumanReviewMap(pilotTask.humanReviewQueue);
   const latestReviewByTargetId = buildLatestHumanReviewMap(pilotTask.humanReviewQueue);
 
   return pilotTask.checkItems
     .filter((item) => isProblemCheckItem(item, latestReviewByTargetId.get(item.id)))
     .map((item) => {
       const latestReview = latestReviewByTargetId.get(item.id);
-      const disposition = getCheckItemDisposition(item, latestReview);
+      const disposition = getRunSnapshotCheckItemDisposition(item, latestReview);
       const severity =
         disposition === "blocked" || (item.required && (disposition === "fail" || disposition === "reject"))
           ? "high"
@@ -3237,24 +3224,27 @@ function OpeningConditionReportDeliveryWorkbench({
     readHiddenPilotRunAudits(packet.workspaceId),
   );
   const hiddenRunIds = new Set(hiddenRunAudits.map((item) => item.taskId));
-  const historyTasks = [...(workspaceTasks ?? [])]
-    .filter((task) => !hiddenRunIds.has(task.id) || task.id === pilotTask?.id)
-    .sort(compareTaskByUpdatedAtDesc);
   const [selectedHistoryTaskId, setSelectedHistoryTaskId] = useState<string | null>(null);
-  const selectedTask = historyTasks.find((task) => task.id === selectedHistoryTaskId) ?? pilotTask ?? historyTasks[0] ?? null;
+  const runSnapshot = deriveOpeningConditionRunSnapshot({
+    workspaceTasks,
+    pilotTask,
+    selectedHistoryTaskId,
+    hiddenRunIds,
+  });
+  const historyTasks = runSnapshot.historyTasks;
+  const selectedTask = runSnapshot.selectedTask;
   const reportAsset = selectedTask?.reportAsset;
   const packageDiagnostics = reportAsset?.packageDiagnostics;
-  const runRoundMap = buildRunRoundMap(historyTasks);
-  const currentRound = selectedTask ? runRoundMap.get(selectedTask.id) : undefined;
+  const runRoundMap = runSnapshot.runRoundMap;
+  const currentRound = runSnapshot.currentRound;
   const findings = buildReportFindings(selectedTask);
   const findingGroups = buildReportFindingGroups(findings);
-  const closureDiff = buildRectificationClosureDiff(selectedTask, historyTasks);
-  const previousRun = summarizePreviousRun(selectedTask, historyTasks);
+  const closureDiff = runSnapshot.closureDiff;
+  const previousRun = runSnapshot.previousRun;
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
-  const isCurrentRun = Boolean(selectedTask && pilotTask && selectedTask.id === pilotTask.id);
+  const isCurrentRun = runSnapshot.isCurrentRun;
   const selectedActionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask: selectedTask });
-  const selectedOpenReviewCount =
-    selectedTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
+  const selectedOpenReviewCount = runSnapshot.blockingReviewCount;
   const findingSummary = {
     blocked: findings.filter((item) => item.disposition === "blocked").length,
     failed: findings.filter((item) => item.disposition === "fail" || item.disposition === "reject").length,
@@ -3264,9 +3254,7 @@ function OpeningConditionReportDeliveryWorkbench({
   const canGenerateReport = Boolean(
     pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && selectedOpenReviewCount === 0 && !reportAsset,
   );
-  const canStartRectificationRerun = Boolean(
-    onStartRectificationRerun && isCurrentRun && selectedTask?.state === "archived" && pilotTask?.state === "archived",
-  );
+  const canStartRectificationRerun = Boolean(onStartRectificationRerun && runSnapshot.canStartRectificationRerun);
 
   function hideHistoryRun(taskId: string) {
     const nextAudits = [
@@ -3680,30 +3668,28 @@ function OpeningConditionReportArchivePage({
     readHiddenPilotRunAudits(packet.workspaceId),
   );
   const hiddenRunIds = new Set(hiddenRunAudits.map((item) => item.taskId));
-  const historyTasks = [...(workspaceTasks ?? [])]
-    .filter((task) => !hiddenRunIds.has(task.id) || task.id === pilotTask?.id)
-    .sort(compareTaskByUpdatedAtDesc);
   const [selectedHistoryTaskId, setSelectedHistoryTaskId] = useState<string | null>(null);
-  const selectedTask =
-    historyTasks.find((task) => task.id === selectedHistoryTaskId) ??
-    pilotTask ??
-    historyTasks[0] ??
-    null;
+  const runSnapshot = deriveOpeningConditionRunSnapshot({
+    workspaceTasks,
+    pilotTask,
+    selectedHistoryTaskId,
+    hiddenRunIds,
+  });
+  const historyTasks = runSnapshot.historyTasks;
+  const selectedTask = runSnapshot.selectedTask;
   const reportAsset = selectedTask?.reportAsset;
   const packageDiagnostics = reportAsset?.packageDiagnostics;
-  const blockingReviewCount =
-    selectedTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
+  const blockingReviewCount = runSnapshot.blockingReviewCount;
   const canGenerateReport = Boolean(
     pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && blockingReviewCount === 0 && !reportAsset,
   );
   const findings = buildReportFindings(selectedTask);
-  const runRoundMap = buildRunRoundMap(historyTasks);
-  const currentRound = selectedTask ? runRoundMap.get(selectedTask.id) : undefined;
-  const previousRun = summarizePreviousRun(selectedTask, historyTasks);
-  const closureDiff = buildRectificationClosureDiff(selectedTask, historyTasks);
+  const runRoundMap = runSnapshot.runRoundMap;
+  const currentRound = runSnapshot.currentRound;
+  const previousRun = runSnapshot.previousRun;
+  const closureDiff = runSnapshot.closureDiff;
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
-  const isCurrentRun = Boolean(selectedTask && pilotTask && selectedTask.id === pilotTask.id);
-  const currentRunArchived = pilotTask?.state === "archived";
+  const isCurrentRun = runSnapshot.isCurrentRun;
   const selectedActionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask: selectedTask });
   const findingSummary = {
     blocked: findings.filter((item) => item.disposition === "blocked").length,
@@ -3781,7 +3767,7 @@ function OpeningConditionReportArchivePage({
           )}
           {selectedTask.state === "archived" && (
             <div className="dialog-actions compact">
-              {onStartRectificationRerun && currentRunArchived && (
+              {onStartRectificationRerun && runSnapshot.canStartRectificationRerun && (
                 <button type="button" className="primary" onClick={onStartRectificationRerun} disabled={pilotBusy}>
                   <RotateCcw size={16} />
                   发起下一轮整改复审
@@ -4029,7 +4015,7 @@ function OpeningConditionReportArchivePage({
               归档任务
             </button>
           )}
-          {onStartRectificationRerun && currentRunArchived && (
+          {onStartRectificationRerun && runSnapshot.canStartRectificationRerun && (
             <button type="button" className="primary" onClick={onStartRectificationRerun} disabled={pilotBusy}>
               <RotateCcw size={16} />
               发起下一轮整改复审
