@@ -276,3 +276,13 @@ The chosen direction is:
 - treat MaxKB retrieval-check and retrieval hits as supporting recall only.
 
 This lets the current MaxKB work become useful for the single-project pilot while preserving the enterprise boundary needed for later database migration, audit, permissions, and production review records.
+
+## Dual-product MVP Boundary Decision
+
+As of 2026-07-24, construction-plan review and opening-condition review are separate product contracts under the same platform shell.
+
+- Construction-plan review owns document tasks, OCR/structure preparation, review issues, review result assets, and revised-plan snapshots.
+- Opening-condition review owns workspace context, basis/master-data gates, packet/checklist matching, human review, rectification reruns, report archive, and DOCX export.
+- The shared layer owns product launching, theme tokens, object/provider adapters, bounded report handoff, and safe diagnostics.
+- A product may consume shared services, but it must not write another product's domain state.
+- The initial refactor priority is boundary enforcement and smoke coverage; broad file splitting is deferred until both MVP acceptance paths are stable.

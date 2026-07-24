@@ -42,6 +42,9 @@ import {
 } from "./domain/openingConditionReview";
 import type { OpeningPilotIntakeMode } from "./openingConditionPortalState";
 
+// Platform orchestration boundary: login, product switching, and cross-product coordination only.
+// Product business rules belong to their owning domain/service modules.
+
 function getOpeningPilotTaskId(packet: OpeningConditionReviewPacket) {
   return `oc-pilot-${packet.workspaceId}`;
 }

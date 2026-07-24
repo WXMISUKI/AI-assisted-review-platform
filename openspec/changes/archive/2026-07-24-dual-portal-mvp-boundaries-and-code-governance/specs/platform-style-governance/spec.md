@@ -1,8 +1,5 @@
-# platform-style-governance Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change opening-condition-state-and-style-foundation. Update Purpose after archive.
-## Requirements
 ### Requirement: Layered stylesheet entry
 The platform SHALL keep one stylesheet entry while separating semantic tokens, shared shell/component rules, and product feature styles.
 

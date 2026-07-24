@@ -1,4 +1,6 @@
 @import "./styles/theme-tokens.css";
+@import "./styles/shared-foundation.css";
+@import "./styles/construction-plan.css";
 @import "./styles/opening-condition.css";
 
 * {

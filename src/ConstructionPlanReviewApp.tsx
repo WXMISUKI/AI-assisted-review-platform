@@ -32,6 +32,8 @@ import type {
   ReviewPipelineStageType,
   ReviewAgentKey,
 } from "./domain/reviewTypes";
+
+// Construction-plan product boundary: document intake, review lifecycle, and result presentation.
 import type { ReviewStreamEvent, ReviewStreamSubscriptionHandlers } from "./domain/backendConnectivity";
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import {

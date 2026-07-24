@@ -1,18 +1,4 @@
-# product-portal-boundary Specification
-
-## Purpose
-TBD - created by archiving change separate-product-portals-and-opening-basis-workflow. Update Purpose after archive.
-## Requirements
-### Requirement: Unified product launcher
-The system SHALL provide one authenticated business selection portal that routes authorized users into independent product workspaces.
-
-#### Scenario: User enters after login
-- **WHEN** an authenticated user has access to more than one product portal
-- **THEN** the system shows a product launcher with separate entries for construction-plan review and opening-condition review
-
-#### Scenario: User has one product
-- **WHEN** an authenticated user has access to exactly one product portal
-- **THEN** the system may route directly into that product while preserving a way to return to the product launcher when authorized
+## MODIFIED Requirements
 
 ### Requirement: Independent product route namespaces
 Each product portal SHALL own an independent route namespace, state namespace, navigation model, and acceptance entry point so business pages and task state do not depend on another product shell.
@@ -68,15 +54,3 @@ Each product portal SHALL expose only navigation that belongs to its product's M
 - **WHEN** the opening-condition sidebar renders
 - **THEN** it SHALL show workspace, intake, basis/master data, checklist, human review, report, and history controls
 - **AND** it SHALL not show construction-plan document issue controls
-
-### Requirement: Product access framing
-The system SHALL distinguish product access from shared account identity.
-
-#### Scenario: User lacks product permission
-- **WHEN** a user without permission requests a product portal
-- **THEN** the system shows a safe access-denied state without exposing product task data
-
-#### Scenario: User switches product
-- **WHEN** a user switches from one authorized product to another
-- **THEN** the system resets product-specific context while keeping the same account identity
-

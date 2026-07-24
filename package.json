@@ -11,6 +11,8 @@
     "smoke:opening-condition": "node --test server/openingConditionPilotStore.test.mjs",
     "smoke:opening-condition:http": "node --test server/openingConditionPilotHttpSmoke.test.mjs",
     "smoke:opening-condition:ui": "node --test server/openingConditionPilotUiBoundarySmoke.test.mjs",
+    "smoke:product-boundaries": "node --test server/productBoundarySmoke.test.mjs",
+    "governance:check": "node scripts/verify-governance.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1"
   },

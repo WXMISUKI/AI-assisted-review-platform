@@ -53,6 +53,9 @@ import type {
   OpeningConditionPilotLegalBasisReference,
   OpeningConditionPilotTask,
 } from "./domain/openingConditionPilot";
+
+// Opening-condition product boundary: workspace, preflight, packet matching, human review,
+// rectification runs, report delivery, and archive history.
 import {
   deriveOpeningConditionRunActionOwnership,
   deriveOpeningConditionPortalViewState,
