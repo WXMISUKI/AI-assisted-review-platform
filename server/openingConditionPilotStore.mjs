@@ -57,6 +57,7 @@ const documentPresenceValues = new Set(["present", "missing", "ambiguous", "not_
 const relevanceStatusValues = new Set(["matched", "wrong_subject", "wrong_project", "unconfirmed", "not_applicable"]);
 const contentComplianceValues = new Set(["compliant", "non_compliant", "partially_compliant", "not_evaluated"]);
 const finalDispositionValues = new Set(["pass", "fail", "needs_human_review", "blocked", "not_applicable"]);
+const issueRiskLevelValues = new Set(["high", "medium", "low"]);
 const visualAssertionTypes = new Set(["stamp", "signature", "checkbox", "handwritten_date", "seal", "other"]);
 const visualAssertionStatuses = new Set(["detected", "missing", "uncertain", "confirmed", "rejected", "not_required"]);
 const knowledgeBaseStatusValues = new Set(["draft", "ready", "needs_review", "archived"]);
@@ -1124,7 +1125,43 @@ function normalizeCheckItem(value, taskId) {
       ? value.visualAssertions.map((item) => normalizeVisualAssertion(item, value.evidenceIds ?? [])).filter(Boolean)
       : [],
     finalDisposition: finalDispositionValues.has(value.finalDisposition) ? value.finalDisposition : undefined,
+    issueTypeId: normalizeString(value.issueTypeId, "", 160) || undefined,
+    issueTypeLabel: normalizeString(value.issueTypeLabel, "", 240) || undefined,
+    issueTypeGroup: normalizeString(value.issueTypeGroup, "", 160) || undefined,
+    riskLevel: issueRiskLevelValues.has(value.riskLevel) ? value.riskLevel : undefined,
+    legalBasis: normalizeLegalBasisReferences(value.legalBasis),
+    rectificationRequirement: normalizeString(value.rectificationRequirement, "", 500) || undefined,
+    verificationGuidance: normalizeString(value.verificationGuidance, "", 500) || undefined,
+    agentAssetId: normalizeString(value.agentAssetId, "", 180) || undefined,
+    promptAssetId: normalizeString(value.promptAssetId, "", 180) || undefined,
+    templateId: normalizeString(value.templateId, "", 180) || undefined,
   });
+}
+
+function normalizeLegalBasisReference(value) {
+  if (!isPlainObject(value) && typeof value !== "string") {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    const title = normalizeString(value, "", 240);
+    return title ? { title } : null;
+  }
+
+  const title = normalizeString(value.title ?? value.name ?? value.source, "", 240);
+  if (!title) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    title,
+    clause: normalizeString(value.clause ?? value.article, "", 160) || undefined,
+    summary: normalizeString(value.summary ?? value.note, "", 300) || undefined,
+  });
+}
+
+function normalizeLegalBasisReferences(value) {
+  return Array.isArray(value) ? value.map(normalizeLegalBasisReference).filter(Boolean).slice(0, 10) : [];
 }
 
 function normalizeMatchText(value) {
@@ -1355,10 +1392,131 @@ function normalizeReportPackageDiagnostics(value) {
     decisionLedger: Array.isArray(value.decisionLedger)
       ? value.decisionLedger.map(normalizeHumanReviewDecisionLedgerItem).filter(Boolean).slice(0, 50)
       : [],
+    findings: Array.isArray(value.findings) ? value.findings.map(normalizeReportFinding).filter(Boolean).slice(0, 200) : [],
+    summaryByIssueType: Array.isArray(value.summaryByIssueType)
+      ? value.summaryByIssueType.map(normalizeReportIssueTypeSummary).filter(Boolean).slice(0, 50)
+      : [],
+    nextRectificationAdvice: normalizeNextRectificationAdvice(value.nextRectificationAdvice),
+    exportHandoff: normalizeReportExportHandoff(value.exportHandoff),
     providerReadiness: normalizeTrialPackageProviderReadiness(value.providerReadiness),
     blockingReasons: normalizeStringList(value.blockingReasons, 30, 240),
     archiveStatus: ["pending", "ready", "archived"].includes(value.archiveStatus) ? value.archiveStatus : "pending",
     generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
+  });
+}
+
+function normalizeReportExportHandoff(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const adapterId = normalizeString(value.adapterId, "", 180);
+  const adapterLabel = normalizeString(value.adapterLabel, "", 240);
+  const deliveryKind = ["docx_backfill", "docx_export", "html_preview"].includes(value.deliveryKind)
+    ? value.deliveryKind
+    : "";
+  const status = ["draft", "pending_adapter", "ready_for_adapter", "adapter_connected", "exported"].includes(value.status)
+    ? value.status
+    : "";
+  const nextAction = normalizeString(value.nextAction, "", 500);
+  if (!adapterId || !adapterLabel || !deliveryKind || !status || !nextAction) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    adapterId,
+    adapterLabel,
+    deliveryKind,
+    status,
+    templateId: normalizeString(value.templateId, "", 180) || undefined,
+    templateLabel: normalizeString(value.templateLabel, "", 240) || undefined,
+    generatedObject: normalizeObjectRef(value.generatedObject) ?? undefined,
+    inputSummary: {
+      basisFileName: normalizeString(value.inputSummary?.basisFileName, "", 240) || undefined,
+      checklistFileName: normalizeString(value.inputSummary?.checklistFileName, "", 240) || undefined,
+      sourceCount: normalizeNumber(value.inputSummary?.sourceCount, 0, MAX_OBJECTS_PER_PACKET),
+      findingCount: normalizeNumber(value.inputSummary?.findingCount, 0, MAX_CHECKLIST_ITEMS),
+    },
+    safeDiagnostics: normalizeStringList(value.safeDiagnostics, 20, 300),
+    nextAction,
+  });
+}
+
+function normalizeReportFinding(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const id = normalizeString(value.id, "", 180);
+  const checkItemId = normalizeString(value.checkItemId, "", 180);
+  const title = normalizeString(value.title, "", 240);
+  const category = normalizeString(value.category, "", 160);
+  const disposition = normalizeString(value.disposition, "", 80);
+  const rectificationRequirement = normalizeString(value.rectificationRequirement, "", 500);
+  const description = normalizeString(value.description, "", 500);
+  if (!id || !checkItemId || !title || !category || !disposition || !rectificationRequirement || !description) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    id,
+    checkItemId,
+    title,
+    category,
+    subCategory: normalizeString(value.subCategory, "", 120) || undefined,
+    required: value.required !== false,
+    disposition,
+    issueTypeId: normalizeString(value.issueTypeId, "", 160) || undefined,
+    issueTypeLabel: normalizeString(value.issueTypeLabel, "", 240) || undefined,
+    issueTypeGroup: normalizeString(value.issueTypeGroup, "", 160) || undefined,
+    riskLevel: issueRiskLevelValues.has(value.riskLevel) ? value.riskLevel : "medium",
+    legalBasis: normalizeLegalBasisReferences(value.legalBasis),
+    rectificationRequirement,
+    verificationGuidance: normalizeString(value.verificationGuidance, "", 500) || undefined,
+    basisVersionId: normalizeString(value.basisVersionId, "", 180) || undefined,
+    description,
+    evidenceIds: normalizeStringList(value.evidenceIds, 20, 180),
+    evidenceLabels: normalizeStringList(value.evidenceLabels, 20, 300),
+    humanReviewIds: normalizeStringList(value.humanReviewIds, 20, 180),
+    humanReviewLabels: normalizeStringList(value.humanReviewLabels, 20, 300),
+    latestHumanReviewStatus: normalizeString(value.latestHumanReviewStatus, "", 80) || undefined,
+    latestHumanReviewNote: normalizeString(value.latestHumanReviewNote, "", 500) || undefined,
+  });
+}
+
+function normalizeReportIssueTypeSummary(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const issueTypeId = normalizeString(value.issueTypeId, "", 160);
+  const issueTypeLabel = normalizeString(value.issueTypeLabel, "", 240);
+  if (!issueTypeId || !issueTypeLabel) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    issueTypeId,
+    issueTypeLabel,
+    issueTypeGroup: normalizeString(value.issueTypeGroup, "", 160) || undefined,
+    riskLevel: issueRiskLevelValues.has(value.riskLevel) ? value.riskLevel : "medium",
+    count: normalizeNumber(value.count, 0, 10000),
+  });
+}
+
+function normalizeNextRectificationAdvice(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const headline = normalizeString(value.headline, "", 300);
+  if (!headline) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    headline,
+    actions: normalizeStringList(value.actions, 10, 300),
   });
 }
 
@@ -1683,6 +1841,7 @@ function deriveTrialPackageSummary(task) {
 
 function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") {
   const trialPackage = task.trialPackage ?? deriveTrialPackageSummary(task);
+  const findings = deriveReportPackageFindings(task);
   return normalizeReportPackageDiagnostics({
     inputObjects: {
       ...trialPackage.inputObjects,
@@ -1700,11 +1859,302 @@ function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") 
     },
     humanReview: summarizeHumanReviewQueue(task.humanReviewQueue ?? []),
     decisionLedger: deriveHumanReviewDecisionLedger(task),
+    findings,
+    summaryByIssueType: deriveReportIssueTypeSummary(findings),
+    nextRectificationAdvice: deriveNextRectificationAdvice(findings, trialPackage.blockingReasons ?? []),
+    exportHandoff: deriveReportExportHandoff(task, findings, trialPackage, archiveStatus),
     providerReadiness: trialPackage.providerReadiness,
     blockingReasons: trialPackage.blockingReasons,
     archiveStatus,
     generatedAt: new Date().toISOString(),
   });
+}
+
+function deriveReportExportHandoff(task, findings = [], trialPackage = null, archiveStatus = "ready") {
+  const checklistFileName = trialPackage?.inputObjects?.checklistFileName ?? task.packet?.checklistObject?.fileName;
+  const basisFileName = trialPackage?.inputObjects?.basisFileName ?? task.basisVersion?.sourceObject?.fileName;
+  const sourceCount = trialPackage?.inputObjects?.sourceCount ?? task.packet?.sourceObjects?.length ?? 0;
+  const checklistLooksDocx = /\.docx?$/i.test(checklistFileName ?? "");
+  const basisLooksDocx = /\.docx?$/i.test(basisFileName ?? "");
+  const deliveryKind = checklistLooksDocx || basisLooksDocx ? "docx_backfill" : "docx_export";
+  const status = archiveStatus === "archived" ? "ready_for_adapter" : task.reportAsset?.objectRef ? "exported" : "pending_adapter";
+  const safeDiagnostics = [
+    checklistFileName ? `checklist:${checklistFileName}` : "",
+    basisFileName ? `basis:${basisFileName}` : "",
+    `findings:${findings.length}`,
+    `archive:${archiveStatus}`,
+  ].filter(Boolean);
+
+  return {
+    adapterId: "opening-condition-docx-html-bridge",
+    adapterLabel: "原表回填 / 文档导出适配器",
+    deliveryKind,
+    status,
+    templateId: checklistLooksDocx ? "opening-condition-original-form-template-v1" : "opening-condition-report-package-template-v1",
+    templateLabel: checklistLooksDocx ? "原表回填模板 v1" : "辅助报告模板 v1",
+    generatedObject: task.reportAsset?.objectRef,
+    inputSummary: {
+      basisFileName,
+      checklistFileName,
+      sourceCount,
+      findingCount: findings.length,
+    },
+    safeDiagnostics,
+    nextAction:
+      status === "exported"
+        ? "报告导出结果已记录；如需回填原表，请校验生成文件与本轮 findings 是否一致。"
+        : checklistLooksDocx
+          ? "待接入 docxToHtml / htmlToDocx 适配服务后，可基于当前 handoff 执行原表回填。"
+          : "待接入导出适配器后，可基于当前 handoff 生成正式文档交付件。",
+  };
+}
+
+function deriveIssueTaxonomyForChecklistItem(checklistItem, finalDisposition = "needs_human_review") {
+  const reviewText = getChecklistReviewText(checklistItem);
+  const required = checklistItem.required !== false;
+  const isBlocked = finalDisposition === "blocked";
+  const highRisk = isBlocked || (required && ["fail", "reject"].includes(finalDisposition));
+
+  if (/审批|签章|签字|日期|盖章/.test(reviewText)) {
+    return {
+      issueTypeId: "approval_signature_gap",
+      issueTypeLabel: "审批签章缺失或不完整",
+      issueTypeGroup: "审批签章",
+      riskLevel: highRisk ? "high" : "medium",
+      legalBasis: [
+        {
+          title: "建设工程监理规范",
+          summary: "关键审批表单应具备完整签字、签章和日期。",
+        },
+      ],
+      rectificationRequirement: "补齐审批表签字、签章和日期后重新提交复审。",
+      verificationGuidance: "核验签章页是否完整、签字日期是否闭合并与当前申报轮次一致。",
+      templateId: "opening-condition-approval-gap-v1",
+    };
+  }
+
+  if (/人员|安全员|特种作业|管理人员|资格证/.test(reviewText)) {
+    return {
+      issueTypeId: "personnel_qualification_gap",
+      issueTypeLabel: "人员资质资料缺失或待核验",
+      issueTypeGroup: "人员资料",
+      riskLevel: highRisk ? "high" : "medium",
+      legalBasis: [
+        {
+          title: "建设工程安全生产管理条例",
+          summary: "现场关键岗位和特种作业人员应具备有效资格和持证资料。",
+        },
+      ],
+      rectificationRequirement: "补齐岗位人员资格、持证或实名制资料后重新提交复审。",
+      verificationGuidance: "核验人员身份、岗位、证件有效期和所属单位是否与当前合同边界一致。",
+      agentAssetId: "opening-condition-personnel-review-agent",
+      templateId: "opening-condition-personnel-gap-v1",
+    };
+  }
+
+  if (/设备|起重|汽车吊|泵车|仪器|检验报告|检测报告/.test(reviewText)) {
+    return {
+      issueTypeId: "equipment_compliance_gap",
+      issueTypeLabel: "设备资料缺失或合规性待确认",
+      issueTypeGroup: "设备器具",
+      riskLevel: highRisk ? "high" : "medium",
+      legalBasis: [
+        {
+          title: "公路工程施工安全技术规范",
+          summary: "起重、运输、检测等设备应具备有效检验和准入资料。",
+        },
+      ],
+      rectificationRequirement: "补齐设备检验、检测、年审或租赁安全资料后重新提交复审。",
+      verificationGuidance: "核验设备名称、编号、检测有效期和当前施工对象是否一致。",
+      agentAssetId: "opening-condition-equipment-review-agent",
+      templateId: "opening-condition-equipment-gap-v1",
+    };
+  }
+
+  if (/依据|合同|规范|制度|边界|核查表/.test(reviewText)) {
+    return {
+      issueTypeId: "basis_coverage_gap",
+      issueTypeLabel: "核查依据覆盖不足",
+      issueTypeGroup: "依据完整性",
+      riskLevel: isBlocked ? "high" : "medium",
+      legalBasis: [
+        {
+          title: "项目核查依据治理要求",
+          summary: "正式核查前应绑定已发布依据、主数据和项目知识库。",
+        },
+      ],
+      rectificationRequirement: "补齐并发布对应依据、制度或合同边界后重新发起正式核查。",
+      verificationGuidance: "确认当前 run 已绑定正式依据版本、主数据和可用知识库。",
+      promptAssetId: "opening-condition-basis-governance-prompt",
+      templateId: "opening-condition-basis-gap-v1",
+    };
+  }
+
+  return {
+    issueTypeId: "material_packet_gap",
+    issueTypeLabel: "资料包匹配缺失或待补件",
+    issueTypeGroup: checklistItem.category || "资料核查",
+    riskLevel: highRisk ? "high" : finalDisposition === "warning" ? "low" : "medium",
+    legalBasis: [
+      {
+        title: "开工条件资料核查要求",
+        summary: "开工前应确保核查资料齐全、可追溯并满足复审要求。",
+      },
+    ],
+    rectificationRequirement:
+      finalDisposition === "blocked"
+        ? "先解决前置门禁或授权边界，再补齐资料后重新发起复审。"
+        : "补齐对应资料或说明文件后重新提交复审。",
+    verificationGuidance: "结合核查项名称、资料包文件和人工说明确认是否已满足本轮核查要求。",
+    templateId: "opening-condition-material-gap-v1",
+  };
+}
+
+function applyIssueTaxonomyToCheckItem(checkItem, finalDisposition) {
+  const derived = deriveIssueTaxonomyForChecklistItem(checkItem, finalDisposition);
+  return {
+    ...checkItem,
+    ...derived,
+  };
+}
+
+function deriveReportPackageFindings(task) {
+  const evidenceById = new Map((task.evidence ?? []).map((item) => [item.id, item]));
+  const reviewByTargetId = new Map();
+  const latestReviewByTargetId = new Map();
+
+  for (const review of task.humanReviewQueue ?? []) {
+    const current = reviewByTargetId.get(review.targetId) ?? [];
+    current.push(review);
+    reviewByTargetId.set(review.targetId, current);
+
+    const currentLatest = latestReviewByTargetId.get(review.targetId);
+    const currentRank = Date.parse(currentLatest?.decidedAt || "");
+    const nextRank = Date.parse(review.decidedAt || "");
+    if (!currentLatest || (Number.isNaN(currentRank) ? -1 : currentRank) <= (Number.isNaN(nextRank) ? -1 : nextRank)) {
+      latestReviewByTargetId.set(review.targetId, review);
+    }
+  }
+
+  return (task.checkItems ?? [])
+    .map((item) => {
+      const latestReview = latestReviewByTargetId.get(item.id);
+      const disposition =
+        latestReview?.status === "confirmed"
+          ? "confirm"
+          : latestReview?.status === "corrected"
+            ? "correct"
+            : latestReview?.status === "rejected"
+              ? "reject"
+              : latestReview?.status === "deferred" || latestReview?.status === "open"
+                ? "needs_human_review"
+                : item.finalDisposition ?? item.verdict;
+
+      if (disposition === "pass" || disposition === "not_applicable") {
+        return null;
+      }
+
+      const taxonomy = {
+        issueTypeId: item.issueTypeId,
+        issueTypeLabel: item.issueTypeLabel,
+        issueTypeGroup: item.issueTypeGroup,
+        riskLevel: item.riskLevel,
+        legalBasis: item.legalBasis,
+        rectificationRequirement: item.rectificationRequirement,
+        verificationGuidance: item.verificationGuidance,
+      };
+      const derivedTaxonomy =
+        taxonomy.issueTypeId && taxonomy.issueTypeLabel && taxonomy.rectificationRequirement
+          ? taxonomy
+          : deriveIssueTaxonomyForChecklistItem(item, disposition);
+      const humanReviews = reviewByTargetId.get(item.id) ?? [];
+
+      return {
+        id: `finding-${task.id}-${item.id}`,
+        checkItemId: item.id,
+        title: item.name,
+        category: item.category,
+        subCategory: item.subCategory,
+        required: item.required !== false,
+        disposition,
+        issueTypeId: derivedTaxonomy.issueTypeId,
+        issueTypeLabel: derivedTaxonomy.issueTypeLabel,
+        issueTypeGroup: derivedTaxonomy.issueTypeGroup,
+        riskLevel: derivedTaxonomy.riskLevel ?? "medium",
+        legalBasis: derivedTaxonomy.legalBasis ?? [],
+        rectificationRequirement: derivedTaxonomy.rectificationRequirement,
+        verificationGuidance: derivedTaxonomy.verificationGuidance,
+        basisVersionId: item.basisVersionId,
+        description: item.semanticNote || item.ruleExplanation || "Opening-condition finding derived from pilot checklist matching.",
+        evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
+        evidenceLabels: (item.evidenceIds ?? [])
+          .map((evidenceId) => {
+            const evidence = evidenceById.get(evidenceId);
+            return evidence ? `${evidence.objectRef.fileName}${evidence.locator ? ` @ ${evidence.locator}` : ""}` : evidenceId;
+          })
+          .slice(0, 5),
+        humanReviewIds: humanReviews.map((review) => review.id).slice(0, 10),
+        humanReviewLabels: humanReviews
+          .map((review) => `${review.status}${review.reason ? `: ${review.reason}` : ""}${review.safeNote ? ` / ${review.safeNote}` : ""}`)
+          .slice(0, 10),
+        latestHumanReviewStatus: latestReview?.status,
+        latestHumanReviewNote: latestReview?.safeNote || latestReview?.reason,
+      };
+    })
+    .filter(Boolean);
+}
+
+function deriveReportIssueTypeSummary(findings = []) {
+  const summaryByType = new Map();
+  for (const finding of findings) {
+    const issueTypeId = normalizeString(finding.issueTypeId, "uncategorized", 160);
+    const current = summaryByType.get(issueTypeId) ?? {
+      issueTypeId,
+      issueTypeLabel: finding.issueTypeLabel ?? "未分类问题",
+      issueTypeGroup: finding.issueTypeGroup,
+      riskLevel: finding.riskLevel ?? "medium",
+      count: 0,
+    };
+    current.count += 1;
+    if (finding.riskLevel === "high") {
+      current.riskLevel = "high";
+    } else if (finding.riskLevel === "medium" && current.riskLevel === "low") {
+      current.riskLevel = "medium";
+    }
+    summaryByType.set(issueTypeId, current);
+  }
+
+  return [...summaryByType.values()].sort((left, right) => right.count - left.count);
+}
+
+function deriveNextRectificationAdvice(findings = [], blockingReasons = []) {
+  const actions = [];
+  const blockedCount = findings.filter((item) => item.disposition === "blocked").length;
+  const rejectedCount = findings.filter((item) => item.disposition === "reject").length;
+  const pendingHumanCount = findings.filter((item) => item.disposition === "needs_human_review").length;
+
+  if (blockedCount > 0) {
+    actions.push(`优先解除 ${blockedCount} 项前置门禁或授权边界阻塞，再进入下一轮正式核查。`);
+  }
+  if (rejectedCount > 0) {
+    actions.push(`针对 ${rejectedCount} 项人工驳回项补齐资料或说明后重新提交复审。`);
+  }
+  if (pendingHumanCount > 0) {
+    actions.push(`安排监理继续处理 ${pendingHumanCount} 项待人工判断事项，避免报告结论悬空。`);
+  }
+  if (actions.length === 0 && findings.length > 0) {
+    actions.push("结合当前问题清单补件并发起下一轮整改复审。");
+  }
+  if (blockingReasons.length > 0) {
+    actions.push(`当前前置门禁提示：${blockingReasons.join(" / ")}`);
+  }
+
+  return actions.length > 0
+    ? {
+        headline: "下一轮整改复审建议",
+        actions: actions.slice(0, 5),
+      }
+    : undefined;
 }
 
 function deriveHumanReviewDecisionLedger(taskOrQueue = []) {
@@ -3460,7 +3910,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
     const humanReviewQueue = [];
     const checkItems = checklistItems.map((item, itemIndex) => {
       if (isOutOfScopeChecklistItem(item)) {
-        return {
+        return applyIssueTaxonomyToCheckItem({
           id: item.id,
           taskId,
           category: item.category,
@@ -3479,7 +3929,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           contentCompliance: "not_evaluated",
           visualAssertions: [],
           finalDisposition: "not_applicable",
-        };
+        }, "not_applicable");
       }
 
       const scoredMatches = packetCandidates
@@ -3567,7 +4017,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         humanReviewIds.push(reviewId);
       }
 
-      return {
+      return applyIssueTaxonomyToCheckItem({
         id: item.id,
         taskId,
         category: item.category,
@@ -3588,7 +4038,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         contentCompliance,
         visualAssertions,
         finalDisposition,
-      };
+      }, finalDisposition);
     });
     const finalState = humanReviewQueue.length > 0 ? "awaiting_human_review" : "report_ready";
     const startSequence = existingTask.events.length + 1;

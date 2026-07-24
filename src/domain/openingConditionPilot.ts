@@ -207,6 +207,27 @@ export type OpeningConditionPilotFinalDisposition =
   | "blocked"
   | "not_applicable";
 
+export type OpeningConditionPilotIssueRiskLevel = "high" | "medium" | "low";
+
+export interface OpeningConditionPilotLegalBasisReference {
+  title: string;
+  clause?: string;
+  summary?: string;
+}
+
+export interface OpeningConditionPilotIssueTaxonomyBinding {
+  issueTypeId?: string;
+  issueTypeLabel?: string;
+  issueTypeGroup?: string;
+  riskLevel?: OpeningConditionPilotIssueRiskLevel;
+  legalBasis?: OpeningConditionPilotLegalBasisReference[];
+  rectificationRequirement?: string;
+  verificationGuidance?: string;
+  agentAssetId?: string;
+  promptAssetId?: string;
+  templateId?: string;
+}
+
 export interface OpeningConditionPilotVisualAssertion {
   type: "stamp" | "signature" | "checkbox" | "handwritten_date" | "seal" | "other";
   status: "detected" | "missing" | "uncertain" | "confirmed" | "rejected" | "not_required";
@@ -228,9 +249,10 @@ export interface OpeningConditionPilotChecklistDefinitionItem {
   masterDataIds: string[];
   scopeStatus?: OpeningConditionPilotScopeStatus;
   visualAssertions?: OpeningConditionPilotVisualAssertion[];
+  issueTypeId?: string;
 }
 
-export interface OpeningConditionPilotCheckItem {
+export interface OpeningConditionPilotCheckItem extends OpeningConditionPilotIssueTaxonomyBinding {
   id: string;
   taskId: string;
   category: string;
@@ -357,6 +379,62 @@ export interface OpeningConditionPilotHumanReviewDecisionLedgerItem {
   safeNote?: string;
 }
 
+export interface OpeningConditionPilotReportFinding {
+  id: string;
+  checkItemId: string;
+  title: string;
+  category: string;
+  subCategory?: string;
+  required: boolean;
+  disposition: OpeningConditionPilotFinalDisposition | "warning" | "confirm" | "correct" | "reject" | "defer";
+  issueTypeId?: string;
+  issueTypeLabel?: string;
+  issueTypeGroup?: string;
+  riskLevel: OpeningConditionPilotIssueRiskLevel;
+  legalBasis: OpeningConditionPilotLegalBasisReference[];
+  rectificationRequirement: string;
+  verificationGuidance?: string;
+  basisVersionId?: string;
+  description: string;
+  evidenceIds: string[];
+  evidenceLabels: string[];
+  humanReviewIds: string[];
+  humanReviewLabels: string[];
+  latestHumanReviewStatus?: OpeningConditionPilotHumanReviewItem["status"];
+  latestHumanReviewNote?: string;
+}
+
+export interface OpeningConditionPilotReportIssueTypeSummary {
+  issueTypeId: string;
+  issueTypeLabel: string;
+  issueTypeGroup?: string;
+  riskLevel: OpeningConditionPilotIssueRiskLevel;
+  count: number;
+}
+
+export interface OpeningConditionPilotReportNextRectificationAdvice {
+  headline: string;
+  actions: string[];
+}
+
+export interface OpeningConditionPilotReportExportHandoff {
+  adapterId: string;
+  adapterLabel: string;
+  deliveryKind: "docx_backfill" | "docx_export" | "html_preview";
+  status: "draft" | "pending_adapter" | "ready_for_adapter" | "adapter_connected" | "exported";
+  templateId?: string;
+  templateLabel?: string;
+  generatedObject?: OpeningConditionObjectRef;
+  inputSummary: {
+    basisFileName?: string;
+    checklistFileName?: string;
+    sourceCount: number;
+    findingCount: number;
+  };
+  safeDiagnostics: string[];
+  nextAction: string;
+}
+
 export interface OpeningConditionPilotTrialPackage {
   taskId: string;
   workspaceId: string;
@@ -378,6 +456,10 @@ export interface OpeningConditionPilotReportPackageDiagnostics {
   matching: OpeningConditionPilotMatchingSummary;
   humanReview: OpeningConditionPilotHumanReviewSummary;
   decisionLedger: OpeningConditionPilotHumanReviewDecisionLedgerItem[];
+  findings?: OpeningConditionPilotReportFinding[];
+  summaryByIssueType?: OpeningConditionPilotReportIssueTypeSummary[];
+  nextRectificationAdvice?: OpeningConditionPilotReportNextRectificationAdvice;
+  exportHandoff?: OpeningConditionPilotReportExportHandoff;
   providerReadiness?: OpeningConditionPilotProviderReadinessSummary;
   blockingReasons: string[];
   archiveStatus: "pending" | "ready" | "archived";

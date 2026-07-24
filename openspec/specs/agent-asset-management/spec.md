@@ -102,3 +102,17 @@ The agent asset catalog SHALL distinguish Dify workflow responsibilities from pl
 #### Scenario: Opening condition bridge is inspected
 - **WHEN** a user reads the opening-condition agent asset details
 - **THEN** the system identifies Dify as responsible for workflow orchestration, OCR/LLM extraction, Human Input, and report drafting while platform records own basis versions, master data, check outcomes, evidence, and audit state
+
+### Requirement: Opening-condition specialized agent inventory
+The agent asset catalog SHALL expose specialized opening-condition intelligent assets instead of only one broad review entry.
+
+#### Scenario: Data assets page lists opening-condition assets
+- **WHEN** the user opens agent assets
+- **THEN** the catalog includes separate entries for issue-type review, rectification/regulation guidance, and original-form backfill or export adapters
+
+### Requirement: Opening-condition asset binding metadata
+The asset catalog SHALL show how opening-condition assets bind to prompts, templates, schemas, and issue taxonomy hooks.
+
+#### Scenario: Operator inspects an opening-condition asset
+- **WHEN** a specialized opening-condition asset entry is displayed
+- **THEN** the page shows its prompt asset, template or adapter binding, schema version, and current readiness or placeholder status

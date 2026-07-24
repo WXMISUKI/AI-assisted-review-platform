@@ -18,7 +18,7 @@ export const pageLabels = {
 } as const;
 
 export const openingConditionPortalPageLabels = {
-  "workspace-context": "工作台概览",
+  "workspace-context": "工作区概览",
   "material-intake": "资料接入",
   "basis-sets": "依据与主数据",
   "master-data": "主数据",
@@ -41,6 +41,9 @@ export const agentKeyLabels: Record<ReviewAgentKey, string> = {
   "structure-restoration": "文档结构恢复智能体",
   "construction-review": "施工方案审查智能体",
   "opening-condition-review": "开工条件核查智能体",
+  "opening-condition-issue-review": "开工条件问题类型审查智能体",
+  "opening-condition-rectification-guidance": "法规整改建议智能体",
+  "opening-condition-export-adapter": "原表回填/导出适配器",
   "report-generation": "审查报告生成智能体",
 };
 

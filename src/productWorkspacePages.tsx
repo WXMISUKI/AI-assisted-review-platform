@@ -50,6 +50,7 @@ import type {
   OpeningConditionPilotEvidence,
   OpeningConditionPilotHumanReviewItem,
   OpeningConditionPilotKnowledgeBaseRef,
+  OpeningConditionPilotLegalBasisReference,
   OpeningConditionPilotTask,
 } from "./domain/openingConditionPilot";
 import {
@@ -166,6 +167,19 @@ type ReportFinding = {
   evidence: string[];
   humanReview: string[];
 };
+
+function summarizeLegalBasisReferences(legalBasis: OpeningConditionPilotLegalBasisReference[] = []) {
+  if (legalBasis.length === 0) {
+    return "未记录依据";
+  }
+
+  return (
+    legalBasis
+      .map((item) => [item.title, item.clause].filter(Boolean).join(" "))
+      .filter(Boolean)
+      .join(" / ") || "未记录依据"
+  );
+}
 
 type ReportFindingGroup = {
   id: "blocked" | "failed" | "pendingHuman" | "warning";
@@ -2779,6 +2793,27 @@ function buildReportFindings(pilotTask?: OpeningConditionPilotTask | null): Repo
     return [];
   }
 
+  const packagedFindings = pilotTask.reportAsset?.packageDiagnostics?.findings ?? [];
+  if (packagedFindings.length > 0) {
+    return packagedFindings.map((finding) => ({
+      id: finding.id,
+      title: finding.title,
+      category: finding.subCategory ? `${finding.category} / ${finding.subCategory}` : finding.category,
+      severity: finding.riskLevel,
+      severityLabel: finding.riskLevel === "high" ? "高风险" : finding.riskLevel === "medium" ? "中风险" : "提示项",
+      severityTone: finding.riskLevel === "high" ? "danger" : finding.riskLevel === "medium" ? "warning" : "info",
+      disposition: finding.disposition,
+      dispositionLabel: getFindingDispositionLabel(finding.disposition),
+      dispositionTone: getFindingDispositionTone(finding.disposition),
+      statusLabel: finding.required ? "必查项" : "补充关注项",
+      description: finding.description,
+      basis: summarizeLegalBasisReferences(finding.legalBasis),
+      rectification: finding.rectificationRequirement,
+      evidence: finding.evidenceLabels ?? [],
+      humanReview: finding.humanReviewLabels ?? [],
+    }));
+  }
+
   const evidenceById = new Map<string, OpeningConditionPilotEvidence>(pilotTask.evidence.map((item) => [item.id, item]));
   const reviewByTargetId = buildRunSnapshotHumanReviewMap(pilotTask.humanReviewQueue);
   const latestReviewByTargetId = buildLatestHumanReviewMap(pilotTask.humanReviewQueue);
@@ -3242,6 +3277,9 @@ function OpeningConditionReportDeliveryWorkbench({
   const closureDiff = runSnapshot.closureDiff;
   const previousRun = runSnapshot.previousRun;
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
+  const issueTypeSummary = packageDiagnostics?.summaryByIssueType ?? [];
+  const nextRectificationAdvice = packageDiagnostics?.nextRectificationAdvice;
+  const exportHandoff = packageDiagnostics?.exportHandoff;
   const isCurrentRun = runSnapshot.isCurrentRun;
   const selectedActionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask: selectedTask });
   const selectedOpenReviewCount = runSnapshot.blockingReviewCount;
@@ -3466,6 +3504,83 @@ function OpeningConditionReportDeliveryWorkbench({
             <span>Provider {packageDiagnostics.providerReadiness?.status ?? "unrecorded"} / 归档 {packageDiagnostics.archiveStatus}</span>
             <p>{packageDiagnostics.blockingReasons.length > 0 ? packageDiagnostics.blockingReasons.join(" / ") : "未记录阻塞原因。"}</p>
           </div>
+        </div>
+      )}
+
+      {(issueTypeSummary.length > 0 || nextRectificationAdvice) && (
+        <div className="opening-record-list">
+          <div>
+            <strong>问题分类与整改建议</strong>
+            <span>{issueTypeSummary.length > 0 ? `${issueTypeSummary.length} 类问题已归并` : "待补充问题分类汇总"}</span>
+            <p>这部分来自平台生成的结构化问题交付包，可继续用于后续导出、复审和智能资产复用。</p>
+          </div>
+          {issueTypeSummary.length > 0 && (
+            <div className="opening-report-summary-grid">
+              {issueTypeSummary.map((item) => (
+                <div key={item.issueTypeId} className={`opening-report-summary-card tone-${item.riskLevel === "high" ? "danger" : item.riskLevel === "medium" ? "warning" : "info"}`}>
+                  <strong>{item.issueTypeLabel}</strong>
+                  <span>{item.count}</span>
+                  <p>{item.issueTypeGroup ?? item.issueTypeId}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {nextRectificationAdvice && (
+            <div className="opening-report-finding">
+              <div className="opening-report-finding-header">
+                <strong>{nextRectificationAdvice.headline}</strong>
+                <span className="opening-report-chip tone-info">下一动作</span>
+              </div>
+              <div className="opening-report-detail-list">
+                {nextRectificationAdvice.actions.map((action, index) => (
+                  <small key={`${index}-${action}`}>
+                    <strong>{index + 1}.</strong>
+                    {action}
+                  </small>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {exportHandoff && (
+        <div className="opening-record-list">
+          <div>
+            <strong>原表回填与导出挂点</strong>
+            <span>{exportHandoff.adapterLabel} / {exportHandoff.status}</span>
+            <p>这一层是给后续 `docxToHtml`、`htmlToDocx` 或其他外部回填适配器消费的稳定交付 contract。</p>
+          </div>
+          <div className="opening-report-summary-grid">
+            <div className="opening-report-summary-card tone-info">
+              <strong>交付类型</strong>
+              <span>{exportHandoff.deliveryKind}</span>
+              <p>{exportHandoff.templateLabel ?? exportHandoff.templateId ?? "未绑定模板"}</p>
+            </div>
+            <div className="opening-report-summary-card tone-muted">
+              <strong>输入对象</strong>
+              <span>{exportHandoff.inputSummary.findingCount}</span>
+              <p>
+                {exportHandoff.inputSummary.basisFileName ?? "未记录依据"} /{" "}
+                {exportHandoff.inputSummary.checklistFileName ?? "未记录核查表"}
+              </p>
+            </div>
+            <div className="opening-report-summary-card tone-warning">
+              <strong>资料包文件</strong>
+              <span>{exportHandoff.inputSummary.sourceCount}</span>
+              <p>{exportHandoff.nextAction}</p>
+            </div>
+          </div>
+          {exportHandoff.safeDiagnostics.length > 0 && (
+            <div className="opening-report-detail-list">
+              {exportHandoff.safeDiagnostics.map((item) => (
+                <small key={item}>
+                  <strong>handoff</strong>
+                  {item}
+                </small>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

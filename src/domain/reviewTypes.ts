@@ -21,6 +21,9 @@ export type ReviewAgentKey =
   | "structure-restoration"
   | "construction-review"
   | "opening-condition-review"
+  | "opening-condition-issue-review"
+  | "opening-condition-rectification-guidance"
+  | "opening-condition-export-adapter"
   | "report-generation";
 
 export type DocumentStatus =

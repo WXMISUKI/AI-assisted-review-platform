@@ -1975,6 +1975,9 @@ export function DataAssetsPage({
           <div className="agent-profile-meta">
             <span>{agent.schemaVersion}</span>
             <span>{agent.promptAsset}</span>
+            {agent.templateAsset ? <span>{agent.templateAsset}</span> : null}
+            {agent.adapterBinding ? <span>{agent.adapterBinding}</span> : null}
+            {agent.readinessStatus ? <span>{agent.readinessStatus}</span> : null}
           </div>
           <div className="agent-profile-hint">{agent.stageHint}</div>
           <AgentProfileBlock title="引擎链路" items={agent.engines} />
