@@ -1,3 +1,5 @@
+import type { OpeningConditionPilotTask, OpeningConditionPilotTaskState } from "./openingConditionPilot";
+
 export type OpeningConditionPacketStage =
   | "basis-confirmation"
   | "master-data-initialization"
@@ -123,6 +125,41 @@ export interface OpeningConditionWorkspaceProjectCatalog {
   projectName: string;
   workspaces: OpeningConditionWorkspace[];
   reviewObjects: OpeningConditionWorkspaceReviewObjectCatalog[];
+}
+
+export interface OpeningConditionWorkspaceAssetRegistryRecord {
+  workspaceId: string;
+  workspace: OpeningConditionWorkspace;
+  basis: {
+    total: number;
+    published: number;
+    provisional: number;
+    status: "ready" | "attention";
+  };
+  masterData: {
+    total: number;
+    published: number;
+    provisional: number;
+    reviewNeeded: number;
+    rejected: number;
+    status: "ready" | "attention";
+  };
+  knowledgeBase: {
+    present: boolean;
+    status: OpeningConditionPreflightReadiness["knowledgeBase"];
+    providerSyncStatus?: OpeningConditionKnowledgeBaseRecord["providerSyncStatus"];
+    label: string;
+  };
+  runHistory: {
+    total: number;
+    active: number;
+    archived: number;
+    latestTaskId?: string;
+    latestTaskState?: OpeningConditionPilotTaskState;
+    latestUpdatedAt?: string;
+    hasHistory: boolean;
+  };
+  readiness: OpeningConditionPreflightReadiness;
 }
 
 export interface OpeningConditionBasisVersion {
@@ -1045,6 +1082,72 @@ export function buildOpeningConditionWorkspaceCatalog(
   });
 
   return [...projectMap.values()];
+}
+
+export function buildOpeningConditionWorkspaceAssetRegistry(
+  workspaces: OpeningConditionWorkspace[],
+  tasks: OpeningConditionPilotTask[] = [],
+): OpeningConditionWorkspaceAssetRegistryRecord[] {
+  const taskMap = tasks.reduce<Map<string, OpeningConditionPilotTask[]>>((map, task) => {
+    const list = map.get(task.context.workspaceId) ?? [];
+    list.push(task);
+    map.set(task.context.workspaceId, list);
+    return map;
+  }, new Map<string, OpeningConditionPilotTask[]>());
+
+  return workspaces.map((workspace) => {
+    const packet = getOpeningConditionWorkspacePacket(workspace.id);
+    const workspaceTasks = [...(taskMap.get(workspace.id) ?? [])].sort((left, right) =>
+      `${right.updatedAt}|${right.createdAt}`.localeCompare(`${left.updatedAt}|${left.createdAt}`),
+    );
+    const latestTask = workspaceTasks[0];
+    const basisPublished = packet.basisVersions.filter((basis) => basis.status === "published").length;
+    const basisProvisional = packet.basisVersions.filter((basis) => basis.status !== "published").length;
+    const knowledgeBaseLabel =
+      packet.knowledgeBase?.organizationName ?? workspace.participatingOrganization ?? workspace.participantEntityName;
+
+    return {
+      workspaceId: workspace.id,
+      workspace,
+      basis: {
+        total: packet.basisVersions.length,
+        published: basisPublished,
+        provisional: basisProvisional,
+        status: basisPublished > 0 ? "ready" : "attention",
+      },
+      masterData: {
+        total: packet.masterData.length,
+        published: packet.masterDataReadiness.published,
+        provisional: packet.masterDataReadiness.provisional,
+        reviewNeeded: packet.masterDataReadiness.reviewNeeded,
+        rejected: packet.masterDataReadiness.rejected,
+        status: packet.masterDataReadiness.published > 0 ? "ready" : "attention",
+      },
+      knowledgeBase: {
+        present: Boolean(packet.knowledgeBase),
+        status: packet.preflightReadiness.knowledgeBase,
+        providerSyncStatus: packet.knowledgeBase?.providerSyncStatus,
+        label: knowledgeBaseLabel,
+      },
+      runHistory: {
+        total: workspaceTasks.length,
+        active: workspaceTasks.filter((task) => task.state !== "archived").length,
+        archived: workspaceTasks.filter((task) => task.state === "archived").length,
+        latestTaskId: latestTask?.id,
+        latestTaskState: latestTask?.state,
+        latestUpdatedAt: latestTask?.updatedAt,
+        hasHistory: workspaceTasks.length > 0,
+      },
+      readiness: packet.preflightReadiness,
+    };
+  });
+}
+
+export function findOpeningConditionWorkspaceAssetRegistryRecord(
+  registry: OpeningConditionWorkspaceAssetRegistryRecord[],
+  workspaceId: string,
+): OpeningConditionWorkspaceAssetRegistryRecord | null {
+  return registry.find((record) => record.workspaceId === workspaceId) ?? null;
 }
 
 export function getOpeningConditionMasterDataReadiness(

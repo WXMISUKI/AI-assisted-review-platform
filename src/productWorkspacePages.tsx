@@ -27,6 +27,8 @@ import {
 import type { ProductLauncherEntry, ProductPortalId } from "./domain/productPortal";
 import {
   buildOpeningConditionWorkspaceCatalog,
+  buildOpeningConditionWorkspaceAssetRegistry,
+  findOpeningConditionWorkspaceAssetRegistryRecord,
   getOpeningConditionBasisPublicationStatusMeta,
   getOpeningConditionMasterDataPublicationStatusMeta,
   getOpeningConditionRiskSummary,
@@ -38,6 +40,7 @@ import {
   openingConditionVerdictLabels,
   type OpeningConditionReviewPacket,
   type OpeningConditionReviewObjectType,
+  type OpeningConditionWorkspaceAssetRegistryRecord,
   type OpeningConditionWorkspace,
   type OpeningConditionWorkspaceProjectCatalog,
 } from "./domain/openingConditionReview";
@@ -446,6 +449,25 @@ function findWorkspaceProjectCatalog(
   return catalog.find((project) => project.workspaces.some((workspace) => workspace.id === workspaceId)) ?? null;
 }
 
+function formatWorkspaceAssetCompactSummary(record: OpeningConditionWorkspaceAssetRegistryRecord) {
+  return [
+    `Basis ${record.basis.published}/${record.basis.total}`,
+    `Master data ${record.masterData.published}/${record.masterData.total}`,
+    `KB ${readinessLabels[record.knowledgeBase.status] ?? record.knowledgeBase.status}`,
+    record.runHistory.hasHistory ? `History ${record.runHistory.total}` : "No history",
+  ].join(" / ");
+}
+
+function formatWorkspaceLatestRun(record: OpeningConditionWorkspaceAssetRegistryRecord) {
+  if (!record.runHistory.hasHistory) {
+    return "No run history recorded for this workspace yet.";
+  }
+
+  const latestState = record.runHistory.latestTaskState ?? "draft";
+  const latestId = record.runHistory.latestTaskId ?? "unknown-task";
+  return `Latest run ${latestId} / ${latestState}`;
+}
+
 export function LoginPage({
   onSignIn,
   themeMode,
@@ -587,6 +609,7 @@ export function OpeningConditionWorkspaceShell({
   packet,
   pilotTask,
   pilotWorkspaceTasks,
+  allPilotTasks,
   pilotBasisRecords,
   pilotMasterDataRecords,
   pilotKnowledgeBases,
@@ -623,6 +646,7 @@ export function OpeningConditionWorkspaceShell({
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
   pilotWorkspaceTasks?: OpeningConditionPilotTask[];
+  allPilotTasks?: OpeningConditionPilotTask[];
   pilotBasisRecords?: OpeningConditionPilotBasisRecord[];
   pilotMasterDataRecords?: OpeningConditionPilotMasterDataRecord[];
   pilotKnowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
@@ -734,6 +758,7 @@ export function OpeningConditionWorkspaceShell({
               workspaces={workspaces}
               selectedWorkspaceId={selectedWorkspaceId}
               pilotTask={pilotTask}
+              allPilotTasks={allPilotTasks}
               pilotReadiness={pilotReadiness}
               onSelectWorkspace={onSelectWorkspace}
               onGoToIntake={() => onSelectPage("material-intake")}
@@ -919,6 +944,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   workspaces,
   selectedWorkspaceId,
   pilotTask,
+  allPilotTasks,
   pilotReadiness,
   onSelectWorkspace,
   onGoToIntake,
@@ -928,6 +954,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   workspaces: OpeningConditionWorkspace[];
   selectedWorkspaceId: string;
   pilotTask?: OpeningConditionPilotTask | null;
+  allPilotTasks?: OpeningConditionPilotTask[];
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
   onSelectWorkspace: (workspaceId: string) => void;
   onGoToIntake: () => void;
@@ -937,10 +964,18 @@ function OpeningConditionObjectOverviewProductizedPage({
   const riskSummary = getOpeningConditionRiskSummary(packet);
   const readiness = pilotReadiness?.preflightReadiness ?? packet.preflightReadiness;
   const workspaceCatalog = useMemo(() => buildOpeningConditionWorkspaceCatalog(workspaces), [workspaces]);
+  const workspaceAssetRegistry = useMemo(
+    () => buildOpeningConditionWorkspaceAssetRegistry(workspaces, allPilotTasks ?? []),
+    [allPilotTasks, workspaces],
+  );
   const currentWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? packet.workspaceContext;
   const selectedProject = findWorkspaceProjectCatalog(workspaceCatalog, selectedWorkspaceId);
   const selectedReviewObject =
     selectedProject?.reviewObjects.find((item) => item.reviewObjectId === currentWorkspace.reviewObjectId) ?? null;
+  const selectedWorkspaceRegistry = findOpeningConditionWorkspaceAssetRegistryRecord(
+    workspaceAssetRegistry,
+    selectedWorkspaceId,
+  );
   const actionOwnership = deriveOpeningConditionRunActionOwnership({
     pilotTask,
     readiness: pilotReadiness,
@@ -1073,6 +1108,20 @@ function OpeningConditionObjectOverviewProductizedPage({
                               <strong>{participant.participantEntityName}</strong>
                               <span>{participant.organizationRole}</span>
                               <small>{workspace.contractPackage}</small>
+                              {findOpeningConditionWorkspaceAssetRegistryRecord(workspaceAssetRegistry, workspace.id) && (
+                                <>
+                                  <small>
+                                    {formatWorkspaceAssetCompactSummary(
+                                      findOpeningConditionWorkspaceAssetRegistryRecord(workspaceAssetRegistry, workspace.id)!,
+                                    )}
+                                  </small>
+                                  <small className="opening-workspace-switch-latest-run">
+                                    {formatWorkspaceLatestRun(
+                                      findOpeningConditionWorkspaceAssetRegistryRecord(workspaceAssetRegistry, workspace.id)!,
+                                    )}
+                                  </small>
+                                </>
+                              )}
                               <small>{selectedWorkspaceId === workspace.id ? "当前上下文" : "切换到该主体"}</small>
                             </button>
                           )),
@@ -1113,6 +1162,52 @@ function OpeningConditionObjectOverviewProductizedPage({
               </button>
             )}
           </div>
+          {selectedWorkspaceRegistry && (
+            <article className="opening-overview-asset-registry">
+              <span className="eyebrow">Asset Registry</span>
+              <h3>Current workspace assets</h3>
+              <p>
+                后续资料接入、正式核查、人工复核和报告归档，都只作用于
+                {currentWorkspace.reviewObjectName} / {currentWorkspace.participantEntityName}
+                这一工作区上下文。
+              </p>
+              <div className="opening-overview-asset-grid">
+                <div className="opening-overview-asset-card">
+                  <strong>Basis ownership</strong>
+                  <span>
+                    {selectedWorkspaceRegistry.basis.published}/{selectedWorkspaceRegistry.basis.total} published
+                  </span>
+                  <small>{selectedWorkspaceRegistry.basis.provisional} provisional or unpublished records remain.</small>
+                </div>
+                <div className="opening-overview-asset-card">
+                  <strong>Master data readiness</strong>
+                  <span>
+                    {selectedWorkspaceRegistry.masterData.published}/{selectedWorkspaceRegistry.masterData.total} approved
+                  </span>
+                  <small>
+                    Review {selectedWorkspaceRegistry.masterData.reviewNeeded} / Rejected{" "}
+                    {selectedWorkspaceRegistry.masterData.rejected}
+                  </small>
+                </div>
+                <div className="opening-overview-asset-card">
+                  <strong>Knowledge base</strong>
+                  <span>
+                    {selectedWorkspaceRegistry.knowledgeBase.label} /{" "}
+                    {readinessLabels[selectedWorkspaceRegistry.knowledgeBase.status] ??
+                      selectedWorkspaceRegistry.knowledgeBase.status}
+                  </span>
+                  <small>Provider sync {selectedWorkspaceRegistry.knowledgeBase.providerSyncStatus ?? "unknown"}</small>
+                </div>
+                <div className="opening-overview-asset-card">
+                  <strong>Run history</strong>
+                  <span>
+                    {selectedWorkspaceRegistry.runHistory.total} rounds / {selectedWorkspaceRegistry.runHistory.archived} archived
+                  </span>
+                  <small>{formatWorkspaceLatestRun(selectedWorkspaceRegistry)}</small>
+                </div>
+              </div>
+            </article>
+          )}
         </article>
       </section>
     </div>

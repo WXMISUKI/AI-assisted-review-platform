@@ -36,6 +36,11 @@ The system SHALL derive a project-scoped catalog from workspace metadata for ope
 - **THEN** each review object row shows its object type, participant count, participating entities, contract package, and selected state
 - **AND** switching context remains a deliberate button action rather than a hidden side effect
 
+#### Scenario: Overview presents asset-aware workspace records
+- **WHEN** the project catalog is shown on the overview
+- **THEN** each selectable workspace record also shows its workspace-scoped asset summary, including basis ownership, master-data readiness, knowledge-base readiness, and historical run presence
+- **AND** operators can compare neighboring workspace contexts without entering each page first
+
 ### Requirement: Object-bound run and knowledge context
 The system SHALL bind current-run semantics, history semantics, and knowledge-base semantics to the selected review object context.
 
@@ -46,4 +51,3 @@ The system SHALL bind current-run semantics, history semantics, and knowledge-ba
 #### Scenario: Current context has archived reruns
 - **WHEN** the selected context contains archived reruns
 - **THEN** the portal SHALL present those reruns as belonging to the current review object context rather than as global project history
-

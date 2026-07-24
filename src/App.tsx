@@ -169,6 +169,7 @@ export function App() {
   );
   const [openingPilotTask, setOpeningPilotTask] = useState<OpeningConditionPilotTask | null>(null);
   const [openingPilotWorkspaceTasks, setOpeningPilotWorkspaceTasks] = useState<OpeningConditionPilotTask[]>([]);
+  const [openingPilotAllTasks, setOpeningPilotAllTasks] = useState<OpeningConditionPilotTask[]>([]);
   const [openingPilotReadiness, setOpeningPilotReadiness] =
     useState<OpeningConditionPilotReadinessResult | null>(null);
   const [openingPilotBasisRecords, setOpeningPilotBasisRecords] = useState<OpeningConditionPilotBasisRecord[]>([]);
@@ -215,6 +216,7 @@ export function App() {
     setOpeningPacket(getOpeningConditionWorkspacePacket(workspaceId));
     setOpeningPilotTask(null);
     setOpeningPilotWorkspaceTasks([]);
+    setOpeningPilotAllTasks([]);
     setOpeningPilotReadiness(null);
     setOpeningPilotBasisRecords([]);
     setOpeningPilotMasterDataRecords([]);
@@ -237,10 +239,10 @@ export function App() {
 
   async function refreshOpeningWorkspaceTasks(workspaceId = openingPacket.workspaceId) {
     const listed = await fetchOpeningConditionPilotTasks().catch(() => null);
+    const allTasks = listed?.ok && Array.isArray(listed.tasks) ? listed.tasks.sort(compareOpeningPilotTaskRecency) : [];
     const workspaceTasks =
-      listed?.ok && Array.isArray(listed.tasks)
-        ? listed.tasks.filter((task) => task.context.workspaceId === workspaceId).sort(compareOpeningPilotTaskRecency)
-        : [];
+      allTasks.length > 0 ? allTasks.filter((task) => task.context.workspaceId === workspaceId) : [];
+    setOpeningPilotAllTasks(allTasks);
     setOpeningPilotWorkspaceTasks(workspaceTasks);
     return workspaceTasks;
   }
@@ -895,6 +897,7 @@ export function App() {
       packet={openingPacket}
       pilotTask={openingPilotTask}
       pilotWorkspaceTasks={openingPilotWorkspaceTasks}
+      allPilotTasks={openingPilotAllTasks}
       pilotBasisRecords={openingPilotBasisRecords}
       pilotMasterDataRecords={openingPilotMasterDataRecords}
       pilotKnowledgeBases={openingPilotKnowledgeBases}

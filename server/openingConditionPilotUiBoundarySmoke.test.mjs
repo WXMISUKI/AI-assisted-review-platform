@@ -4,6 +4,7 @@ import test from "node:test";
 
 const portalStateSourcePath = new URL("../src/openingConditionPortalState.ts", import.meta.url);
 const workspacePagesSourcePath = new URL("../src/productWorkspacePages.tsx", import.meta.url);
+const reviewDomainSourcePath = new URL("../src/domain/openingConditionReview.ts", import.meta.url);
 
 test("UI smoke keeps archived opening-condition runs read-only in the shared portal state", async () => {
   const source = await readFile(portalStateSourcePath, "utf8");
@@ -44,4 +45,16 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
   assert.match(source, /Extraction/);
   assert.match(source, /summarizeBasisPreviewProvenance/);
   assert.match(source, /onRefreshBasisPreview/);
+});
+
+test("UI smoke exposes workspace asset registry summaries on the overview", async () => {
+  const workspaceSource = await readFile(workspacePagesSourcePath, "utf8");
+  const reviewSource = await readFile(reviewDomainSourcePath, "utf8");
+
+  assert.match(reviewSource, /buildOpeningConditionWorkspaceAssetRegistry/);
+  assert.match(reviewSource, /findOpeningConditionWorkspaceAssetRegistryRecord/);
+  assert.match(workspaceSource, /Asset Registry/);
+  assert.match(workspaceSource, /Current workspace assets/);
+  assert.match(workspaceSource, /formatWorkspaceAssetCompactSummary/);
+  assert.match(workspaceSource, /formatWorkspaceLatestRun/);
 });

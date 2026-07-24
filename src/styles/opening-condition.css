@@ -1158,6 +1158,10 @@
   color: var(--text-secondary);
 }
 
+.opening-workspace-switch-latest-run {
+  color: var(--text-muted);
+}
+
 .opening-overview-run-panel {
   position: sticky;
   top: 0;
@@ -1167,6 +1171,60 @@
 
 .opening-overview-run-panel .dialog-actions {
   justify-content: flex-start;
+}
+
+.opening-overview-asset-registry {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+}
+
+.opening-overview-asset-registry h3,
+.opening-overview-asset-registry p {
+  margin: 0;
+}
+
+.opening-overview-asset-registry p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.opening-overview-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.opening-overview-asset-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface-muted) 78%, var(--surface));
+}
+
+.opening-overview-asset-card strong,
+.opening-overview-asset-card span,
+.opening-overview-asset-card small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opening-overview-asset-card strong {
+  color: var(--text-primary);
+}
+
+.opening-overview-asset-card span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.opening-overview-asset-card small {
+  color: var(--text-muted);
 }
 
 @media (max-width: 960px) {
@@ -1184,6 +1242,7 @@
   .opening-report-finding-detail-grid,
   .opening-object-summary-grid,
   .opening-report-summary-grid,
+  .opening-overview-asset-grid,
   .opening-rerun-asset-groups,
   .opening-rerun-asset-status-grid,
   .opening-closure-status-grid,
