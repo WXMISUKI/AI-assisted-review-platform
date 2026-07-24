@@ -23,6 +23,7 @@ export type OpeningConditionPilotEventType =
   | "matching.completed"
   | "human_review.waiting"
   | "report.ready"
+  | "report.exported"
   | "task.archived"
   | "task.failed"
   | "task.canceled";

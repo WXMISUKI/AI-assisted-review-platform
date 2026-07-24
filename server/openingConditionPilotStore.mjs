@@ -1909,6 +1909,154 @@ function deriveReportExportHandoff(task, findings = [], trialPackage = null, arc
   };
 }
 
+function escapeReportHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function reportHtmlText(value, maxLength = 1200) {
+  return escapeReportHtml(String(value ?? "").slice(0, maxLength));
+}
+
+function getReportFindingLabel(finding) {
+  if (finding.disposition === "pass") {
+    return "符合";
+  }
+  if (finding.disposition === "not_applicable") {
+    return "不适用";
+  }
+  if (finding.disposition === "blocked") {
+    return "阻塞";
+  }
+  if (finding.disposition === "needs_human_review") {
+    return "待人工复核";
+  }
+  return "不符合";
+}
+
+function getReportRiskLabel(riskLevel) {
+  return riskLevel === "high" ? "高风险" : riskLevel === "medium" ? "中风险" : "低风险";
+}
+
+export function buildOpeningConditionPilotReportHtml(task) {
+  const reportAsset = task?.reportAsset;
+  if (!reportAsset) {
+    return null;
+  }
+
+  const packageDiagnostics = reportAsset.packageDiagnostics ?? {};
+  const findings = Array.isArray(packageDiagnostics.findings) ? packageDiagnostics.findings.slice(0, 120) : [];
+  const issueTypeSummary = Array.isArray(packageDiagnostics.summaryByIssueType)
+    ? packageDiagnostics.summaryByIssueType.slice(0, 40)
+    : [];
+  const summary = reportAsset.summary ?? {};
+  const sourceNames = packageDiagnostics.inputObjects?.sourceFileNames?.slice(0, 30) ?? [];
+  const title = reportHtmlText(reportAsset.title || "开工条件核查报告", 240);
+  const projectName = reportHtmlText(task.context?.projectId || task.context?.reviewObjectId || "未记录项目", 240);
+  const findingRows = findings
+    .map(
+      (finding, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${reportHtmlText(finding.category)}</td>
+          <td>${reportHtmlText(finding.title, 300)}</td>
+          <td>${getReportRiskLabel(finding.riskLevel)}</td>
+          <td>${getReportFindingLabel(finding)}</td>
+          <td>${reportHtmlText(finding.description, 800)}</td>
+          <td>${reportHtmlText(finding.rectificationRequirement, 800)}</td>
+        </tr>`,
+    )
+    .join("");
+  const issueRows = issueTypeSummary
+    .map(
+      (item) => `
+        <tr>
+          <td>${reportHtmlText(item.issueTypeLabel, 240)}</td>
+          <td>${reportHtmlText(item.issueTypeGroup, 180)}</td>
+          <td>${getReportRiskLabel(item.riskLevel)}</td>
+          <td>${Number(item.count) || 0}</td>
+        </tr>`,
+    )
+    .join("");
+  const sourceList = sourceNames.map((name) => `<li>${reportHtmlText(name, 240)}</li>`).join("");
+  const nextActions = packageDiagnostics.nextRectificationAdvice?.actions ?? [];
+  const nextActionList = nextActions
+    .slice(0, 20)
+    .map((action, index) => `<li>${index + 1}. ${reportHtmlText(action, 800)}</li>`)
+    .join("");
+
+  return `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <style>
+      body { font-family: "SimSun", "宋体", serif; color: #20242a; font-size: 10pt; line-height: 1.5; }
+      h1 { text-align: center; font-size: 18pt; margin: 0 0 12pt; }
+      h2 { font-size: 13pt; margin: 18pt 0 8pt; border-bottom: 1px solid #c9ced6; padding-bottom: 4pt; }
+      p { margin: 4pt 0; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #8c949e; padding: 5pt; vertical-align: top; word-break: break-word; }
+      th { background: #eef1f4; }
+      .summary td { width: 20%; text-align: center; }
+      .metric { font-size: 16pt; font-weight: bold; display: block; }
+      .muted { color: #66707d; }
+      ul { margin: 4pt 0 8pt 18pt; padding: 0; }
+    </style>
+  </head>
+  <body>
+    <h1>${title}</h1>
+    <p><strong>项目：</strong>${projectName}</p>
+    <p><strong>任务：</strong>${reportHtmlText(task.id, 180)}</p>
+    <p class="muted">本报告为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。</p>
+
+    <h2>一、核查总体情况</h2>
+    <table class="summary">
+      <tr>
+        <td><span class="metric">${Number(summary.total) || 0}</span>核查项</td>
+        <td><span class="metric">${Number(summary.passed) || 0}</span>符合</td>
+        <td><span class="metric">${Number(summary.failed) || 0}</span>不符合</td>
+        <td><span class="metric">${Number(summary.humanReview) || 0}</span>待复核</td>
+        <td><span class="metric">${Number(summary.warnings) || 0}</span>提示</td>
+      </tr>
+    </table>
+
+    <h2>二、问题与整改项</h2>
+    <table>
+      <tr>
+        <th style="width: 5%;">序号</th>
+        <th style="width: 11%;">分类</th>
+        <th style="width: 18%;">核查项目</th>
+        <th style="width: 9%;">风险</th>
+        <th style="width: 10%;">结论</th>
+        <th style="width: 23%;">问题描述</th>
+        <th style="width: 24%;">整改要求</th>
+      </tr>
+      ${findingRows || "<tr><td colspan=\"7\">当前没有结构化问题项。</td></tr>"}
+    </table>
+
+    <h2>三、问题类型汇总</h2>
+    <table>
+      <tr><th>问题类型</th><th>问题组</th><th>风险等级</th><th>数量</th></tr>
+      ${issueRows || "<tr><td colspan=\"4\">当前没有问题类型汇总。</td></tr>"}
+    </table>
+
+    <h2>四、后续动作</h2>
+    <p>${reportHtmlText(packageDiagnostics.nextRectificationAdvice?.headline || "请根据核查结论完成资料补充、整改和复审。", 500)}</p>
+    <ul>${nextActionList || "<li>请由监理人员结合现场和原始资料完成最终判断。</li>"}</ul>
+
+    <h2>五、本轮输入资料</h2>
+    <p><strong>依据：</strong>${reportHtmlText(packageDiagnostics.inputObjects?.basisFileName || "未记录")}</p>
+    <p><strong>核查表：</strong>${reportHtmlText(packageDiagnostics.inputObjects?.checklistFileName || "未记录")}</p>
+    <ul>${sourceList || "<li>未记录资料包文件。</li>"}</ul>
+  </body>
+</html>`;
+}
+
 function deriveIssueTaxonomyForChecklistItem(checklistItem, finalDisposition = "needs_human_review") {
   const reviewText = getChecklistReviewText(checklistItem);
   const required = checklistItem.required !== false;
@@ -4340,6 +4488,136 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
         ok: true,
         task: nextTask,
         reportAsset,
+        event,
+      },
+    };
+  }, options.storePath);
+}
+
+export async function recordOpeningConditionPilotReportDocumentExport(taskId, input = {}, options = {}) {
+  return mutateSnapshot((snapshot) => {
+    const index = snapshot.tasks.findIndex((task) => task.id === taskId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition pilot task not found.",
+        },
+      };
+    }
+
+    const existingTask = snapshot.tasks[index];
+    if (!existingTask.reportAsset) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "missing_report",
+          message: "A report asset is required before exporting a DOCX report.",
+        },
+      };
+    }
+
+    const generatedObject = normalizeObjectRef({
+      objectId: input.objectId ?? input.fileKey ?? `report-docx-${taskId}`,
+      kind: "report",
+      fileName: input.fileName ?? `${taskId}.docx`,
+      storageKey: input.fileKey,
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sizeBytes: input.fileSize,
+      summary: "DOCX report generated by the configured HTTP tools adapter.",
+    });
+    if (!generatedObject) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "invalid_export_result",
+          message: "DOCX export result did not include a valid generated file reference.",
+        },
+      };
+    }
+
+    const now = new Date().toISOString();
+    const currentDiagnostics =
+      existingTask.reportAsset.packageDiagnostics ??
+      deriveReportPackageDiagnostics(existingTask, existingTask.reportAsset.summary, existingTask.state === "archived" ? "archived" : "ready");
+    const currentHandoff =
+      currentDiagnostics.exportHandoff ??
+      deriveReportExportHandoff(
+        existingTask,
+        currentDiagnostics.findings ?? [],
+        existingTask.trialPackage,
+        existingTask.state === "archived" ? "archived" : "ready",
+      );
+    const safeDiagnostics = [
+      ...(currentHandoff?.safeDiagnostics ?? []),
+      ...(Array.isArray(input.safeDiagnostics) ? input.safeDiagnostics : []),
+      `exportedAt:${now}`,
+    ]
+      .filter(Boolean)
+      .slice(-20);
+    const exportHandoff = normalizeReportExportHandoff({
+      ...currentHandoff,
+      deliveryKind: "docx_export",
+      status: "exported",
+      generatedObject,
+      safeDiagnostics,
+      nextAction: "DOCX 报告已生成，可通过本次导出的下载链接交付；原表回填仍需单独适配。",
+    });
+    const reportAsset = normalizeReportAsset(
+      {
+        ...existingTask.reportAsset,
+        objectRef: generatedObject,
+        packageDiagnostics: {
+          ...currentDiagnostics,
+          exportHandoff,
+        },
+      },
+      taskId,
+    );
+    const sequence = existingTask.events.length + 1;
+    const event = normalizeEvent(
+      {
+        id: `oc-event-${taskId}-${sequence}`,
+        taskId,
+        sequence,
+        type: "report.exported",
+        state: existingTask.state,
+        occurredAt: now,
+        message: "DOCX report export completed.",
+        progress: existingTask.state === "archived" ? 100 : 95,
+        safeDiagnostics: {
+          reportId: reportAsset.id,
+          fileKey: generatedObject.storageKey,
+          fileName: generatedObject.fileName,
+          fileSize: generatedObject.sizeBytes,
+        },
+      },
+      taskId,
+      sequence,
+    );
+    const nextTask = normalizeOpeningConditionPilotTask({
+      ...existingTask,
+      reportAsset,
+      updatedAt: now,
+      events: [...existingTask.events, event],
+    });
+    const nextTasks = [...snapshot.tasks];
+    nextTasks[index] = nextTask;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        tasks: nextTasks,
+      },
+      value: {
+        ok: true,
+        task: nextTask,
+        reportAsset,
+        exportHandoff,
         event,
       },
     };

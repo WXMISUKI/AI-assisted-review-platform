@@ -616,6 +616,8 @@ export function OpeningConditionWorkspaceShell({
   pilotKnowledgeBases,
   pilotReadiness,
   pilotStatus,
+  reportExportStatus,
+  reportDownloadUrl,
   pilotBusy,
   onToggleTheme,
   onBack,
@@ -633,6 +635,7 @@ export function OpeningConditionWorkspaceShell({
   onEnsureKnowledgeBase,
   onReviewDecision,
   onGenerateReport,
+  onExportReport,
   onArchivePilotTask,
   onStartRectificationRerun,
   onTrialBootstrapComplete,
@@ -653,6 +656,8 @@ export function OpeningConditionWorkspaceShell({
   pilotKnowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
   pilotStatus: string;
+  reportExportStatus?: string;
+  reportDownloadUrl?: string;
   pilotBusy?: boolean;
   onToggleTheme: () => void;
   onBack: () => void;
@@ -674,6 +679,7 @@ export function OpeningConditionWorkspaceShell({
   onEnsureKnowledgeBase?: () => void;
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
   onGenerateReport?: () => void;
+  onExportReport?: (taskId: string) => void;
   onArchivePilotTask?: () => void;
   onStartRectificationRerun?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
@@ -824,7 +830,10 @@ export function OpeningConditionWorkspaceShell({
               pilotTask={pilotTask}
               workspaceTasks={pilotWorkspaceTasks}
               pilotBusy={pilotBusy}
+              reportExportStatus={reportExportStatus}
+              reportDownloadUrl={reportDownloadUrl}
               onGenerateReport={onGenerateReport}
+              onExportReport={onExportReport}
               onArchive={onArchivePilotTask}
               onStartRectificationRerun={onStartRectificationRerun}
             />
@@ -3243,7 +3252,10 @@ function OpeningConditionReportDeliveryWorkbench({
   pilotTask,
   workspaceTasks,
   pilotBusy,
+  reportExportStatus,
+  reportDownloadUrl,
   onGenerateReport,
+  onExportReport,
   onArchive,
   onStartRectificationRerun,
 }: {
@@ -3251,7 +3263,10 @@ function OpeningConditionReportDeliveryWorkbench({
   pilotTask?: OpeningConditionPilotTask | null;
   workspaceTasks?: OpeningConditionPilotTask[];
   pilotBusy?: boolean;
+  reportExportStatus?: string;
+  reportDownloadUrl?: string;
   onGenerateReport?: () => void;
+  onExportReport?: (taskId: string) => void;
   onArchive?: () => void;
   onStartRectificationRerun?: () => void;
 }) {
@@ -3742,11 +3757,16 @@ function OpeningConditionReportDeliveryWorkbench({
         </div>
       )}
 
-      {(onGenerateReport || onArchive) && (
+      {(onGenerateReport || onExportReport || onArchive) && (
         <div className="dialog-actions">
           {onGenerateReport && (
             <button type="button" className="primary" onClick={onGenerateReport} disabled={pilotBusy || !canGenerateReport}>
               生成报告摘要
+            </button>
+          )}
+          {onExportReport && reportAsset && (
+            <button type="button" className="secondary" onClick={() => onExportReport(selectedTask?.id ?? pilotTask?.id ?? "")} disabled={pilotBusy}>
+              导出 DOCX
             </button>
           )}
           {onArchive && reportAsset?.status === "ready" && isCurrentRun && (
@@ -3754,6 +3774,20 @@ function OpeningConditionReportDeliveryWorkbench({
               归档任务
             </button>
           )}
+        </div>
+      )}
+
+      {(reportExportStatus || reportDownloadUrl) && (
+        <div className="opening-record-list">
+          <div>
+            <strong>DOCX 导出状态</strong>
+            <p>{reportExportStatus || "DOCX 报告已生成。"}</p>
+            {reportDownloadUrl && (
+              <a href={reportDownloadUrl} target="_blank" rel="noreferrer">
+                打开 DOCX 下载
+              </a>
+            )}
+          </div>
         </div>
       )}
 

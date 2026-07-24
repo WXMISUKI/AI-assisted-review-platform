@@ -2,7 +2,6 @@
 
 ## Purpose
 Define a stable handoff contract for opening-condition original-form backfill and document export adapters so future docx/html services can consume platform-owned findings without owning business state.
-
 ## Requirements
 ### Requirement: Export-ready handoff contract
 The opening-condition report package SHALL expose a stable handoff contract for original-form backfill and document export adapters.
@@ -26,3 +25,15 @@ The export handoff capability SHALL support adapter registration before real ada
 - **WHEN** a report asset exposes a backfill or export adapter that is not yet wired to a live service
 - **THEN** the handoff status remains visible as pending or draft
 - **AND** the selected adapter, template, and next operator action are still inspectable
+
+### Requirement: Export handoff stores adapter result
+The opening-condition export handoff SHALL capture normalized document export results from the HTTP tools adapter.
+
+#### Scenario: Report DOCX export succeeds
+- **WHEN** a report export operation returns a `downloadUrl`
+- **THEN** the task report asset exposes an updated export handoff with `exported` status, generated object summary, file key, file name, file size, and safe diagnostics
+
+#### Scenario: Report DOCX export cannot run
+- **WHEN** the adapter is not configured or the report asset is missing
+- **THEN** the export handoff remains inspectable and the API returns a bounded failure status and next action
+

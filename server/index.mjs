@@ -14,6 +14,7 @@ import { getKnowledgeBaseProviderReadiness } from "./knowledgeBaseProvider.mjs";
 import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
+import { exportHtmlToDocxUrl } from "./httpToolsDocumentConversionAdapter.mjs";
 import {
   addManualReviewTaskIssue,
   completeReviewTaskDecision,
@@ -34,6 +35,7 @@ import {
   decideOpeningConditionPilotBasisPreview,
   decideOpeningConditionPilotMasterDataRecord,
   decideOpeningConditionPilotHumanReviewItem,
+  buildOpeningConditionPilotReportHtml,
   generateOpeningConditionPilotReport,
   getOpeningConditionPilotStoreInfo,
   getOpeningConditionPilotTask,
@@ -48,6 +50,7 @@ import {
   listOpeningConditionPilotMasterData,
   listOpeningConditionPilotTasks,
   publishOpeningConditionPilotBasisVersion,
+  recordOpeningConditionPilotReportDocumentExport,
   refreshOpeningConditionPilotBasisPreview,
   runOpeningConditionPilotChecklistMatch,
   transitionOpeningConditionPilotTask,
@@ -236,6 +239,7 @@ export function createBackendServer(options = {}) {
           "GET /api/opening-condition/pilot-tasks/:taskId/human-review",
           "POST /api/opening-condition/pilot-tasks/:taskId/human-review/:reviewId/decision",
           "POST /api/opening-condition/pilot-tasks/:taskId/report",
+          "POST /api/opening-condition/pilot-tasks/:taskId/report/export-docx",
           "POST /api/opening-condition/pilot-tasks/:taskId/archive",
           "POST /api/opening-condition/pilot-tasks/:taskId/transition",
           "GET /api/opening-condition/pilot-tasks/:taskId/readiness",
@@ -602,6 +606,87 @@ export function createBackendServer(options = {}) {
         openingConditionStoreOptions,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotReportExportMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/report\/export-docx$/,
+    );
+    if (request.method === "POST" && openingConditionPilotReportExportMatch) {
+      const taskId = decodeURIComponent(openingConditionPilotReportExportMatch[1]);
+      const task = await getOpeningConditionPilotTask(taskId, openingConditionStoreOptions);
+      if (!task) {
+        sendJson(response, 404, {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition pilot task not found.",
+        });
+        return;
+      }
+
+      const html = buildOpeningConditionPilotReportHtml(task);
+      if (!html) {
+        sendJson(response, 400, {
+          ok: false,
+          status: "missing_report",
+          message: "A generated report asset is required before exporting a DOCX report.",
+        });
+        return;
+      }
+
+      const exportResult = await exportHtmlToDocxUrl({
+        html,
+        filename: `opening-condition-report-${taskId}.docx`,
+      });
+      if (!exportResult.ok) {
+        const statusCode =
+          exportResult.status === "not_configured" || exportResult.status === "adapter_unreachable" || exportResult.status === "timeout"
+            ? 503
+            : 400;
+        sendJson(response, statusCode, {
+          ok: false,
+          status: "export_failed",
+          adapterStatus: exportResult.status,
+          message: exportResult.message,
+          safeDiagnostics: exportResult.safeDiagnostics,
+        });
+        return;
+      }
+
+      const recorded = await recordOpeningConditionPilotReportDocumentExport(
+        taskId,
+        {
+          fileKey: exportResult.fileKey,
+          fileName: exportResult.fileName,
+          fileSize: exportResult.fileSize,
+          safeDiagnostics: exportResult.safeDiagnostics,
+        },
+        openingConditionStoreOptions,
+      );
+      if (!recorded.ok) {
+        sendJson(response, 400, {
+          ok: false,
+          status: recorded.status ?? "export_record_failed",
+          message: recorded.message ?? "DOCX export completed but could not be recorded.",
+          safeDiagnostics: exportResult.safeDiagnostics,
+        });
+        return;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        status: "exported",
+        task: recorded.task,
+        reportAsset: recorded.reportAsset,
+        exportHandoff: recorded.exportHandoff,
+        export: {
+          downloadUrl: exportResult.downloadUrl,
+          fileKey: exportResult.fileKey,
+          fileName: exportResult.fileName,
+          fileSize: exportResult.fileSize,
+          safeDiagnostics: exportResult.safeDiagnostics,
+        },
+      });
       return;
     }
 

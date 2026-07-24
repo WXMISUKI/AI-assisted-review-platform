@@ -79,6 +79,15 @@ export interface BackendHealthResult {
       status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
       summary: string;
     };
+    httpTools?: {
+      configured: boolean;
+      hasBaseURL: boolean;
+      docx2htmlPath: string;
+      html2docxPath: string;
+      timeoutMs: number;
+      status: "ready" | "degraded" | "failed" | "disabled" | "unconfigured" | "provisional" | "blocked";
+      summary: string;
+    };
     summary?: {
       total: number;
       ready: number;
@@ -509,6 +518,30 @@ export interface OpeningConditionPilotReportResult {
   task?: OpeningConditionPilotTask;
   reportAsset?: OpeningConditionPilotTask["reportAsset"];
   status?: string;
+  message?: string;
+}
+
+export interface OpeningConditionPilotReportExportResult {
+  ok: boolean;
+  status?: string;
+  task?: OpeningConditionPilotTask;
+  reportAsset?: OpeningConditionPilotTask["reportAsset"];
+  exportHandoff?: OpeningConditionPilotTask["reportAsset"] extends infer T
+    ? T extends { packageDiagnostics?: infer D }
+      ? D extends { exportHandoff?: infer H }
+        ? H
+        : unknown
+      : unknown
+    : unknown;
+  export?: {
+    downloadUrl?: string;
+    fileKey?: string;
+    fileName?: string;
+    fileSize?: number;
+    safeDiagnostics?: string[];
+  };
+  adapterStatus?: string;
+  safeDiagnostics?: string[];
   message?: string;
 }
 
@@ -1013,6 +1046,20 @@ export async function generateOpeningConditionPilotReport(taskId: string, object
     body: JSON.stringify({ objectRef }),
   });
   return readJson<OpeningConditionPilotReportResult>(response);
+}
+
+export async function exportOpeningConditionPilotReportDocx(taskId: string) {
+  const response = await fetch(
+    `/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/report/export-docx`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    },
+  );
+  return readJson<OpeningConditionPilotReportExportResult>(response);
 }
 
 export async function archiveOpeningConditionPilotTask(taskId: string) {

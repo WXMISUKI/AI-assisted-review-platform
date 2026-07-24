@@ -12,6 +12,7 @@ import {
   bindOpeningConditionPilotKnowledgeBase,
   decideOpeningConditionPilotMasterData,
   decideOpeningConditionPilotHumanReview,
+  exportOpeningConditionPilotReportDocx,
   fetchOpeningConditionPilotBasis,
   fetchOpeningConditionPilotKnowledgeBases,
   fetchOpeningConditionPilotMasterData,
@@ -176,6 +177,8 @@ export function App() {
   const [openingPilotMasterDataRecords, setOpeningPilotMasterDataRecords] = useState<OpeningConditionPilotMasterDataRecord[]>([]);
   const [openingPilotKnowledgeBases, setOpeningPilotKnowledgeBases] = useState<OpeningConditionPilotKnowledgeBaseRef[]>([]);
   const [openingPilotStatus, setOpeningPilotStatus] = useState("璇曠偣浠诲姟灏氭湭鍒濆鍖栵紝鍙厛杩涘叆璧勬枡鎺ュ叆椤靛垱寤轰换鍔°€?");
+  const [openingPilotReportExportStatus, setOpeningPilotReportExportStatus] = useState("");
+  const [openingPilotReportDownloadUrl, setOpeningPilotReportDownloadUrl] = useState("");
   const [openingPilotBusy, setOpeningPilotBusy] = useState(false);
   const [openingPilotIntakeMode, setOpeningPilotIntakeMode] = useState<OpeningPilotIntakeMode>("default");
 
@@ -738,6 +741,41 @@ export function App() {
     }
   }
 
+  async function exportOpeningPilotReportDocx(taskId = openingPilotTask?.id) {
+    const targetTask = openingPilotAllTasks.find((task) => task.id === taskId) ?? openingPilotTask;
+    if (!targetTask?.reportAsset || !taskId) {
+      setOpeningPilotReportExportStatus("请先生成报告资产，再导出 DOCX 报告。");
+      return;
+    }
+
+    setOpeningPilotReportExportStatus("正在生成 DOCX 报告...");
+    setOpeningPilotReportDownloadUrl("");
+    setOpeningPilotBusy(true);
+    try {
+      const result = await exportOpeningConditionPilotReportDocx(taskId);
+      if (!result.ok || !result.export?.downloadUrl) {
+        setOpeningPilotReportExportStatus(result.message ?? "DOCX 报告导出失败");
+        return;
+      }
+
+      setOpeningPilotReportDownloadUrl(result.export.downloadUrl);
+      setOpeningPilotReportExportStatus(`DOCX 报告已生成：${result.export.fileName ?? "opening-condition-report.docx"}`);
+
+      setOpeningPilotAllTasks((tasks) =>
+        result.task ? tasks.map((task) => (task.id === result.task?.id ? result.task : task)) : tasks,
+      );
+      if (openingPilotTask?.id === taskId) {
+        const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+        setOpeningPilotTask(result.task ?? openingPilotTask);
+        setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
+      }
+    } catch (error) {
+      setOpeningPilotReportExportStatus(error instanceof Error ? error.message : "DOCX 报告导出失败");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
   async function archiveOpeningPilotTask() {
     if (!openingPilotTask) {
       setOpeningPilotStatus("褰撳墠娌℃湁鍙綊妗ｇ殑璇曠偣浠诲姟銆?");
@@ -903,6 +941,8 @@ export function App() {
       pilotKnowledgeBases={openingPilotKnowledgeBases}
       pilotReadiness={openingPilotReadiness}
       pilotStatus={openingPilotStatus}
+      reportExportStatus={openingPilotReportExportStatus}
+      reportDownloadUrl={openingPilotReportDownloadUrl}
       pilotBusy={openingPilotBusy}
       onToggleTheme={toggleTheme}
       onBack={returnToProductLauncher}
@@ -922,6 +962,7 @@ export function App() {
       onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
       onReviewDecision={(reviewId, decision) => void decideOpeningPilotHumanReview(reviewId, decision)}
       onGenerateReport={() => void generateOpeningPilotReport()}
+      onExportReport={(taskId) => void exportOpeningPilotReportDocx(taskId)}
       onArchivePilotTask={() => void archiveOpeningPilotTask()}
       onStartRectificationRerun={startOpeningRectificationRerun}
       onTrialBootstrapComplete={handleOpeningTrialBootstrapComplete}

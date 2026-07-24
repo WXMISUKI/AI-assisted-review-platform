@@ -115,6 +115,20 @@ export const config = {
     baseURL: normalizeBaseURL(process.env.AGENT_SERVICE_BASE_URL || ""),
     timeoutMs: normalizePositiveInteger(process.env.AGENT_SERVICE_TIMEOUT_MS, 5000, 60_000),
   },
+  httpTools: {
+    baseURL: normalizeBaseURL(process.env.HTTP_TOOLS_BASE_URL || ""),
+    timeoutMs: normalizePositiveInteger(process.env.HTTP_TOOLS_TIMEOUT_MS, 30_000, 180_000),
+    docx2htmlPath: normalizeProviderString(
+      process.env.HTTP_TOOLS_DOCX2HTML_PATH || "",
+      "/api/capabilities/docx2html",
+      180,
+    ),
+    html2docxPath: normalizeProviderString(
+      process.env.HTTP_TOOLS_HTML2DOCX_PATH || "",
+      "/api/capabilities/html2docx",
+      180,
+    ),
+  },
 };
 
 export function getSafeProviderStatus() {
@@ -133,6 +147,7 @@ export function getSafeProviderStatus() {
       : config.knowledgeProvider === "ragflow"
         ? ragflowConfigured
         : false;
+  const httpToolsConfigured = Boolean(config.httpTools.baseURL);
   const readyCount = [openaiConfigured, paddleConfigured, minioConfigured].filter(Boolean).length;
 
   return {
@@ -214,13 +229,24 @@ export function getSafeProviderStatus() {
       configured: Boolean(config.agentService.baseURL),
       timeoutMs: config.agentService.timeoutMs,
     },
+    httpTools: {
+      configured: httpToolsConfigured,
+      hasBaseURL: Boolean(config.httpTools.baseURL),
+      docx2htmlPath: config.httpTools.docx2htmlPath,
+      html2docxPath: config.httpTools.html2docxPath,
+      timeoutMs: config.httpTools.timeoutMs,
+      status: normalizeProviderStatus(httpToolsConfigured ? "ready" : "unconfigured", "unconfigured"),
+      summary: httpToolsConfigured
+        ? "HTTP document conversion tools are configured for backend-owned export operations."
+        : "HTTP document conversion tools are not configured. Set HTTP_TOOLS_BASE_URL before DOCX export.",
+    },
     summary: {
       total: 3,
       ready: readyCount,
       overall: readyCount === 3 ? "ready" : readyCount > 0 ? "degraded" : "unconfigured",
       optional: {
-        total: 2,
-        ready: [ragflowConfigured, maxkbConfigured].filter(Boolean).length,
+        total: 3,
+        ready: [ragflowConfigured, maxkbConfigured, httpToolsConfigured].filter(Boolean).length,
       },
     },
   };
