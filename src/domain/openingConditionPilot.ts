@@ -448,6 +448,42 @@ export interface OpeningConditionPilotReportExportHandoff {
   nextAction: string;
 }
 
+export type OpeningConditionPilotReportDeliveryPackageStatus =
+  | "empty"
+  | "blocked_by_review"
+  | "ready_for_handoff"
+  | "archived_ready";
+
+export interface OpeningConditionPilotReportDeliveryPackageRow {
+  sequence: number;
+  id: string;
+  checkItem: string;
+  category: string;
+  issueDescription: string;
+  riskLabel: string;
+  dispositionLabel: string;
+  basis: string;
+  rectification: string;
+  notes: string[];
+}
+
+export interface OpeningConditionPilotReportDeliveryPackage {
+  schemaVersion: "opening-condition-report-delivery-package.v1";
+  packageId: string;
+  taskId: string;
+  status: OpeningConditionPilotReportDeliveryPackageStatus;
+  statusLabel: string;
+  generatedAt: string;
+  readOnly: boolean;
+  rowCount: number;
+  blockingCount: number;
+  pendingHumanReviewCount: number;
+  adapterStatus?: string;
+  nextAction: string;
+  rows: OpeningConditionPilotReportDeliveryPackageRow[];
+  safeDiagnostics: string[];
+}
+
 export interface OpeningConditionPilotTrialPackage {
   taskId: string;
   workspaceId: string;
@@ -474,6 +510,7 @@ export interface OpeningConditionPilotReportPackageDiagnostics {
   nextRectificationAdvice?: OpeningConditionPilotReportNextRectificationAdvice;
   deliveryHandoff?: OpeningConditionPilotReportDeliveryHandoff;
   exportHandoff?: OpeningConditionPilotReportExportHandoff;
+  deliveryPackage?: OpeningConditionPilotReportDeliveryPackage;
   providerReadiness?: OpeningConditionPilotProviderReadinessSummary;
   blockingReasons: string[];
   archiveStatus: "pending" | "ready" | "archived";

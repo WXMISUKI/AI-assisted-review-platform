@@ -36,4 +36,14 @@ The opening-condition export handoff SHALL capture normalized document export re
 #### Scenario: Report DOCX export cannot run
 - **WHEN** the adapter is not configured or the report asset is missing
 - **THEN** the export handoff remains inspectable and the API returns a bounded failure status and next action
+### Requirement: Export handoff includes delivery package fields
+The opening-condition export handoff SHALL identify the structured delivery package that downstream exporters or original-form backfill adapters should consume.
+
+#### Scenario: Report package has delivery rows
+- **WHEN** export handoff metadata is shown for a report-ready or archived run
+- **THEN** it references delivery package readiness, row counts, blocking counts, adapter status, and the stable rectification rows as the source of document content
+
+#### Scenario: Adapter execution is deferred
+- **WHEN** no external adapter has executed yet
+- **THEN** the handoff still exposes the delivery package summary and next action without requiring a live adapter call
 

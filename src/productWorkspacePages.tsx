@@ -49,6 +49,8 @@ import type {
   OpeningConditionPilotHumanReviewItem,
   OpeningConditionPilotKnowledgeBaseRef,
   OpeningConditionPilotLegalBasisReference,
+  OpeningConditionPilotReportDeliveryPackage,
+  OpeningConditionPilotReportDeliveryPackageRow,
   OpeningConditionPilotTask,
 } from "./domain/openingConditionPilot";
 import { openingConditionPilotStateLabels } from "./domain/openingConditionPilot";
@@ -309,7 +311,7 @@ type ReportFindingGroup = {
   findings: ReportFinding[];
 };
 
-type ReportRectificationDeliveryRow = {
+type ReportRectificationDeliveryRow = OpeningConditionPilotReportDeliveryPackageRow & {
   sequence: number;
   id: string;
   checkItem: string;
@@ -343,6 +345,64 @@ function buildReportRectificationDeliveryRows(findings: ReportFinding[]): Report
       rectification: finding.rectification || "补齐对应资料后重新提交复审。",
       notes: [...finding.evidence, ...finding.humanReview].slice(0, 4),
     }));
+}
+
+function buildOpeningConditionReportDeliveryPackage(input: {
+  task?: OpeningConditionPilotTask | null;
+  rows: ReportRectificationDeliveryRow[];
+  blockingCount: number;
+  pendingHumanReviewCount: number;
+  adapterStatus?: string;
+  generatedAt?: string;
+}): OpeningConditionPilotReportDeliveryPackage | null {
+  const { task, rows, blockingCount, pendingHumanReviewCount, adapterStatus, generatedAt } = input;
+  if (!task) {
+    return null;
+  }
+
+  const archived = task.state === "archived";
+  const status: OpeningConditionPilotReportDeliveryPackage["status"] =
+    rows.length === 0
+      ? "empty"
+      : pendingHumanReviewCount > 0 || blockingCount > 0
+        ? "blocked_by_review"
+        : archived
+          ? "archived_ready"
+          : "ready_for_handoff";
+  const statusLabel: Record<OpeningConditionPilotReportDeliveryPackage["status"], string> = {
+    empty: "暂无整改交付项",
+    blocked_by_review: "人工复核阻塞交付",
+    ready_for_handoff: "可交付给导出/回填",
+    archived_ready: "历史归档可复用",
+  };
+  const nextAction: Record<OpeningConditionPilotReportDeliveryPackage["status"], string> = {
+    empty: "当前报告没有需要导出给整改闭环的行，保留报告摘要即可。",
+    blocked_by_review: "先关闭人工复核或阻塞项，再把结构化行交付给 DOCX、原表回填或智能体。",
+    ready_for_handoff: "可复用这些结构化行生成 DOCX、回填原核查表，或交给法规整改智能体继续处理。",
+    archived_ready: "该历史轮次只读，可作为复盘、对比和再次导出的稳定输入。",
+  };
+
+  return {
+    schemaVersion: "opening-condition-report-delivery-package.v1",
+    packageId: `oc-report-delivery-${task.id}`,
+    taskId: task.id,
+    status,
+    statusLabel: statusLabel[status],
+    generatedAt: generatedAt ?? task.reportAsset?.createdAt ?? task.updatedAt,
+    readOnly: archived,
+    rowCount: rows.length,
+    blockingCount,
+    pendingHumanReviewCount,
+    adapterStatus,
+    nextAction: nextAction[status],
+    rows,
+    safeDiagnostics: [
+      `rows=${rows.length}`,
+      `blocking=${blockingCount}`,
+      `pendingHumanReview=${pendingHumanReviewCount}`,
+      `readOnly=${archived}`,
+    ],
+  };
 }
 
 function OpeningConditionReportRectificationDeliveryList({ rows }: { rows: ReportRectificationDeliveryRow[] }) {
@@ -386,6 +446,80 @@ function OpeningConditionReportRectificationDeliveryList({ rows }: { rows: Repor
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function OpeningConditionReportDeliveryPackageSummary({
+  deliveryPackage,
+}: {
+  deliveryPackage: OpeningConditionPilotReportDeliveryPackage | null;
+}) {
+  if (!deliveryPackage) {
+    return null;
+  }
+
+  const statusTone: Record<OpeningConditionPilotReportDeliveryPackage["status"], "danger" | "warning" | "success" | "info" | "muted"> = {
+    empty: "muted",
+    blocked_by_review: "warning",
+    ready_for_handoff: "success",
+    archived_ready: "info",
+  };
+
+  return (
+    <div className="opening-record-list opening-record-list-compact">
+      <div>
+        <div className="opening-report-finding-header">
+          <div>
+            <strong>报告交付包</strong>
+            <p>面向 DOCX 导出、原表回填、十二类问题审查智能体和法规整改智能体的稳定结构化输入。</p>
+          </div>
+          <div className="opening-report-chip-row">
+            <span className={`opening-report-chip tone-${statusTone[deliveryPackage.status]}`}>
+              {deliveryPackage.statusLabel}
+            </span>
+            <span className="opening-report-chip tone-muted">{deliveryPackage.schemaVersion}</span>
+          </div>
+        </div>
+        <div className="opening-report-summary-grid">
+          <div className="opening-report-summary-card tone-info">
+            <strong>交付行</strong>
+            <span>{deliveryPackage.rowCount}</span>
+            <p>可进入 DOCX/原表回填的整改行。</p>
+          </div>
+          <div className="opening-report-summary-card tone-warning">
+            <strong>阻塞项</strong>
+            <span>{deliveryPackage.blockingCount}</span>
+            <p>仍会影响交付判断的阻塞数量。</p>
+          </div>
+          <div className="opening-report-summary-card tone-muted">
+            <strong>待人工</strong>
+            <span>{deliveryPackage.pendingHumanReviewCount}</span>
+            <p>仍需监理判断的复核项。</p>
+          </div>
+          <div className="opening-report-summary-card tone-success">
+            <strong>适配状态</strong>
+            <span>{deliveryPackage.adapterStatus ?? "draft"}</span>
+            <p>{deliveryPackage.readOnly ? "归档只读，可复用导出。" : "当前轮次可继续推进。"}</p>
+          </div>
+        </div>
+        <div className="opening-report-detail-list">
+          <small>
+            <strong>package</strong>
+            {deliveryPackage.packageId}
+          </small>
+          <small>
+            <strong>下一动作</strong>
+            {deliveryPackage.nextAction}
+          </small>
+          {deliveryPackage.safeDiagnostics.map((item) => (
+            <small key={item}>
+              <strong>diagnostic</strong>
+              {item}
+            </small>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -3993,6 +4127,16 @@ function OpeningConditionReportDeliveryWorkbench({
     pendingHuman: findings.filter((item) => item.disposition === "needs_human_review").length,
     warning: findings.filter((item) => item.disposition === "warning").length,
   };
+  const deliveryPackage =
+    packageDiagnostics?.deliveryPackage ??
+    buildOpeningConditionReportDeliveryPackage({
+      task: selectedTask,
+      rows: rectificationDeliveryRows,
+      blockingCount: selectedOpenReviewCount,
+      pendingHumanReviewCount: findingSummary.pendingHuman,
+      adapterStatus: exportHandoff?.status,
+      generatedAt: packageDiagnostics?.generatedAt,
+    });
   const canGenerateReport = Boolean(
     pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && selectedOpenReviewCount === 0 && !reportAsset,
   );
@@ -4321,6 +4465,8 @@ function OpeningConditionReportDeliveryWorkbench({
           )}
         </div>
       )}
+
+      <OpeningConditionReportDeliveryPackageSummary deliveryPackage={deliveryPackage} />
 
       <OpeningConditionReportRectificationDeliveryList rows={rectificationDeliveryRows} />
 

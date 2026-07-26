@@ -73,6 +73,29 @@ Each delivery row should carry the fields needed by supervisors and by later DOC
 
 This list is the platform-owned handoff layer. Future `docxToHtml` / `htmlToDocx`, original-table backfill, legal-rectification agents, or issue-review agents should consume this structured handoff rather than scraping UI copy.
 
+## Report Export Delivery Package
+
+The rectification delivery list should also be wrapped as a bounded report delivery package.
+
+The package is the stable input boundary for:
+
+- DOCX export.
+- Original checklist/table backfill.
+- The twelve issue-type review agents.
+- Legal-basis and rectification-suggestion agents.
+- Later evidence-preview or archive replay workers.
+
+Minimum package fields:
+
+- Schema version and package id.
+- Source task id and read-only state.
+- Row count, blocking count, pending-human-review count.
+- Adapter status when a downstream exporter is connected.
+- Next action for the operator or downstream worker.
+- Structured rectification rows with checklist context, issue description, risk, disposition, basis, rectification requirement, and bounded notes.
+
+This package must not include raw OCR text, raw prompts, credentials, private object URLs, or unbounded provider output. Downstream adapters should consume this package and fetch additional source objects through explicit object references or adapter contracts later, not through report-page copy.
+
 ## Future Evidence Preview Direction
 
 The next substantial interaction upgrade should be issue-centered evidence preview:

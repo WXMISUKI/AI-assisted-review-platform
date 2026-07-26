@@ -147,3 +147,10 @@ The opening-condition report page SHALL present the rectification delivery list 
 - **WHEN** the operator opens report archive for a selected run
 - **THEN** the operator can first read the整改交付清单
 - **AND** grouped issue cards remain available below for detailed context
+### Requirement: Report export delivery package summary
+The opening-condition report page SHALL show a concise export delivery package summary before lower-level issue groups.
+
+#### Scenario: Operator opens a generated report
+- **WHEN** the selected run has report facts or derived findings
+- **THEN** the report page shows package status, schema version, row count, blocking count, current adapter readiness, and next action
+- **AND** the operator can understand whether the structured report facts are ready for DOCX export, original-form backfill, or specialist-agent handoff
