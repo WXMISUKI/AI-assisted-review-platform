@@ -1557,10 +1557,80 @@ function normalizeReportPackageDiagnostics(value) {
     nextRectificationAdvice: normalizeNextRectificationAdvice(value.nextRectificationAdvice),
     deliveryHandoff: normalizeReportDeliveryHandoff(value.deliveryHandoff),
     exportHandoff: normalizeReportExportHandoff(value.exportHandoff),
+    deliveryPackage: normalizeReportDeliveryPackage(value.deliveryPackage),
     providerReadiness: normalizeTrialPackageProviderReadiness(value.providerReadiness),
     blockingReasons: normalizeStringList(value.blockingReasons, 30, 240),
     archiveStatus: ["pending", "ready", "archived"].includes(value.archiveStatus) ? value.archiveStatus : "pending",
     generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
+  });
+}
+
+function normalizeReportDeliveryPackageRow(value, index = 0) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const id = normalizeString(value.id, "", 180);
+  const checkItem = normalizeString(value.checkItem, "", 240);
+  const category = normalizeString(value.category, "", 180);
+  const issueDescription = normalizeString(value.issueDescription, "", 500);
+  const riskLabel = normalizeString(value.riskLabel, "", 120);
+  const dispositionLabel = normalizeString(value.dispositionLabel, "", 160);
+  const basis = normalizeString(value.basis, "", 500);
+  const rectification = normalizeString(value.rectification, "", 500);
+  if (!id || !checkItem || !category || !issueDescription || !riskLabel || !dispositionLabel || !basis || !rectification) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    sequence: normalizeNumber(value.sequence, index + 1, 10000),
+    id,
+    checkItem,
+    category,
+    issueDescription,
+    riskLabel,
+    dispositionLabel,
+    basis,
+    rectification,
+    notes: normalizeStringList(value.notes, 8, 300),
+  });
+}
+
+function normalizeReportDeliveryPackage(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const schemaVersion = normalizeString(value.schemaVersion, "", 120);
+  const packageId = normalizeString(value.packageId, "", 220);
+  const taskId = normalizeString(value.taskId, "", 180);
+  const status = normalizeString(value.status, "", 80);
+  const statusLabel = normalizeString(value.statusLabel, "", 180);
+  const nextAction = normalizeString(value.nextAction, "", 500);
+  const allowedStatuses = new Set(["empty", "blocked_by_review", "ready_for_handoff", "archived_ready"]);
+  const rows = Array.isArray(value.rows)
+    ? value.rows.map((row, index) => normalizeReportDeliveryPackageRow(row, index)).filter(Boolean).slice(0, 200)
+    : [];
+
+  if (schemaVersion !== "opening-condition-report-delivery-package.v1" || !packageId || !taskId || !allowedStatuses.has(status) || !statusLabel || !nextAction) {
+    return undefined;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    schemaVersion,
+    packageId,
+    taskId,
+    status,
+    statusLabel,
+    generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
+    readOnly: Boolean(value.readOnly),
+    rowCount: normalizeNumber(value.rowCount, rows.length, MAX_CHECKLIST_ITEMS),
+    blockingCount: normalizeNumber(value.blockingCount, 0, MAX_CHECKLIST_ITEMS),
+    pendingHumanReviewCount: normalizeNumber(value.pendingHumanReviewCount, 0, MAX_CHECKLIST_ITEMS),
+    adapterStatus: normalizeString(value.adapterStatus, "", 120) || undefined,
+    nextAction,
+    rows,
+    safeDiagnostics: normalizeStringList(value.safeDiagnostics, 20, 300),
   });
 }
 
@@ -2062,10 +2132,125 @@ function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") 
     nextRectificationAdvice: deriveNextRectificationAdvice(findings, trialPackage.blockingReasons ?? []),
     deliveryHandoff: deriveReportDeliveryHandoff(task, findings, humanReview, archiveStatus),
     exportHandoff: deriveReportExportHandoff(task, findings, trialPackage, archiveStatus),
+    deliveryPackage: deriveReportDeliveryPackage(task, findings, humanReview, archiveStatus),
     providerReadiness: trialPackage.providerReadiness,
     blockingReasons: trialPackage.blockingReasons,
     archiveStatus,
     generatedAt: new Date().toISOString(),
+  });
+}
+
+const reportDeliveryPackageDispositions = new Set(["blocked", "fail", "reject", "needs_human_review", "warning"]);
+
+function getReportFindingRiskLabel(finding) {
+  switch (finding?.riskLevel) {
+    case "high":
+      return "高风险";
+    case "low":
+      return "提示项";
+    default:
+      return "中风险";
+  }
+}
+
+function getReportFindingDispositionLabel(finding) {
+  switch (finding?.disposition) {
+    case "blocked":
+      return "阻塞";
+    case "fail":
+      return "不通过";
+    case "needs_human_review":
+      return "待人工判断";
+    case "warning":
+      return "提示关注";
+    case "reject":
+      return "人工驳回";
+    case "confirm":
+      return "人工确认";
+    case "correct":
+      return "人工修正";
+    case "defer":
+      return "延期处理";
+    case "pass":
+      return "通过";
+    case "not_applicable":
+      return "不适用";
+    default:
+      return normalizeString(finding?.disposition, "待确认", 120);
+  }
+}
+
+function summarizeReportFindingLegalBasis(finding) {
+  const legalBasis = Array.isArray(finding?.legalBasis) ? finding.legalBasis : [];
+  const summary = legalBasis
+    .map((item) => [item.title, item.clause].filter(Boolean).join(" "))
+    .filter(Boolean)
+    .join(" / ");
+  return summary || finding?.basisVersionId || "未记录明确依据";
+}
+
+function deriveReportDeliveryPackage(task, findings = [], humanReview = summarizeHumanReviewQueue(task.humanReviewQueue ?? []), archiveStatus = "ready") {
+  const rows = findings
+    .filter((finding) => reportDeliveryPackageDispositions.has(finding.disposition))
+    .map((finding, index) => ({
+      sequence: index + 1,
+      id: finding.id,
+      checkItem: finding.title,
+      category: finding.subCategory ? `${finding.category} / ${finding.subCategory}` : finding.category,
+      issueDescription: finding.description || getReportFindingDispositionLabel(finding),
+      riskLabel: getReportFindingRiskLabel(finding),
+      dispositionLabel: getReportFindingDispositionLabel(finding),
+      basis: summarizeReportFindingLegalBasis(finding),
+      rectification: finding.rectificationRequirement || "补齐对应资料后重新提交复审。",
+      notes: [...(finding.evidenceLabels ?? []), ...(finding.humanReviewLabels ?? [])].slice(0, 8),
+    }));
+  const pendingHumanReviewCount = findings.filter((finding) => finding.disposition === "needs_human_review").length;
+  const blockingFindingCount = findings.filter((finding) =>
+    ["blocked", "fail", "reject", "needs_human_review"].includes(finding.disposition),
+  ).length;
+  const blockingCount = humanReview.blockingCount + blockingFindingCount;
+  const archived = archiveStatus === "archived" || task.state === "archived";
+  const status =
+    rows.length === 0
+      ? "empty"
+      : pendingHumanReviewCount > 0 || humanReview.blockingCount > 0
+        ? "blocked_by_review"
+        : archived
+          ? "archived_ready"
+          : "ready_for_handoff";
+  const statusLabels = {
+    empty: "暂无整改交付项",
+    blocked_by_review: "人工复核阻塞交付",
+    ready_for_handoff: "可交付给导出/回填",
+    archived_ready: "历史归档可复用",
+  };
+  const nextActions = {
+    empty: "当前报告没有需要导出给整改闭环的行，保留报告摘要即可。",
+    blocked_by_review: "先关闭人工复核或阻塞项，再把结构化行交付给 DOCX、原表回填或智能体。",
+    ready_for_handoff: "可复用这些结构化行生成 DOCX、回填原核查表，或交给法规整改智能体继续处理。",
+    archived_ready: "该历史轮次只读，可作为复盘、对比和再次导出的稳定输入。",
+  };
+
+  return normalizeReportDeliveryPackage({
+    schemaVersion: "opening-condition-report-delivery-package.v1",
+    packageId: `oc-report-delivery-${task.id}`,
+    taskId: task.id,
+    status,
+    statusLabel: statusLabels[status],
+    generatedAt: new Date().toISOString(),
+    readOnly: archived,
+    rowCount: rows.length,
+    blockingCount,
+    pendingHumanReviewCount,
+    adapterStatus: task.reportAsset?.packageDiagnostics?.exportHandoff?.status,
+    nextAction: nextActions[status],
+    rows,
+    safeDiagnostics: [
+      `rows=${rows.length}`,
+      `blocking=${blockingCount}`,
+      `pendingHumanReview=${pendingHumanReviewCount}`,
+      `readOnly=${archived}`,
+    ],
   });
 }
 
@@ -4867,6 +5052,21 @@ export async function recordOpeningConditionPilotReportDocumentExport(taskId, in
       safeDiagnostics,
       nextAction: "DOCX 报告已生成，可通过本次导出的下载链接交付；原表回填仍需单独适配。",
     });
+    const deliveryPackage = deriveReportDeliveryPackage(
+      {
+        ...existingTask,
+        reportAsset: {
+          ...existingTask.reportAsset,
+          packageDiagnostics: {
+            ...currentDiagnostics,
+            exportHandoff,
+          },
+        },
+      },
+      currentDiagnostics.findings ?? deriveReportPackageFindings(existingTask),
+      currentDiagnostics.humanReview ?? summarizeHumanReviewQueue(existingTask.humanReviewQueue ?? []),
+      existingTask.state === "archived" ? "archived" : "ready",
+    );
     const reportAsset = normalizeReportAsset(
       {
         ...existingTask.reportAsset,
@@ -4874,6 +5074,7 @@ export async function recordOpeningConditionPilotReportDocumentExport(taskId, in
         packageDiagnostics: {
           ...currentDiagnostics,
           exportHandoff,
+          deliveryPackage,
         },
       },
       taskId,
@@ -4963,6 +5164,17 @@ export async function archiveOpeningConditionPilotTask(taskId, input = {}, optio
 
     const now = new Date().toISOString();
     const sequence = existingTask.events.length + 1;
+    const archivedTaskForDiagnostics = {
+      ...existingTask,
+      state: "archived",
+      reportAsset: {
+        ...existingTask.reportAsset,
+        status: "archived",
+      },
+    };
+    const archivedFindings = existingTask.reportAsset.packageDiagnostics?.findings ?? deriveReportPackageFindings(existingTask);
+    const archivedHumanReview =
+      existingTask.reportAsset.packageDiagnostics?.humanReview ?? summarizeHumanReviewQueue(existingTask.humanReviewQueue ?? []);
     const archivedReport = normalizeReportAsset(
       {
         ...existingTask.reportAsset,
@@ -4970,19 +5182,8 @@ export async function archiveOpeningConditionPilotTask(taskId, input = {}, optio
         packageDiagnostics: {
           ...existingTask.reportAsset.packageDiagnostics,
           archiveStatus: "archived",
-          deliveryHandoff: deriveReportDeliveryHandoff(
-            {
-              ...existingTask,
-              state: "archived",
-              reportAsset: {
-                ...existingTask.reportAsset,
-                status: "archived",
-              },
-            },
-            existingTask.reportAsset.packageDiagnostics?.findings ?? deriveReportPackageFindings(existingTask),
-            existingTask.reportAsset.packageDiagnostics?.humanReview ?? summarizeHumanReviewQueue(existingTask.humanReviewQueue ?? []),
-            "archived",
-          ),
+          deliveryHandoff: deriveReportDeliveryHandoff(archivedTaskForDiagnostics, archivedFindings, archivedHumanReview, "archived"),
+          deliveryPackage: deriveReportDeliveryPackage(archivedTaskForDiagnostics, archivedFindings, archivedHumanReview, "archived"),
         },
       },
       taskId,

@@ -25,6 +25,7 @@ import {
   listOpeningConditionPilotMasterData,
   publishOpeningConditionPilotBasisVersion,
   refreshOpeningConditionPilotBasisPreview,
+  recordOpeningConditionPilotReportDocumentExport,
   runOpeningConditionPilotChecklistMatch,
   sanitizeOpeningConditionPilotValue,
   transitionOpeningConditionPilotTask,
@@ -1701,7 +1702,23 @@ test("generates and archives auxiliary report assets after human review is clear
     assert.equal(report.reportAsset.packageDiagnostics.humanReview.blockingCount, 0);
     assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.status, "ready_for_archive");
     assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.readOnly, false);
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryPackage.schemaVersion, "opening-condition-report-delivery-package.v1");
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryPackage.status, "empty");
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryPackage.readOnly, false);
     assert.equal("privateUrl" in report.reportAsset.objectRef, false);
+
+    const exported = await recordOpeningConditionPilotReportDocumentExport(
+      "task-1",
+      {
+        fileKey: "reports/task-1.docx",
+        fileName: "task-1.docx",
+        fileSize: 2048,
+      },
+      { storePath },
+    );
+    assert.equal(exported.ok, true);
+    assert.equal(exported.reportAsset.packageDiagnostics.exportHandoff.status, "exported");
+    assert.equal(exported.reportAsset.packageDiagnostics.deliveryPackage.adapterStatus, "exported");
 
     const archived = await archiveOpeningConditionPilotTask("task-1", { message: "归档完成。" }, { storePath });
     assert.equal(archived.ok, true);
@@ -1711,6 +1728,8 @@ test("generates and archives auxiliary report assets after human review is clear
     assert.equal(archived.reportAsset.packageDiagnostics.archiveStatus, "archived");
     assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.status, "archived");
     assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.readOnly, true);
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryPackage.status, "empty");
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryPackage.readOnly, true);
 
     const regenerated = await generateOpeningConditionPilotReport("task-1", {}, { storePath });
     assert.equal(regenerated.ok, false);
@@ -1837,6 +1856,9 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
     assert.equal(report.reportAsset.packageDiagnostics.decisionLedger.length, 1);
     assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.status, "ready_for_archive");
     assert.equal(report.reportAsset.packageDiagnostics.deliveryHandoff.recommendedPage, "reports");
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryPackage.status, "ready_for_handoff");
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryPackage.rowCount, 1);
+    assert.equal(report.reportAsset.packageDiagnostics.deliveryPackage.rows[0].checkItem, "Stamped approval form");
     assert.equal("token" in report.reportAsset.objectRef, false);
 
     const archived = await archiveOpeningConditionPilotTask(
@@ -1850,6 +1872,8 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
     assert.equal(archived.reportAsset.packageDiagnostics.archiveStatus, "archived");
     assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.status, "archived");
     assert.equal(archived.reportAsset.packageDiagnostics.deliveryHandoff.readOnly, true);
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryPackage.status, "archived_ready");
+    assert.equal(archived.reportAsset.packageDiagnostics.deliveryPackage.readOnly, true);
     const archivedEventCount = archived.task.events.length;
 
     const rematchArchived = await runOpeningConditionPilotChecklistMatch("task-smoke-run-1", {}, { storePath });
