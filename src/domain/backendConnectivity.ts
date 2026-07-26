@@ -220,6 +220,18 @@ export interface MinioUploadResult {
   message?: string;
 }
 
+export interface MinioPresignResult {
+  ok: boolean;
+  presigned?: {
+    bucket: string;
+    key: string;
+    url: string;
+    expiresIn: number;
+    summary?: string;
+  };
+  message?: string;
+}
+
 export interface StoredObjectOcrSubmitResult {
   ok: boolean;
   configured?: boolean;
@@ -1171,6 +1183,17 @@ export async function uploadMinioDocument(file: File) {
     body: formData,
   });
   return readJson<MinioUploadResult>(response);
+}
+
+export async function fetchMinioPresignedDocumentUrl(key: string, expiresIn = 900) {
+  const response = await fetch("/api/minio/presign", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ key, expiresIn }),
+  });
+  return readJson<MinioPresignResult>(response);
 }
 
 export async function submitStoredObjectOcrJob(key: string) {

@@ -1991,6 +1991,83 @@ h4 {
   font-weight: 800;
 }
 
+.source-faithful-preview {
+  margin: 0 16px 12px;
+  border: 1px solid #dce6ec;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f9fbfc, #ffffff);
+  overflow: hidden;
+}
+
+.source-faithful-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e3e9ee;
+}
+
+.source-faithful-preview-header strong {
+  display: block;
+  margin-top: 4px;
+  color: #203248;
+}
+
+.source-faithful-preview-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.source-faithful-preview-badge.ready {
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+}
+
+.source-faithful-preview-badge.loading {
+  background: rgba(2, 132, 199, 0.12);
+  color: #0369a1;
+}
+
+.source-faithful-preview-badge.fallback {
+  background: rgba(148, 163, 184, 0.16);
+  color: #475569;
+}
+
+.source-faithful-preview-badge.error {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.source-faithful-preview-body {
+  padding: 12px 14px 14px;
+}
+
+.source-faithful-preview-status {
+  margin: 0 0 10px;
+  color: #56697b;
+  font-size: 13px;
+}
+
+.docx-preview-shell {
+  min-height: 220px;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid #e3e9ee;
+  border-radius: 8px;
+  background: #fff;
+  padding: 16px;
+}
+
+.docx-preview-shell .docx-preview-highlight {
+  outline: 2px solid rgba(15, 118, 110, 0.45);
+  background: rgba(15, 118, 110, 0.1) !important;
+  transition: background-color 0.2s ease, outline-color 0.2s ease;
+}
+
 .panel-heading.compact {
   padding-bottom: 12px;
 }

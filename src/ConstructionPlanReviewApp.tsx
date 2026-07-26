@@ -1085,11 +1085,11 @@ export function ConstructionPlanReviewApp({
 
   if (activePage === "review-detail" && selectedDocument) {
     return (
-      <ReviewWorkbenchPage
-        allowedModes={allowedModes}
-        roleLabel={roleLabels[session.role]}
-        documentName={selectedDocument.name}
-        projectName={selectedDocument.project}
+        <ReviewWorkbenchPage
+          allowedModes={allowedModes}
+          roleLabel={roleLabels[session.role]}
+          documentName={selectedDocument.name}
+          projectName={selectedDocument.project}
         onBack={() => setActivePage("documents")}
         themeMode={themeMode}
         onToggleTheme={onToggleTheme}
@@ -1106,11 +1106,12 @@ export function ConstructionPlanReviewApp({
                     : undefined),
               }
             : null
-        }
-        sessionSnapshot={selectedDocumentSession ?? undefined}
-        paragraphs={selectedDocumentSession?.paragraphs ?? selectedDocument.paragraphs}
-        initialIssues={selectedDocumentSession?.issues ?? selectedDocument.issues}
-        recoveredStructure={selectedDocument.recoveredStructure}
+          }
+          sessionSnapshot={selectedDocumentSession ?? undefined}
+          sourceObject={selectedDocument.sourceObject}
+          paragraphs={selectedDocumentSession?.paragraphs ?? selectedDocument.paragraphs}
+          initialIssues={selectedDocumentSession?.issues ?? selectedDocument.issues}
+          recoveredStructure={selectedDocument.recoveredStructure}
         onIssueResolve={updateSelectedIssueResolution}
         onIssueDraftChange={updateSelectedIssueDraft}
         onManualIssueAdd={addSelectedManualIssue}

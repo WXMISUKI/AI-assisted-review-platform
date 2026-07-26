@@ -37,7 +37,9 @@ import type {
   ReviewSession,
   StatusFilter,
   ReviewViewContext,
+  ReviewTaskSourceObject,
 } from "./domain/reviewTypes";
+import { fetchMinioPresignedDocumentUrl } from "./domain/backendConnectivity";
 import {
   buildProcessedParagraphs,
   getIssueCounts,
@@ -45,6 +47,7 @@ import {
   matchesFilter,
   resolveIssue,
 } from "./domain/reviewUtils";
+import { SourceFaithfulDocxPreview } from "./SourceFaithfulDocxPreview";
 
 export interface ReviewWorkbenchPageProps {
   allowedModes?: ReviewMode[];
@@ -68,6 +71,7 @@ export interface ReviewWorkbenchPageProps {
   onManualIssueDelete?: (issueId: string) => void;
   onViewContextChange?: (context: ReviewViewContext) => void;
   recoveredStructure?: RecoveredDocumentStructure;
+  sourceObject?: ReviewTaskSourceObject;
   sessionSnapshot?: ReviewSession;
   generationNotice?: {
     status?: "ready" | "degraded" | "failed" | "running" | "idle";
@@ -236,6 +240,7 @@ export function ReviewWorkbenchPage({
   onManualIssueDelete,
   onViewContextChange,
   recoveredStructure,
+  sourceObject,
   sessionSnapshot,
   readonly = false,
   generationNotice = null,
@@ -976,6 +981,12 @@ export function ReviewWorkbenchPage({
               问题标注
             </span>
           </div>
+          <SourceFaithfulDocxPreview
+            sourceObject={sourceObject}
+            activeIssue={activeIssue}
+            paragraphs={reviewParagraphs}
+            fetchPresignedDocumentUrl={fetchMinioPresignedDocumentUrl}
+          />
           <ManualSelectionPanel
             draft={selectionDraft}
             message={selectionMessage}
