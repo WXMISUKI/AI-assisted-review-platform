@@ -109,6 +109,8 @@ import {
   runReviewStreamConnectivityCheck,
   upsertOpeningConditionPilotKnowledgeBase,
   uploadMinioDocument,
+  exportReviewReportDocx,
+  type ReviewReportExportResult,
 } from "./domain/backendConnectivity";
 
 export function ProductLauncherPage({
@@ -759,6 +761,56 @@ export function ResultPreviewPage({
   const sourceLabel = getResultSourceLabel(document, sessionSnapshot);
   const sourceDetail = getResultSourceDetail(document, sessionSnapshot);
   const recentDecisionActivities = getRecentReviewDecisionActivities(document, sessionSnapshot);
+  const [exportStatus, setExportStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDownloadUrl, setExportDownloadUrl] = useState<string | null>(null);
+
+  async function handleExportDocx() {
+    if (!asset || asset.type !== "supervisor-report") {
+      return;
+    }
+    setExportStatus("loading");
+    setExportError(null);
+    setExportDownloadUrl(null);
+
+    try {
+      const result: ReviewReportExportResult = await exportReviewReportDocx(document.id);
+      if (result.ok && result.export?.downloadUrl) {
+        setExportStatus("success");
+        setExportDownloadUrl(result.export.downloadUrl);
+        window.open(result.export.downloadUrl, "_blank", "noopener,noreferrer");
+      } else {
+        setExportStatus("error");
+        setExportError(result.message || "导出 DOCX 失败，请稍后重试。");
+      }
+    } catch {
+      setExportStatus("error");
+      setExportError("导出请求失败，请检查网络或联系管理员。");
+    }
+  }
+
+  function handleHtmlFallback() {
+    if (!asset || asset.type !== "supervisor-report") {
+      return;
+    }
+    const stats = asset.issueStats;
+    const issueRows = Array.isArray(asset.issueOpinions)
+      ? asset.issueOpinions
+          .map(
+            (op, i) =>
+              `<tr><td>${i + 1}</td><td>${op.title}</td><td>${op.severity}</td><td>${op.decision === "accepted" ? "采纳" : "拒绝"}</td><td>${op.opinion}</td></tr>`,
+          )
+          .join("")
+      : "";
+    const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><title>施工方案审查报告</title><style>body{font-family:SimSun,serif;margin:32pt;color:#20242a}table{border-collapse:collapse;width:100%}th,td{border:1px solid #8c949e;padding:5pt}h1{text-align:center}</style></head><body><h1>施工方案审查报告</h1><p><strong>文档：</strong>${asset.documentName}</p><p><strong>项目：</strong>${asset.projectName}</p><p><strong>生成时间：</strong>${asset.createdAt}</p><h2>审查总体情况</h2><p>${asset.summary}</p><p>总计：${stats?.total ?? 0}，采纳：${stats?.accepted ?? 0}，拒绝：${stats?.rejected ?? 0}</p><h2>审查意见明细</h2><table><tr><th>序号</th><th>问题标题</th><th>风险</th><th>处理</th><th>意见</th></tr>${issueRows || "<tr><td colspan=5>暂无审查意见。</td></tr>"}</table><h2>审查结论</h2><p>${asset.conclusion}</p></body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = `施工方案审查报告-${asset.documentName || document.id}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <main className="result-page">
@@ -804,13 +856,59 @@ export function ResultPreviewPage({
           />
           <p>
             {asset
-              ? "页面用于验证审查完成后的业务产物结构，导出和归档仍然保留为后续接入点。"
+              ? "页面用于验证审查完成后的业务产物结构，可导出 DOCX 报告或下载 HTML 版本。"
               : "系统暂时无法从会话快照或持久化任务中恢复结果资产，但仍保留安全兜底外壳。"}
           </p>
         </div>
-        <button type="button" className="export-disabled" disabled>
-          导出 PDF/Word 待接入
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-end" }}>
+          {asset?.type === "supervisor-report" ? (
+            <>
+              <button
+                type="button"
+                className={exportStatus === "loading" ? "export-disabled" : "primary"}
+                disabled={exportStatus === "loading"}
+                onClick={handleExportDocx}
+                aria-label="导出 DOCX 审查报告"
+              >
+                <ClipboardCheck size={16} />
+                {exportStatus === "loading" ? "导出中…" : exportStatus === "success" ? "已导出 DOCX" : "导出 DOCX 报告"}
+              </button>
+              {exportStatus === "error" && (
+                <div className="review-generation-notice degraded" style={{ maxWidth: "320px", fontSize: "13px" }}>
+                  <span style={{ flexShrink: 0 }}>⚠️</span>
+                  <div>
+                    <strong>DOCX 导出不可用</strong>
+                    <p>{exportError}</p>
+                    <button
+                      type="button"
+                      className="theme-toggle subtle"
+                      onClick={handleHtmlFallback}
+                      style={{ marginTop: "6px" }}
+                    >
+                      <FileText size={14} />
+                      下载 HTML 版
+                    </button>
+                  </div>
+                </div>
+              )}
+              {exportStatus === "idle" && (
+                <button
+                  type="button"
+                  className="theme-toggle subtle"
+                  onClick={handleHtmlFallback}
+                  aria-label="下载 HTML 版审查报告"
+                >
+                  <FileText size={14} />
+                  下载 HTML 版（兜底）
+                </button>
+              )}
+            </>
+          ) : (
+            <button type="button" className="export-disabled" disabled>
+              导出 PDF/Word 待接入
+            </button>
+          )}
+        </div>
       </section>
 
       <section className="result-metrics" aria-label="结果概览">

@@ -23,6 +23,7 @@ import { generateReviewIssuesForDocument } from "./reviewLlmGenerator.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
 import { exportHtmlToDocxUrl } from "./httpToolsDocumentConversionAdapter.mjs";
+import { buildReviewReportHtml } from "./reviewReportHtml.mjs";
 import {
   addManualReviewTaskIssue,
   completeReviewTaskDecision,
@@ -1030,6 +1031,77 @@ export function createBackendServer(options = {}) {
         limit: readPositiveIntegerParam(url, "limit") || 50,
       });
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const reviewTaskExportDocxMatch = url.pathname.match(/^\/api\/review-tasks\/([^/]+)\/report\/export-docx$/);
+    if (request.method === "POST" && reviewTaskExportDocxMatch) {
+      const taskId = decodeURIComponent(reviewTaskExportDocxMatch[1]);
+      const task = await getReviewTask(taskId);
+      if (!task) {
+        sendJson(response, 404, {
+          ok: false,
+          status: "not_found",
+          message: "Review task not found.",
+        });
+        return;
+      }
+
+      const asset = task.resultAsset;
+      if (!asset || asset.type !== "supervisor-report") {
+        sendJson(response, 400, {
+          ok: false,
+          status: "missing_report",
+          message: "A supervisor-report result asset is required before exporting a DOCX report.",
+        });
+        return;
+      }
+
+      const html = buildReviewReportHtml(asset);
+      if (!html) {
+        sendJson(response, 400, {
+          ok: false,
+          status: "build_failed",
+          message: "Failed to generate report HTML from result asset.",
+        });
+        return;
+      }
+
+      const safeDocumentName = String(asset.documentName || "review-report")
+        .replace(/[^a-zA-Z0-9一-龥_-]/g, "_")
+        .slice(0, 60);
+      const exportResult = await exportHtmlToDocxUrl({
+        html,
+        filename: `construction-plan-report-${safeDocumentName}-${taskId}.docx`,
+      });
+
+      if (!exportResult.ok) {
+        const statusCode =
+          exportResult.status === "not_configured" || exportResult.status === "adapter_unreachable" || exportResult.status === "timeout"
+            ? 503
+            : 400;
+        sendJson(response, statusCode, {
+          ok: false,
+          status: "export_failed",
+          adapterStatus: exportResult.status,
+          message: exportResult.message,
+          safeDiagnostics: exportResult.safeDiagnostics,
+          fallback: "html",
+        });
+        return;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        status: "exported",
+        taskId,
+        export: {
+          downloadUrl: exportResult.downloadUrl,
+          fileName: exportResult.fileName,
+          fileSize: exportResult.fileSize,
+          safeDiagnostics: exportResult.safeDiagnostics,
+        },
+      });
       return;
     }
 

@@ -321,7 +321,7 @@ function normalizeProviderStructuredPreview(input = {}, sourceObject = null, con
   const safeExcerpt = snippets.join(" / ").slice(0, 500);
 
   const facts = normalizeBasisPreviewFacts({
-    projectName: getProviderPayloadValue(factsPayload, ["projectName", "project_name", "工程名称", "项目名称"]),
+    projectName: getProviderPayloadValue(factsPayload, ["projectName", "project_name", "瀹搞儳鈻奸崥宥囆?, "妞ゅ湱娲伴崥宥囆?]),
     projectId:
       getProviderPayloadValue(factsPayload, ["projectId", "project_id", "projectCode", "project_code"]) ||
       context.projectId,
@@ -331,8 +331,8 @@ function normalizeProviderStructuredPreview(input = {}, sourceObject = null, con
         "contract_package_id",
         "contractPackage",
         "contract_package",
-        "标段",
-        "合同段",
+        "閺嶅洦顔?,
+        "閸氬牆鎮?,
       ]) || context.contractPackageId,
     participatingOrganizationId:
       getProviderPayloadValue(factsPayload, [
@@ -348,8 +348,8 @@ function normalizeProviderStructuredPreview(input = {}, sourceObject = null, con
       "contractor_name",
       "subcontractorName",
       "subcontractor_name",
-      "施工单位",
-      "分包单位",
+      "閺傝棄浼愰崡鏇氱秴",
+      "閸掑棗瀵橀崡鏇氱秴",
     ]),
     basisFileName: sourceObject?.fileName,
     qualificationScope: getProviderPayloadValue(factsPayload, [
@@ -357,29 +357,29 @@ function normalizeProviderStructuredPreview(input = {}, sourceObject = null, con
       "qualification_scope",
       "contractScope",
       "contract_scope",
-      "资质范围",
-      "资质边界",
-      "承包范围",
+      "鐠у嫯宸濋懠鍐ㄦ纯",
+      "鐠у嫯宸濇潏鍦櫕",
+      "閹靛灝瀵橀懠鍐ㄦ纯",
     ]),
     personnelScope: getProviderPayloadValue(factsPayload, [
       "personnelScope",
       "personnel_scope",
-      "人员范围",
-      "人员配置",
+      "娴滃搫鎲抽懠鍐ㄦ纯",
+      "娴滃搫鎲抽柊宥囩枂",
     ]),
     equipmentScope: getProviderPayloadValue(factsPayload, [
       "equipmentScope",
       "equipment_scope",
-      "设备范围",
-      "机械设备",
+      "鐠佹儳顦懠鍐ㄦ纯",
+      "閺堢儤顫拋鎯ь槵",
     ]),
     effectivePeriod: getProviderPayloadValue(factsPayload, [
       "effectivePeriod",
       "effective_period",
       "validity",
       "validUntil",
-      "有效期",
-      "有效期限",
+      "閺堝鏅?,
+      "閺堝鏅ラ張鐔兼",
     ]),
     sourceSummary: summary,
   });
@@ -470,49 +470,49 @@ function deriveBasisPreviewFactsFromSourceObject(sourceObject, context = {}, inp
   const sourceSummary = normalizeString(sourceObject?.summary, "", 500) || normalizeString(sourceObject?.fileName, "", 240);
   const projectName =
     firstTextMatch(safeText, [
-      /项目名称[：:\s]+([^\n\r;；。]{2,80})/,
-      /工程名称[：:\s]+([^\n\r;；。]{2,80})/,
-      /项目[：:\s]+([^\n\r;；。]{2,80})/,
+      /项目名称[:：\s]+([^\n\r;；。]{2,80})/,
+      /工程名称[:：\s]+([^\n\r;；。]{2,80})/,
+      /项目[:：\s]+([^\n\r;；。]{2,80})/,
     ]) ||
     normalizeString(context.projectName, "", 240) ||
     normalizeString(context.projectId, "", 180) ||
     sourceSummary;
   const participantEntityName =
     firstTextMatch(safeText, [
-      /施工单位[：:\s]+([^\n\r;；。]{2,80})/,
-      /分包单位[：:\s]+([^\n\r;；。]{2,80})/,
-      /参建单位[：:\s]+([^\n\r;；。]{2,80})/,
-      /单位名称[：:\s]+([^\n\r;；。]{2,80})/,
+      /施工单位[:：\s]+([^\n\r;；。]{2,80})/,
+      /分包单位[:：\s]+([^\n\r;；。]{2,80})/,
+      /参建单位[:：\s]+([^\n\r;；。]{2,80})/,
+      /单位名称[:：\s]+([^\n\r;；。]{2,80})/,
     ]) ||
     normalizeString(context.participatingOrganizationName, "", 240) ||
     normalizeString(context.participatingOrganizationId, "", 180);
   const qualificationScope =
     firstTextMatch(safeText, [
-      /资质边界[：:\s]+([^\n\r;；。]{2,120})/,
-      /资质范围[：:\s]+([^\n\r;；。]{2,120})/,
-      /合同主体[：:\s]+([^\n\r;；。]{2,120})/,
-      /承包范围[：:\s]+([^\n\r;；。]{2,120})/,
+      /资质边界[:：\s]+([^\n\r;；。]{2,120})/,
+      /资质范围[:：\s]+([^\n\r;；。]{2,120})/,
+      /合同主体[:：\s]+([^\n\r;；。]{2,120})/,
+      /承包范围[:：\s]+([^\n\r;；。]{2,120})/,
     ]) ||
     normalizeString(input.qualificationScope, "", 500);
   const personnelScope =
     firstTextMatch(safeText, [
-      /人员范围[：:\s]+([^\n\r;；。]{2,120})/,
-      /人员配置[：:\s]+([^\n\r;；。]{2,120})/,
-      /项目管理人员[：:\s]+([^\n\r;；。]{2,120})/,
+      /人员范围[:：\s]+([^\n\r;；。]{2,120})/,
+      /人员配置[:：\s]+([^\n\r;；。]{2,120})/,
+      /项目管理人员[:：\s]+([^\n\r;；。]{2,120})/,
     ]) ||
     normalizeString(input.personnelScope, "", 500);
   const equipmentScope =
     firstTextMatch(safeText, [
-      /设备范围[：:\s]+([^\n\r;；。]{2,120})/,
-      /机械设备[：:\s]+([^\n\r;；。]{2,120})/,
-      /起重设备[：:\s]+([^\n\r;；。]{2,120})/,
+      /设备范围[:：\s]+([^\n\r;；。]{2,120})/,
+      /机械设备[:：\s]+([^\n\r;；。]{2,120})/,
+      /起重设备[:：\s]+([^\n\r;；。]{2,120})/,
     ]) ||
     normalizeString(input.equipmentScope, "", 500);
   const effectivePeriod =
     firstTextMatch(safeText, [
-      /有效期[：:\s]+([^\n\r;；。]{2,80})/,
-      /起止时间[：:\s]+([^\n\r;；。]{2,80})/,
-      /有效期限[：:\s]+([^\n\r;；。]{2,80})/,
+      /有效期[:：\s]+([^\n\r;；。]{2,80})/,
+      /起止时间[:：\s]+([^\n\r;；。]{2,80})/,
+      /有效期限[:：\s]+([^\n\r;；。]{2,80})/,
     ]) ||
     normalizeString(input.effectivePeriod, "", 240);
 
@@ -705,7 +705,7 @@ function normalizeBasisRecord(value, workspaceId = "") {
   return sanitizeOpeningConditionPilotValue({
     id,
     workspaceId: resolvedWorkspaceId,
-    title: normalizeString(value.title, "未命名依据", 240),
+    title: normalizeString(value.title, "閺堫亜鎳￠崥宥勭贩", 240),
     componentType: normalizeString(value.componentType, "project_rule", 100),
     sourceObject: normalizeObjectRef(value.sourceObject) ?? undefined,
     version: normalizeString(value.version, "draft", 120),
@@ -1227,7 +1227,7 @@ function normalizeChecklistItem(value, index = 0) {
 
   return {
     id: normalizeString(source.id, `check-${index + 1}`, 180),
-    category: normalizeString(source.category, "资料核查", 160),
+    category: normalizeString(source.category, "鐠у嫭鏋￠弽鍛婄叀", 160),
     subCategory: normalizeString(source.subCategory, "", 120),
     name,
     required: source.required !== false && source.mandatory !== false,
@@ -1256,9 +1256,9 @@ function normalizeCheckItem(value, taskId) {
   return sanitizeOpeningConditionPilotValue({
     id,
     taskId,
-    category: normalizeString(value.category, "资料核查", 160),
+    category: normalizeString(value.category, "鐠у嫭鏋￠弽鍛婄叀", 160),
     subCategory: normalizeString(value.subCategory, "", 120) || undefined,
-    name: normalizeString(value.name ?? value.content, "未命名核查项", 240),
+    name: normalizeString(value.name ?? value.content, "閺堫亜鎳￠崥宥嗙壋閺屻儵銆?, 240),
     required: value.required !== false,
     verdict: ["pass", "fail", "warning", "needs_human_review", "blocked"].includes(value.verdict)
       ? value.verdict
@@ -1390,12 +1390,12 @@ function isOutOfScopeChecklistItem(checklistItem) {
   }
 
   const text = getChecklistReviewText(checklistItem);
-  return /现场核查|现场检查|现场确认|应急响应|应急演练|应急处置|现场观测/.test(text);
+  return /閻滄澘婧€閺嶅憡鐓閻滄澘婧€濡偓閺岊殏閻滄澘婧€绾喛顓粅鎼存梹鈧儱鎼锋惔鏀熸惔鏃€鈧儲绱ㄧ紒鍎勬惔鏃€鈧儱顦╃純鐣栭悳鏉挎簚鐟欏倹绁?.test(text);
 }
 
 function isResourceChecklistItem(checklistItem) {
   const text = getChecklistReviewText(checklistItem);
-  return /人员|安全员|特种作业|作业人员|管理人员|设备|机械|起重|汽车吊|泵车|仪器/.test(text);
+  return /娴滃搫鎲硘鐎瑰鍙忛崨姒洪悧鍦潚娴ｆ粈绗焲娴ｆ粈绗熸禍鍝勬喅|缁狅紕鎮婃禍鍝勬喅|鐠佹儳顦瑋閺堢儤顫珅鐠х兘鍣竱濮瑰€熸簠閸氬Α濞変絻婧厊娴狀亜娅?.test(text);
 }
 
 function getAuthorizedMasterDataIds(task, checklistItem) {
@@ -1403,13 +1403,14 @@ function getAuthorizedMasterDataIds(task, checklistItem) {
   return checklistItem.masterDataIds.filter((masterDataId) => authorizedIds.has(masterDataId));
 }
 
+/*
 function getVisualAssertionType(checklistItem) {
   const text = getChecklistReviewText(checklistItem);
-  if (/盖章|公章|印章|章/.test(text)) return "stamp";
-  if (/签字|签名/.test(text)) return "signature";
-  if (/勾选|打勾|勾|复选/.test(text)) return "checkbox";
-  if (/手写日期|日期/.test(text)) return "handwritten_date";
-  if (/签章|盖印/.test(text)) return "seal";
+  if (/閻╂牜鐝穦閸忣剛鐝穦閸楁壆鐝穦/.test(text)) return "stamp";
+  if (/缁涙儳鐡缁涙儳鎮?.test(text)) return "signature";
+  if (/閸曢箖鈧閹垫挸瀣€|閸曠窏婢?.test(text)) return "checkbox";
+  if (/閹靛鍟撻弮銉︽埂|閺冦儲婀?.test(text)) return "handwritten_date";
+  if (/缁涘墽鐝穦閻╂牕宓?.test(text)) return "seal";
   return "";
 }
 
@@ -1433,8 +1434,8 @@ function buildVisualAssertions(checklistItem, matches, evidenceIds) {
 
   const evidenceText = matches.map((match) => `${match.objectRef.fileName} ${match.objectRef.summary ?? ""}`).join(" ");
   const normalizedEvidenceText = normalizeMatchText(evidenceText);
-  const stable = /清晰|完整|已确认|签章完整|盖章完整|签字完整|勾选完整/.test(normalizedEvidenceText);
-  const uncertain = matches.length === 0 || /疑似|不清晰|模糊|低置信|无法确认|待确认/.test(normalizedEvidenceText);
+  const stable = /濞撳懏娅殀鐎瑰本鏆瀹歌尙鈥樼拋顦㈢粵鍓х彿鐎瑰本鏆閻╂牜鐝风€瑰本鏆缁涙儳鐡х€瑰本鏆閸曢箖鈧鐣?.test(normalizedEvidenceText);
+  const uncertain = matches.length === 0 || /閻ゆ垳鎶€|娑撳秵绔婚弲鐨樺Ο锛勭ˇ|娴ｅ海鐤嗘穱顢傞弮鐘崇《绾喛顓粅瀵板懐鈥?.test(normalizedEvidenceText);
   const status = stable && !uncertain ? "detected" : matches.length === 0 ? "missing" : "uncertain";
   const confidence = status === "detected" ? "high" : matches.length > 0 ? "low" : "low";
 
@@ -1444,13 +1445,13 @@ function buildVisualAssertions(checklistItem, matches, evidenceIds) {
         type,
         status,
         confidence,
-        locator: matches.length > 0 ? "资料包文件清单 / 视觉要素摘要" : "未命中稳定视觉要素资料",
+        locator: matches.length > 0 ? "鐠у嫭鏋￠崠鍛瀮娴犺埖绔婚敓?/ 鐟欏棜顫庣憰浣虹閹芥顩? : "閺堫亜鎳℃稉顓犌旂€规俺顫嬬憴澶庮洣缁辩姾绁?,
         evidenceIds,
         requiresHumanReview: status !== "detected",
         note:
           status === "detected"
-            ? "检测到较稳定的视觉要素存在性，仍不代表实体签章或签名真实有效。"
-            : "视觉要素存在性或清晰度不足，需要人工确认。",
+            ? "濡偓濞村鍩屾潏鍐旂€规氨娈戠憴鍡氼潕鐟曚胶绀岀€涙ê婀幀褝绱濇禒宥勭瑝娴狅綀銆冪€圭偘缍嬬粵鍓х彿閹存牜顒烽崥宥囨埂鐎圭偞婀侀弫鍫嫹?
+            : "鐟欏棜顫庣憰浣虹鐎涙ê婀幀褎鍨ㄥ〒鍛珰鎼达缚绗夌搾绛圭礉闂団偓鐟曚椒姹夊銉р€樼拋?,
       },
       evidenceIds,
     ),
@@ -1459,15 +1460,87 @@ function buildVisualAssertions(checklistItem, matches, evidenceIds) {
 
 function buildSemanticNote(checklistItem, matches, verdict) {
   if (matches.length > 1) {
-    return `存在 ${matches.length} 个候选资料，需要人工确认最准确证据。`;
+    return `鐎涙ê婀?${matches.length} 娑擃亜鈧瑩鈧绁弬娆欑礉闂団偓鐟曚椒姹夊銉р€樼拋銈嗘付閸戝棛鈥樼拠浣瑰祦閵嗕繖;
   }
 
   if (matches.length === 1) {
-    return `资料名称与“${checklistItem.name}”存在可解释匹配，仍以规则证据为准。`;
+    return `鐠у嫭鏋￠崥宥囆炴稉?{checklistItem.name}閳ユ繂鐡ㄩ崷銊ュ讲鐟欙綁鍣撮崠褰掑帳閿涘奔绮涙禒銉潐閸掓瑨鐦夐幑顔昏礋閸戝棎鈧繖;
   }
 
   if (verdict === "fail" || verdict === "warning") {
-    return `未在资料包清单中找到“${checklistItem.name}”的稳定匹配文件。`;
+    return `閺堫亜婀挧鍕灐閸栧懏绔婚崡鏇氳厬閹垫儳鍩?{checklistItem.name}閳ユ繄娈戠粙鍐茬暰閸栧綊鍘ら弬鍥︽閵嗕繖;
+  }
+
+  return "";
+}
+
+*/
+
+function getVisualAssertionType(checklistItem) {
+  const text = getChecklistReviewText(checklistItem);
+  if (/閻╂牜鐝穦閸忣剛鐝穦閸楁壆鐝穦缁涘墽鐝?.test(text)) return "stamp";
+  if (/缁涙儳鐡缁涙儳鎮?.test(text)) return "signature";
+  if (/閸曢箖鈧閹垫挸瀣€|婢跺秹鈧?.test(text)) return "checkbox";
+  if (/閹靛鍟撻弮銉︽埂|閺冦儲婀?.test(text)) return "handwritten_date";
+  if (/缁涘墽鐝穦閻╂牕宓?.test(text)) return "seal";
+  return "";
+}
+
+function buildVisualAssertions(checklistItem, matches, evidenceIds) {
+  if (Array.isArray(checklistItem.visualAssertions) && checklistItem.visualAssertions.length > 0) {
+    return checklistItem.visualAssertions.map((assertion) =>
+      normalizeVisualAssertion(
+        {
+          ...assertion,
+          evidenceIds: assertion.evidenceIds?.length ? assertion.evidenceIds : evidenceIds,
+        },
+        evidenceIds,
+      ),
+    );
+  }
+
+  const type = getVisualAssertionType(checklistItem);
+  if (!type) {
+    return [];
+  }
+
+  const evidenceText = matches.map((match) => `${match.objectRef.fileName} ${match.objectRef.summary ?? ""}`).join(" ");
+  const normalizedEvidenceText = normalizeMatchText(evidenceText);
+  const stable = /濞撳懏娅殀鐎瑰本鏆瀹歌尙鈥樼拋顦㈢粵鍓х彿鐎瑰本鏆閻╂牜鐝风€瑰本鏆缁涙儳鐡х€瑰本鏆閸曢箖鈧鐣弫?.test(normalizedEvidenceText);
+  const uncertain = matches.length === 0 || /閻ゆ垳鎶€|娑撳秵绔婚弲鐨樺Ο锛勭ˇ|娴ｅ海鐤嗘穱顢傞弮鐘崇《绾喛顓粅瀵板懐鈥樼拋?.test(normalizedEvidenceText);
+  const status = stable && !uncertain ? "detected" : matches.length === 0 ? "missing" : "uncertain";
+  const confidence = status === "detected" ? "high" : matches.length > 0 ? "low" : "low";
+
+  return [
+    normalizeVisualAssertion(
+      {
+        type,
+        status,
+        confidence,
+        locator: matches.length > 0 ? "鐠у嫭鏋￠崠鍛瀮娴犺埖绔婚崡?/ 鐟欏棜顫庣憰浣虹閹芥顩? : "閺堫亜鎳℃稉顓犌旂€规俺顫嬬憴澶庮洣缁辩姾绁弬?,
+        evidenceIds,
+        requiresHumanReview: status !== "detected",
+        note:
+          status === "detected"
+            ? "濡偓濞村鍩屾潏鍐旂€规氨娈戠憴鍡氼潕鐟曚胶绀岀€涙ê婀幀褝绱濇禒宥勭瑝娴狅綀銆冪€圭偘缍嬬粵鍓х彿閹存牜顒烽崥宥囨埂鐎圭偞婀侀弫鍫涒偓?
+            : "鐟欏棜顫庣憰浣虹鐎涙ê婀幀褎鍨ㄥ〒鍛珰鎼达缚绗夌搾绛圭礉闂団偓鐟曚椒姹夊銉р€樼拋銈冣偓?,
+      },
+      evidenceIds,
+    ),
+  ];
+}
+
+function buildSemanticNote(checklistItem, matches, verdict) {
+  if (matches.length > 1) {
+    return `鐎涙ê婀?${matches.length} 娑擃亜鈧瑩鈧绁弬娆欑礉闂団偓鐟曚椒姹夊銉р€樼拋銈嗘付閸戝棛鈥樼拠浣瑰祦閵嗕繖;
+  }
+
+  if (matches.length === 1) {
+    return `鐠у嫭鏋￠崥宥囆炴稉搴樷偓?{checklistItem.name}閳ユ繂鐡ㄩ崷銊ュ讲鐟欙綁鍣撮崠褰掑帳閿涘奔绮涙禒銉潐閸掓瑨鐦夐幑顔昏礋閸戝棎鈧繖;
+  }
+
+  if (verdict === "fail" || verdict === "warning") {
+    return `閺堫亜婀挧鍕灐閸栧懏绔婚崡鏇氳厬閹垫儳鍩岄垾?{checklistItem.name}閳ユ繄娈戠粙鍐茬暰閸栧綊鍘ら弬鍥︽閵嗕繖;
   }
 
   return "";
@@ -1504,7 +1577,7 @@ function normalizeReportAsset(value, taskId) {
   return sanitizeOpeningConditionPilotValue({
     id,
     taskId,
-    title: normalizeString(value.title, "开工条件核查内部辅助意见", 240),
+    title: normalizeString(value.title, "瀵偓瀹搞儲娼禒鑸电壋閺屻儱鍞撮柈銊ㄧ窡閸斺晜鍓?, 240),
     status: ["draft", "ready", "archived"].includes(value.status) ? value.status : "draft",
     summary: {
       total: normalizeNumber(value.summary?.total, 0, 10000),
@@ -1517,7 +1590,7 @@ function normalizeReportAsset(value, taskId) {
     packageDiagnostics: normalizeReportPackageDiagnostics(value.packageDiagnostics),
     disclaimer: normalizeString(
       value.disclaimer,
-      "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
+      "閺堫剛绮ㄩ弸婊€璐熼獮鍐插酱閺呴缚鍏樻潏鍛И鐎光剝鐓￠幇蹇氼潌閿涘奔绗夐弴澶稿敩閺傝棄浼愰崡鏇氱秴閵嗕胶娲冮悶鍡楀礋娴ｅ秴寮烽惄绋垮彠鐠愶絼鎹㈡禍铏规畱閺堚偓缂佸牆顓搁弽姝岀煑娴?,
       500,
     ),
     createdAt: normalizeString(value.createdAt, new Date().toISOString(), 80),
@@ -1992,18 +2065,18 @@ export function deriveOpeningConditionPilotPreflightReadiness(input = {}) {
 
   const status = blockingReasons.length === 0 ? "ready" : packetReady ? "blocked" : "provisional";
   const nextAction = !basisReady
-    ? "确认并发布判定依据版本。"
+    ? "纭骞跺彂甯冨垽瀹氫緷鎹増鏈€?
     : !masterDataReady
-      ? "确认并发布项目人员、设备、证照、单位或制度资料主数据。"
+      ? "纭骞跺彂甯冮」鐩汉鍛樸€佽澶囥€佽瘉鐓с€佸崟浣嶆垨鍒跺害璧勬枡涓绘暟鎹€?
       : !knowledgeBaseReady
         ? providerSyncStatus === "stale"
-          ? "刷新组织/分包队伍专属知识库外部索引。"
+          ? "鍒锋柊缁勭粐/鍒嗗寘闃熶紞涓撳睘鐭ヨ瘑搴撳閮ㄧ储寮曘€?
           : providerSyncStatus === "unreachable"
-            ? "恢复知识库 provider 连通性后再执行正式资料核查。"
-            : "绑定组织/分包队伍专属知识库。"
+            ? "鎭㈠鐭ヨ瘑搴?provider 杩為€氭€у悗鍐嶆墽琛屾寮忚祫鏂欐牳鏌ャ€?
+            : "缁戝畾缁勭粐/鍒嗗寘闃熶紞涓撳睘鐭ヨ瘑搴撱€?
         : packetReady
-          ? "可以执行正式资料核查。"
-          : "上传开工条件核查表和资料包。";
+          ? "鍙互鎵ц姝ｅ紡璧勬枡鏍告煡銆?
+          : "涓婁紶寮€宸ユ潯浠舵牳鏌ヨ〃鍜岃祫鏂欏寘銆?;
 
   return sanitizeOpeningConditionPilotValue({
     status,
@@ -2145,38 +2218,38 @@ const reportDeliveryPackageDispositions = new Set(["blocked", "fail", "reject", 
 function getReportFindingRiskLabel(finding) {
   switch (finding?.riskLevel) {
     case "high":
-      return "高风险";
+      return "妤傛﹢顥?;
     case "low":
-      return "提示项";
+      return "閹绘劗銇?;
     default:
-      return "中风险";
+      return "娑擃參顥?;
   }
 }
 
 function getReportFindingDispositionLabel(finding) {
   switch (finding?.disposition) {
     case "blocked":
-      return "阻塞";
+      return "闂冭顢?;
     case "fail":
-      return "不通过";
+      return "娑撳秹鈧俺绻?;
     case "needs_human_review":
-      return "待人工判断";
+      return "瀵板懍姹夊銉ュ灲";
     case "warning":
-      return "提示关注";
+      return "閹绘劗銇氶崗铏暈";
     case "reject":
-      return "人工驳回";
+      return "娴滃搫浼愭す鍐叉礀";
     case "confirm":
-      return "人工确认";
+      return "娴滃搫浼愮涵顔款吇";
     case "correct":
-      return "人工修正";
+      return "娴滃搫浼愭穱顔筋劀";
     case "defer":
-      return "延期处理";
+      return "瀵よ埖婀℃径鍕倞";
     case "pass":
-      return "通过";
+      return "闁俺绻?;
     case "not_applicable":
-      return "不适用";
+      return "娑撳秹鈧倻鏁?;
     default:
-      return normalizeString(finding?.disposition, "待确认", 120);
+      return normalizeString(finding?.disposition, "瀵板懐鈥?, 120);
   }
 }
 
@@ -2186,7 +2259,7 @@ function summarizeReportFindingLegalBasis(finding) {
     .map((item) => [item.title, item.clause].filter(Boolean).join(" "))
     .filter(Boolean)
     .join(" / ");
-  return summary || finding?.basisVersionId || "未记录明确依据";
+  return summary || finding?.basisVersionId || "閺堫亣顔囪ぐ鏇熸绾喕绶?;
 }
 
 function deriveReportDeliveryPackage(task, findings = [], humanReview = summarizeHumanReviewQueue(task.humanReviewQueue ?? []), archiveStatus = "ready") {
@@ -2201,7 +2274,7 @@ function deriveReportDeliveryPackage(task, findings = [], humanReview = summariz
       riskLabel: getReportFindingRiskLabel(finding),
       dispositionLabel: getReportFindingDispositionLabel(finding),
       basis: summarizeReportFindingLegalBasis(finding),
-      rectification: finding.rectificationRequirement || "补齐对应资料后重新提交复审。",
+      rectification: finding.rectificationRequirement || "鐞涖儵缍堢€电懓绨茬挧鍕灐閸氬酣鍣搁弬鐗堝絹娴溿倕顦茬€?,
       notes: [...(finding.evidenceLabels ?? []), ...(finding.humanReviewLabels ?? [])].slice(0, 8),
     }));
   const pendingHumanReviewCount = findings.filter((finding) => finding.disposition === "needs_human_review").length;
@@ -2219,16 +2292,16 @@ function deriveReportDeliveryPackage(task, findings = [], humanReview = summariz
           ? "archived_ready"
           : "ready_for_handoff";
   const statusLabels = {
-    empty: "暂无整改交付项",
-    blocked_by_review: "人工复核阻塞交付",
-    ready_for_handoff: "可交付给导出/回填",
-    archived_ready: "历史归档可复用",
+    empty: "閺嗗倹妫ら弫瀛樻暭娴溿倓绮?,
+    blocked_by_review: "娴滃搫浼愭径宥嗙壋闂冭顢ｆ禍銈勭帛",
+    ready_for_handoff: "閸欘垯姘︽禒妯肩舶鐎电厧鍤?閸ョ偛锝?,
+    archived_ready: "閸樺棗褰惰ぐ鎺撱€傞崣顖氼槻",
   };
   const nextActions = {
-    empty: "当前报告没有需要导出给整改闭环的行，保留报告摘要即可。",
-    blocked_by_review: "先关闭人工复核或阻塞项，再把结构化行交付给 DOCX、原表回填或智能体。",
-    ready_for_handoff: "可复用这些结构化行生成 DOCX、回填原核查表，或交给法规整改智能体继续处理。",
-    archived_ready: "该历史轮次只读，可作为复盘、对比和再次导出的稳定输入。",
+    empty: "瑜版挸澧犻幎銉ユ啞濞屸剝婀侀棁鈧憰浣割嚤閸戣櫣绮伴弫瀛樻暭闂傤厾骞嗛惃鍕攽閿涘奔绻氶悾娆愬Г閸涘﹥鎲崇憰浣稿祮閸?,
+    blocked_by_review: "閸忓牆鍙ч梻顓濇眽瀹搞儱顦查弽鍛婂灗闂冭顢ｆい鐧哥礉閸愬秵濡哥紒鎾寸€崠鏍攽娴溿倓绮敓?DOCX閵嗕礁甯悰銊ユ礀婵夘偅鍨ㄩ弲楦垮厴娴?,
+    ready_for_handoff: "閸欘垰顦查悽銊ㄧ箹娴滄稓绮ㄩ弸鍕鐞涘瞼鏁撻敓?DOCX閵嗕礁娲栨繅顐㈠斧閺嶅憡鐓＄悰顭掔礉閹存牔姘︾紒娆愮《鐟欏嫭鏆ｉ弨瑙勬閼虫垝缍嬬紒褏鐢绘径鍕倞",
+    archived_ready: "鐠囥儱宸婚崣鑼剁枂濞嗏€冲涧鐠囦紮绱濋崣顖欑稊娑撳搫顦查惄妯糕偓浣割嚠濮ｆ柨鎷伴崘宥嗩偧鐎电厧鍤惃鍕旂€规俺绶崗?,
   };
 
   return normalizeReportDeliveryPackage({
@@ -2263,13 +2336,13 @@ function deriveReportDeliveryHandoff(task, findings = [], humanReview = summariz
   if (archiveStatus === "archived" || task.state === "archived") {
     return {
       status: "archived",
-      statusLabel: "已归档，只读历史",
-      currentOwner: "无活动责任人",
-      nextAction: "如需继续补件，请从报告归档页发起下一轮整改复审，创建新的 run。",
+      statusLabel: "瀹告彃缍婂锝忕礉閸欘亣顕伴崢鍡楀蕉",
+      currentOwner: "閺冪姵妞块崝銊ㄧ煑娴犺姹?,
+      nextAction: "婵″倿娓剁紒褏鐢荤悰銉ゆ閿涘矁顕禒搴㈠Г閸涘﹤缍婂锝夈€夐崣鎴ｆ崳娑撳绔存潪顔芥殻閺€鐟邦槻鐎光槄绱濋崚娑樼紦閺傛壆娈?run",
       recommendedPage: "reports",
       readOnly: true,
       blockingCount,
-      actionReason: "当前 run 已归档，平台仅保留报告、问题清单、人工决策和导出记录，不允许直接修改历史。",
+      actionReason: "瑜版挸澧?run 瀹告彃缍婂锝忕礉楠炲啿褰存禒鍛箽閻ｆ瑦濮ら崨濞库偓渚€妫舵０妯荤閸楁洏鈧椒姹夊銉ュ枀缁涙牕鎷扮€电厧鍤拋鏉跨秿閿涘奔绗夐崗浣筋啅閻╁瓨甯存穱顔芥暭閸樺棗褰?,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -2277,13 +2350,13 @@ function deriveReportDeliveryHandoff(task, findings = [], humanReview = summariz
   if (task.state === "awaiting_human_review" || humanReview.blockingCount > 0) {
     return {
       status: "awaiting_human_review",
-      statusLabel: "待人工复核",
-      currentOwner: "监理人工复核",
-      nextAction: `关闭 ${humanReview.blockingCount} 项待处理或延期的人工复核项，再生成报告并归档。`,
+      statusLabel: "瀵板懍姹夊銉ヮ槻",
+      currentOwner: "閻╂垹鎮婃禍鍝勪紣婢跺秵鐗?,
+      nextAction: `閸忔娊妫?${humanReview.blockingCount} 妞ょ懓绶熸径鍕倞閹存牕娆㈤張鐔烘畱娴滃搫浼愭径宥嗙壋妞ょ櫢绱濋崘宥囨晸閹存劖濮ら崨濠傝嫙瑜版帗銆傞妴淇?
       recommendedPage: "human-review",
       readOnly: false,
       blockingCount,
-      actionReason: "仍存在 open 或 deferred 的人工复核项，报告交付不能绕过人工结论。",
+      actionReason: "娴犲秴鐡ㄩ敓?open 閿?deferred 閻ㄥ嫪姹夊銉ヮ槻閺嶆悂銆嶉敍灞惧Г閸涘﹣姘︽禒妯圭瑝閼崇晫绮潻鍥︽眽瀹搞儳绮ㄧ拋?,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -2291,13 +2364,13 @@ function deriveReportDeliveryHandoff(task, findings = [], humanReview = summariz
   if (archiveStatus === "ready" || task.reportAsset?.status === "ready") {
     return {
       status: "ready_for_archive",
-      statusLabel: "报告已生成，待归档",
-      currentOwner: "报告交付责任人",
-      nextAction: "确认报告问题清单、人工决策和导出结果后，归档本轮任务；需要补件时再发起下一轮整改复审。",
+      statusLabel: "閹躲儱鎲″鑼晸閹存劧绱濆鍛秺",
+      currentOwner: "閹躲儱鎲℃禍銈勭帛鐠愶絼鎹?,
+      nextAction: "绾喛顓婚幎銉ユ啞闂傤噣顣藉〒鍛礋閵嗕椒姹夊銉ュ枀缁涙牕鎷扮€电厧鍤紒鎾寸亯閸氬函绱濊ぐ鎺撱€傞張顒冪枂娴犺濮熼敍娑㈡付鐟曚浇藟娴犺埖妞傞崘宥呭絺鐠ц渹绗呮稉鈧潪顔芥殻閺€鐟邦槻鐎?,
       recommendedPage: "reports",
       readOnly: false,
       blockingCount,
-      actionReason: "本轮已形成平台报告资产，当前重点是交付确认、导出和归档留痕。",
+      actionReason: "閺堫剝鐤嗗鎻掕埌閹存劕閽╅崣鐗堝Г閸涘﹨绁禍褝绱濊ぐ鎾冲闁插秶鍋ｉ弰顖欐唉娴犳鈥樼拋銈冣偓浣割嚤閸戝搫鎷拌ぐ鎺撱€傞悾娆戞",
       generatedAt: new Date().toISOString(),
     };
   }
@@ -2305,13 +2378,13 @@ function deriveReportDeliveryHandoff(task, findings = [], humanReview = summariz
   if (task.state === "report_ready") {
     return {
       status: "ready_for_report",
-      statusLabel: "可生成报告",
-      currentOwner: "报告交付责任人",
-      nextAction: "生成报告资产，确认不符合项、整改建议和人工决策账本后再归档。",
+      statusLabel: "閸欘垳鏁撻幋鎰Г",
+      currentOwner: "閹躲儱鎲℃禍銈勭帛鐠愶絼鎹?,
+      nextAction: "閻㈢喐鍨氶幎銉ユ啞鐠у嫪楠囬敍宀€鈥樼拋銈勭瑝缁楋箑鎮庢い骞库偓浣规殻閺€鐟扮紦鐠侇喖鎷版禍鍝勪紣閸愬磭鐡ョ拹锔芥拱閸氬骸鍟€瑜版帗銆?,
       recommendedPage: "reports",
       readOnly: false,
       blockingCount,
-      actionReason: "正式核查和人工复核已收敛，可以进入报告交付。",
+      actionReason: "濮濓絽绱￠弽鍛婄叀閸滃奔姹夊銉ヮ槻閺嶇鍑￠弨鑸垫殐閿涘苯褰叉禒銉ㄧ箻閸忋儲濮ら崨濠佹唉娴?,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -2319,26 +2392,26 @@ function deriveReportDeliveryHandoff(task, findings = [], humanReview = summariz
   if (task.state === "failed" || task.state === "canceled") {
     return {
       status: "failed",
-      statusLabel: task.state === "failed" ? "异常待恢复" : "已取消待重启",
-      currentOwner: "资料接入责任人",
-      nextAction: "检查失败或取消原因，回到资料接入恢复本轮或重新创建下一轮 run。",
+      statusLabel: task.state === "failed" ? "瀵倸鐖跺鍛划閿? : "瀹告彃褰囧☉鍫濈窡闁插秴鎯?,
+      currentOwner: "鐠у嫭鏋￠幒銉ュ弳鐠愶絼鎹?,
+      nextAction: "濡偓閺屻儱銇戠拹銉﹀灗閸欐牗绉烽崢鐔锋礈閿涘苯娲栭崚鎷岀カ閺傛瑦甯撮崗銉︿划婢跺秵婀版潪顔藉灗闁插秵鏌婇崚娑樼紦娑撳绔撮敓?run",
       recommendedPage: "material-intake",
       readOnly: false,
       blockingCount,
-      actionReason: "当前 run 未形成可交付报告，需要先恢复到可执行链路。",
+      actionReason: "瑜版挸澧?run 閺堫亜鑸伴幋鎰讲娴溿倓绮幎銉ユ啞閿涘矂娓剁憰浣稿帥閹垹顦查崚鏉垮讲閹笛嗩攽闁炬崘鐭?,
       generatedAt: new Date().toISOString(),
     };
   }
 
   return {
     status: "blocked",
-    statusLabel: "尚未到达报告交付",
-    currentOwner: "资料接入责任人",
-    nextAction: task.preflightReadiness?.nextAction ?? "补齐依据、主数据、知识库和资料包门禁后，再执行正式核查。",
+    statusLabel: "鐏忔碍婀崚鎷屾彧閹躲儱鎲℃禍銈勭帛",
+    currentOwner: "鐠у嫭鏋￠幒銉ュ弳鐠愶絼鎹?,
+    nextAction: task.preflightReadiness?.nextAction ?? "鐞涖儵缍堟笟婵囧祦閵嗕椒瀵岄弫鐗堝祦閵嗕胶鐓＄拠鍡楃氨閸滃矁绁弬娆忓瘶闂傘劎顩﹂崥搴礉閸愬秵澧界悰灞绢劀瀵繑鐗抽弻?,
     recommendedPage: task.state === "matching" || task.state === "extracting" ? "check-tasks" : "material-intake",
     readOnly: false,
     blockingCount,
-    actionReason: "当前 run 仍处于资料接入、门禁确认或正式核查阶段，报告交付尚未形成。",
+    actionReason: "瑜版挸澧?run 娴犲秴顦╂禍搴ょカ閺傛瑦甯撮崗銉ｂ偓渚€妫粋浣衡€樼拋銈嗗灗濮濓絽绱￠弽鍛婄叀闂冭埖顔岄敍灞惧Г閸涘﹣姘︽禒妯虹毣閺堫亜鑸伴幋?,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -2360,11 +2433,11 @@ function deriveReportExportHandoff(task, findings = [], trialPackage = null, arc
 
   return {
     adapterId: "opening-condition-docx-html-bridge",
-    adapterLabel: "原表回填 / 文档导出适配器",
+    adapterLabel: "閸樼喕銆冮崶鐐诧綖 / 閺傚洦銆傜€电厧鍤柅鍌炲帳",
     deliveryKind,
     status,
     templateId: checklistLooksDocx ? "opening-condition-original-form-template-v1" : "opening-condition-report-package-template-v1",
-    templateLabel: checklistLooksDocx ? "原表回填模板 v1" : "辅助报告模板 v1",
+    templateLabel: checklistLooksDocx ? "閸樼喕銆冮崶鐐诧綖濡剝婢?v1" : "鏉堝懎濮幎銉ユ啞濡剝婢?v1",
     generatedObject: task.reportAsset?.objectRef,
     inputSummary: {
       basisFileName,
@@ -2375,10 +2448,10 @@ function deriveReportExportHandoff(task, findings = [], trialPackage = null, arc
     safeDiagnostics,
     nextAction:
       status === "exported"
-        ? "报告导出结果已记录；如需回填原表，请校验生成文件与本轮 findings 是否一致。"
+        ? "閹躲儱鎲＄€电厧鍤紒鎾寸亯瀹歌尪顔囪ぐ鏇幢婵″倿娓堕崶鐐诧綖閸樼喕銆冮敍宀冾嚞閺嶏繝鐛欓悽鐔稿灇閺傚洣娆㈡稉搴㈡拱閿?findings 閺勵垰鎯佹稉鈧懛杈炬嫹?
         : checklistLooksDocx
-          ? "待接入 docxToHtml / htmlToDocx 适配服务后，可基于当前 handoff 执行原表回填。"
-          : "待接入导出适配器后，可基于当前 handoff 生成正式文档交付件。",
+          ? "瀵板懏甯撮敓?docxToHtml / htmlToDocx 闁倿鍘ら張宥呭閸氬函绱濋崣顖氱唨娴滃骸缍嬮敓?handoff 閹笛嗩攽閸樼喕銆冮崶鐐诧綖閿?
+          : "瀵板懏甯撮崗銉ヮ嚤閸戞椽鈧倿鍘ら崳銊ユ倵閿涘苯褰查崺杞扮艾瑜版挸澧?handoff 閻㈢喐鍨氬锝呯础閺傚洦銆傛禍銈勭帛娴?,
   };
 }
 
@@ -2397,22 +2470,49 @@ function reportHtmlText(value, maxLength = 1200) {
 
 function getReportFindingLabel(finding) {
   if (finding.disposition === "pass") {
-    return "符合";
+    return "缁楋箑鎮?;
   }
   if (finding.disposition === "not_applicable") {
-    return "不适用";
+    return "娑撳秹鈧倻鏁?;
   }
   if (finding.disposition === "blocked") {
-    return "阻塞";
+    return "闂冭顢?;
   }
   if (finding.disposition === "needs_human_review") {
-    return "待人工复核";
+    return "瀵板懍姹夊銉ヮ槻";
   }
-  return "不符合";
+  return "娑撳秶顑?;
 }
 
 function getReportRiskLabel(riskLevel) {
-  return riskLevel === "high" ? "高风险" : riskLevel === "medium" ? "中风险" : "低风险";
+  return riskLevel === "high" ? "妤傛﹢顥撻敓? : riskLevel === "medium" ? "娑擃參顥撻敓? : "娴ｅ酣顥?;
+}
+
+function buildReportExportRowsFromDeliveryPackage(deliveryPackage) {
+  const rows = Array.isArray(deliveryPackage?.rows) ? deliveryPackage.rows : [];
+  return rows.slice(0, 120).map((row, index) => ({
+    sequence: row.sequence ?? index + 1,
+    category: row.category,
+    checkItem: row.checkItem,
+    risk: row.riskLabel,
+    disposition: row.dispositionLabel,
+    issueDescription: row.issueDescription,
+    basis: row.basis,
+    rectification: row.rectification,
+  }));
+}
+
+function buildReportExportRowsFromFindings(findings = []) {
+  return findings.slice(0, 120).map((finding, index) => ({
+    sequence: index + 1,
+    category: finding.category,
+    checkItem: finding.title,
+    risk: getReportRiskLabel(finding.riskLevel),
+    disposition: getReportFindingLabel(finding),
+    issueDescription: finding.description,
+    basis: summarizeReportFindingLegalBasis(finding),
+    rectification: finding.rectificationRequirement,
+  }));
 }
 
 export function buildOpeningConditionPilotReportHtml(task) {
@@ -2423,24 +2523,27 @@ export function buildOpeningConditionPilotReportHtml(task) {
 
   const packageDiagnostics = reportAsset.packageDiagnostics ?? {};
   const findings = Array.isArray(packageDiagnostics.findings) ? packageDiagnostics.findings.slice(0, 120) : [];
+  const deliveryRows = buildReportExportRowsFromDeliveryPackage(packageDiagnostics.deliveryPackage);
+  const exportRows = deliveryRows.length > 0 ? deliveryRows : buildReportExportRowsFromFindings(findings);
   const issueTypeSummary = Array.isArray(packageDiagnostics.summaryByIssueType)
     ? packageDiagnostics.summaryByIssueType.slice(0, 40)
     : [];
   const summary = reportAsset.summary ?? {};
   const sourceNames = packageDiagnostics.inputObjects?.sourceFileNames?.slice(0, 30) ?? [];
-  const title = reportHtmlText(reportAsset.title || "开工条件核查报告", 240);
-  const projectName = reportHtmlText(task.context?.projectId || task.context?.reviewObjectId || "未记录项目", 240);
-  const findingRows = findings
+  const title = reportHtmlText(reportAsset.title || "瀵偓瀹搞儲娼禒鑸电壋閺屻儲濮?, 240);
+  const projectName = reportHtmlText(task.context?.projectId || task.context?.reviewObjectId || "閺堫亣顔囪ぐ鏇€?, 240);
+  const findingRows = exportRows
     .map(
-      (finding, index) => `
+      (row) => `
         <tr>
-          <td>${index + 1}</td>
-          <td>${reportHtmlText(finding.category)}</td>
-          <td>${reportHtmlText(finding.title, 300)}</td>
-          <td>${getReportRiskLabel(finding.riskLevel)}</td>
-          <td>${getReportFindingLabel(finding)}</td>
-          <td>${reportHtmlText(finding.description, 800)}</td>
-          <td>${reportHtmlText(finding.rectificationRequirement, 800)}</td>
+          <td>${row.sequence}</td>
+          <td>${reportHtmlText(row.category)}</td>
+          <td>${reportHtmlText(row.checkItem, 300)}</td>
+          <td>${reportHtmlText(row.risk, 120)}</td>
+          <td>${reportHtmlText(row.disposition, 160)}</td>
+          <td>${reportHtmlText(row.issueDescription, 800)}</td>
+          <td>${reportHtmlText(row.basis, 800)}</td>
+          <td>${reportHtmlText(row.rectification, 800)}</td>
         </tr>`,
     )
     .join("");
@@ -2468,7 +2571,7 @@ export function buildOpeningConditionPilotReportHtml(task) {
     <meta charset="utf-8" />
     <title>${title}</title>
     <style>
-      body { font-family: "SimSun", "宋体", serif; color: #20242a; font-size: 10pt; line-height: 1.5; }
+      body { font-family: "SimSun", "鐎瑰缍?, serif; color: #20242a; font-size: 10pt; line-height: 1.5; }
       h1 { text-align: center; font-size: 18pt; margin: 0 0 12pt; }
       h2 { font-size: 13pt; margin: 18pt 0 8pt; border-bottom: 1px solid #c9ced6; padding-bottom: 4pt; }
       p { margin: 4pt 0; }
@@ -2483,49 +2586,50 @@ export function buildOpeningConditionPilotReportHtml(task) {
   </head>
   <body>
     <h1>${title}</h1>
-    <p><strong>项目：</strong>${projectName}</p>
-    <p><strong>任务：</strong>${reportHtmlText(task.id, 180)}</p>
-    <p class="muted">本报告为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。</p>
+    <p><strong>妞ゅ湱娲伴敓?/strong>${projectName}</p>
+    <p><strong>娴犺濮熼敓?/strong>${reportHtmlText(task.id, 180)}</p>
+    <p class="muted">閺堫剚濮ら崨濠佽礋楠炲啿褰撮弲楦垮厴鏉堝懎濮€光剝鐓￠幇蹇氼潌閿涘奔绗夐弴澶稿敩閺傝棄浼愰崡鏇氱秴閵嗕胶娲冮悶鍡楀礋娴ｅ秴寮烽惄绋垮彠鐠愶絼鎹㈡禍铏规畱閺堚偓缂佸牆顓搁弽姝岀煑娴犱紮鎷?/p>
 
-    <h2>一、核查总体情况</h2>
+    <h2>娑撯偓閵嗕焦鐗抽弻銉︹偓璁崇秼閹懎鍠?/h2>
     <table class="summary">
       <tr>
-        <td><span class="metric">${Number(summary.total) || 0}</span>核查项</td>
-        <td><span class="metric">${Number(summary.passed) || 0}</span>符合</td>
-        <td><span class="metric">${Number(summary.failed) || 0}</span>不符合</td>
-        <td><span class="metric">${Number(summary.humanReview) || 0}</span>待复核</td>
-        <td><span class="metric">${Number(summary.warnings) || 0}</span>提示</td>
+        <td><span class="metric">${Number(summary.total) || 0}</span>閺嶅憡鐓￠敓?/td>
+        <td><span class="metric">${Number(summary.passed) || 0}</span>缁楋箑鎮?/td>
+        <td><span class="metric">${Number(summary.failed) || 0}</span>娑撳秶顑侀敓?/td>
+        <td><span class="metric">${Number(summary.humanReview) || 0}</span>瀵板懎顦查敓?/td>
+        <td><span class="metric">${Number(summary.warnings) || 0}</span>閹绘劗銇?/td>
       </tr>
     </table>
 
-    <h2>二、问题与整改项</h2>
+    <h2>娴滃被鈧線妫舵０妯圭瑢閺佸瓨鏁奸敓?/h2>
     <table>
       <tr>
-        <th style="width: 5%;">序号</th>
-        <th style="width: 11%;">分类</th>
-        <th style="width: 18%;">核查项目</th>
-        <th style="width: 9%;">风险</th>
-        <th style="width: 10%;">结论</th>
-        <th style="width: 23%;">问题描述</th>
-        <th style="width: 24%;">整改要求</th>
+        <th style="width: 5%;">鎼村繐褰?/th>
+        <th style="width: 11%;">閸掑棛琚?/th>
+        <th style="width: 16%;">閺嶅憡鐓℃い鍦窗</th>
+        <th style="width: 8%;">妞嬪酣娅?/th>
+        <th style="width: 9%;">缂佹捁顔?/th>
+        <th style="width: 20%;">闂傤噣顣介幓蹇氬牚</th>
+        <th style="width: 14%;">娓氭繃宓?/th>
+        <th style="width: 17%;">閺佸瓨鏁肩憰浣圭湴</th>
       </tr>
-      ${findingRows || "<tr><td colspan=\"7\">当前没有结构化问题项。</td></tr>"}
+      ${findingRows || "<tr><td colspan=\"8\">瑜版挸澧犲▽鈩冩箒缂佹挻鐎崠鏍６妫版﹢銆嶉敓?/td></tr>"}
     </table>
 
-    <h2>三、问题类型汇总</h2>
+    <h2>娑撳鈧線妫舵０妯艰閸ㄥ鐪归敓?/h2>
     <table>
-      <tr><th>问题类型</th><th>问题组</th><th>风险等级</th><th>数量</th></tr>
-      ${issueRows || "<tr><td colspan=\"4\">当前没有问题类型汇总。</td></tr>"}
+      <tr><th>闂傤噣顣界猾璇茬€?/th><th>闂傤噣顣介敓?/th><th>妞嬪酣娅撶粵澶岄獓</th><th>閺佷即鍣?/th></tr>
+      ${issueRows || "<tr><td colspan=\"4\">瑜版挸澧犲▽鈩冩箒闂傤噣顣界猾璇茬€峰Ч鍥ㄢ偓浼欐嫹?/td></tr>"}
     </table>
 
-    <h2>四、后续动作</h2>
-    <p>${reportHtmlText(packageDiagnostics.nextRectificationAdvice?.headline || "请根据核查结论完成资料补充、整改和复审。", 500)}</p>
-    <ul>${nextActionList || "<li>请由监理人员结合现场和原始资料完成最终判断。</li>"}</ul>
+    <h2>閸ユ稏鈧礁鎮楃紒顓炲З閿?/h2>
+    <p>${reportHtmlText(packageDiagnostics.nextRectificationAdvice?.headline || "鐠囬攱鐗撮幑顔界壋閺屻儳绮ㄧ拋鍝勭暚閹存劘绁弬娆捤夐崗鍛偓浣规殻閺€鐟版嫲婢跺秴顓?, 500)}</p>
+    <ul>${nextActionList || "<li>鐠囬鏁遍惄鎴犳倞娴滃搫鎲崇紒鎾虫値閻滄澘婧€閸滃苯甯慨瀣カ閺傛瑥鐣幋鎰付缂佸牆鍨介弬顓ㄦ嫹?/li>"}</ul>
 
-    <h2>五、本轮输入资料</h2>
-    <p><strong>依据：</strong>${reportHtmlText(packageDiagnostics.inputObjects?.basisFileName || "未记录")}</p>
-    <p><strong>核查表：</strong>${reportHtmlText(packageDiagnostics.inputObjects?.checklistFileName || "未记录")}</p>
-    <ul>${sourceList || "<li>未记录资料包文件。</li>"}</ul>
+    <h2>娴滄柣鈧焦婀版潪顔跨翻閸忋儴绁敓?/h2>
+    <p><strong>娓氭繃宓侀敓?/strong>${reportHtmlText(packageDiagnostics.inputObjects?.basisFileName || "閺堫亣顔?)}</p>
+    <p><strong>閺嶅憡鐓＄悰顭掔窗</strong>${reportHtmlText(packageDiagnostics.inputObjects?.checklistFileName || "閺堫亣顔?)}</p>
+    <ul>${sourceList || "<li>閺堫亣顔囪ぐ鏇＄カ閺傛瑥瀵橀弬鍥︽閿?/li>"}</ul>
   </body>
 </html>`;
 }
@@ -2536,76 +2640,76 @@ function deriveIssueTaxonomyForChecklistItem(checklistItem, finalDisposition = "
   const isBlocked = finalDisposition === "blocked";
   const highRisk = isBlocked || (required && ["fail", "reject"].includes(finalDisposition));
 
-  if (/审批|签章|签字|日期|盖章/.test(reviewText)) {
+  if (/鐎光剝澹抾缁涘墽鐝穦缁涙儳鐡閺冦儲婀閻╂牜鐝?.test(reviewText)) {
     return {
       issueTypeId: "approval_signature_gap",
-      issueTypeLabel: "审批签章缺失或不完整",
-      issueTypeGroup: "审批签章",
+      issueTypeLabel: "鐎光剝澹掔粵鍓х彿缂傚搫銇戦幋鏍︾瑝鐎瑰本鏆?,
+      issueTypeGroup: "鐎光剝澹掔粵鍓х彿",
       riskLevel: highRisk ? "high" : "medium",
       legalBasis: [
         {
-          title: "建设工程监理规范",
-          summary: "关键审批表单应具备完整签字、签章和日期。",
+          title: "瀵ら缚顔曞銉р柤閻╂垹鎮婄憴鍕瘱",
+          summary: "閸忔娊鏁€光剝澹掔悰銊ュ礋鎼存柨鍙挎径鍥х暚閺佸顒风€涙ぜ鈧胶顒风粩鐘叉嫲閺冦儲婀?,
         },
       ],
-      rectificationRequirement: "补齐审批表签字、签章和日期后重新提交复审。",
-      verificationGuidance: "核验签章页是否完整、签字日期是否闭合并与当前申报轮次一致。",
+      rectificationRequirement: "鐞涖儵缍堢€光剝澹掔悰銊ь劮鐎涙ぜ鈧胶顒风粩鐘叉嫲閺冦儲婀￠崥搴ㄥ櫢閺傜増褰佹禍銈咁槻鐎?,
+      verificationGuidance: "閺嶆悂鐛欑粵鍓х彿妞ゅ灚妲搁崥锕€鐣弫娣偓浣侯劮鐎涙妫╅張鐔告Ц閸氾箓妫撮崥鍫濊嫙娑撳骸缍嬮崜宥囨暤閹躲儴鐤嗗▎鈥茬閼?,
       templateId: "opening-condition-approval-gap-v1",
     };
   }
 
-  if (/人员|安全员|特种作业|管理人员|资格证/.test(reviewText)) {
+  if (/娴滃搫鎲硘鐎瑰鍙忛崨姒洪悧鍦潚娴ｆ粈绗焲缁狅紕鎮婃禍鍝勬喅|鐠у嫭鐗?.test(reviewText)) {
     return {
       issueTypeId: "personnel_qualification_gap",
-      issueTypeLabel: "人员资质资料缺失或待核验",
-      issueTypeGroup: "人员资料",
+      issueTypeLabel: "娴滃搫鎲崇挧鍕窛鐠у嫭鏋＄紓鍝勩亼閹存牕绶熼弽鎼佺崣",
+      issueTypeGroup: "娴滃搫鎲崇挧鍕灐",
       riskLevel: highRisk ? "high" : "medium",
       legalBasis: [
         {
-          title: "建设工程安全生产管理条例",
-          summary: "现场关键岗位和特种作业人员应具备有效资格和持证资料。",
+          title: "瀵ら缚顔曞銉р柤鐎瑰鍙忛悽鐔堕獓缁狅紕鎮婇弶鈥茬伐",
+          summary: "閻滄澘婧€閸忔娊鏁畝妞剧秴閸滃瞼澹掔粔宥勭稊娑撴矮姹夐崨妯虹安閸忓嘲顦張澶嬫櫏鐠у嫭鐗搁崪灞惧瘮鐠囦浇绁弬?,
         },
       ],
-      rectificationRequirement: "补齐岗位人员资格、持证或实名制资料后重新提交复审。",
-      verificationGuidance: "核验人员身份、岗位、证件有效期和所属单位是否与当前合同边界一致。",
+      rectificationRequirement: "鐞涖儵缍堝畝妞剧秴娴滃搫鎲崇挧鍕壐閵嗕焦瀵旂拠浣瑰灗鐎圭偛鎮曢崚鎯扮カ閺傛瑥鎮楅柌宥嗘煀閹绘劒姘︽径宥咁吀",
+      verificationGuidance: "閺嶆悂鐛欐禍鍝勬喅闊偂鍞ら妴浣哥煐娴ｅ秲鈧浇鐦夋禒鑸垫箒閺佸牊婀￠崪灞惧鐏炵偛宕熸担宥嗘Ц閸氾缚绗岃ぐ鎾冲閸氬牆鎮撴潏鍦櫕娑撯偓閼?,
       agentAssetId: "opening-condition-personnel-review-agent",
       templateId: "opening-condition-personnel-gap-v1",
     };
   }
 
-  if (/设备|起重|汽车吊|泵车|仪器|检验报告|检测报告/.test(reviewText)) {
+  if (/鐠佹儳顦瑋鐠х兘鍣竱濮瑰€熸簠閸氬Α濞変絻婧厊娴狀亜娅抾濡偓妤犲本濮ら崨濡″Λ鈧ù瀣Г/.test(reviewText)) {
     return {
       issueTypeId: "equipment_compliance_gap",
-      issueTypeLabel: "设备资料缺失或合规性待确认",
-      issueTypeGroup: "设备器具",
+      issueTypeLabel: "鐠佹儳顦挧鍕灐缂傚搫銇戦幋鏍ф値鐟欏嫭鈧冪窡绾喛顓?,
+      issueTypeGroup: "鐠佹儳顦崳銊ュ徔",
       riskLevel: highRisk ? "high" : "medium",
       legalBasis: [
         {
-          title: "公路工程施工安全技术规范",
-          summary: "起重、运输、检测等设备应具备有效检验和准入资料。",
+          title: "閸忣剝鐭惧銉р柤閺傝棄浼愮€瑰鍙忛幎鈧張顖濐潐",
+          summary: "鐠х兘鍣搁妴浣界箥鏉堟挶鈧焦顥呭ù瀣搼鐠佹儳顦惔鏂垮徔婢跺洦婀侀弫鍫燁梾妤犲苯鎷伴崙鍡楀弳鐠у嫭鏋?,
         },
       ],
-      rectificationRequirement: "补齐设备检验、检测、年审或租赁安全资料后重新提交复审。",
-      verificationGuidance: "核验设备名称、编号、检测有效期和当前施工对象是否一致。",
+      rectificationRequirement: "鐞涖儵缍堢拋鎯ь槵濡偓妤犲被鈧焦顥呭ù瀣ㄢ偓浣稿嬀鐎光剝鍨ㄧ粔鐔荤ウ鐎瑰鍙忕挧鍕灐閸氬酣鍣搁弬鐗堝絹娴溿倕顦茬€?,
+      verificationGuidance: "閺嶆悂鐛欑拋鎯ь槵閸氬秶袨閵嗕胶绱崣鏋偓浣诡梾濞村婀侀弫鍫熸埂閸滃苯缍嬮崜宥嗘煢瀹搞儱顕挒鈩冩Ц閸氾缚绔撮懛?,
       agentAssetId: "opening-condition-equipment-review-agent",
       templateId: "opening-condition-equipment-gap-v1",
     };
   }
 
-  if (/依据|合同|规范|制度|边界|核查表/.test(reviewText)) {
+  if (/娓氭繃宓亅閸氬牆鎮搢鐟欏嫯瀵東閸掕泛瀹硘鏉堝湱鏅珅閺嶅憡鐓?.test(reviewText)) {
     return {
       issueTypeId: "basis_coverage_gap",
-      issueTypeLabel: "核查依据覆盖不足",
-      issueTypeGroup: "依据完整性",
+      issueTypeLabel: "閺嶅憡鐓℃笟婵囧祦鐟曞棛娲婃稉宥堝喕",
+      issueTypeGroup: "娓氭繃宓佺€瑰本鏆?,
       riskLevel: isBlocked ? "high" : "medium",
       legalBasis: [
         {
-          title: "项目核查依据治理要求",
-          summary: "正式核查前应绑定已发布依据、主数据和项目知识库。",
+          title: "妞ゅ湱娲伴弽鍛婄叀娓氭繃宓佸▽鑽ゆ倞鐟曚焦鐪?,
+          summary: "濮濓絽绱￠弽鍛婄叀閸撳秴绨茬紒鎴濈暰瀹告彃褰傜敮鍐х贩閹诡喓鈧椒瀵岄弫鐗堝祦閸滃矂銆嶉惄顔剧叀鐠囧棗绨?,
         },
       ],
-      rectificationRequirement: "补齐并发布对应依据、制度或合同边界后重新发起正式核查。",
-      verificationGuidance: "确认当前 run 已绑定正式依据版本、主数据和可用知识库。",
+      rectificationRequirement: "鐞涖儵缍堥獮璺哄絺鐢啫顕惔鏂剧贩閹诡喓鈧礁鍩楁惔锔藉灗閸氬牆鎮撴潏鍦櫕閸氬酣鍣搁弬鏉垮絺鐠ч攱顒滃蹇旂壋閺?,
+      verificationGuidance: "绾喛顓昏ぐ鎾冲 run 瀹歌尙绮︾€规碍顒滃蹇庣贩閹诡喚澧楅張顑锯偓浣峰瘜閺佺増宓侀崪灞藉讲閻劎鐓＄拠鍡楃氨",
       promptAssetId: "opening-condition-basis-governance-prompt",
       templateId: "opening-condition-basis-gap-v1",
     };
@@ -2613,20 +2717,20 @@ function deriveIssueTaxonomyForChecklistItem(checklistItem, finalDisposition = "
 
   return {
     issueTypeId: "material_packet_gap",
-    issueTypeLabel: "资料包匹配缺失或待补件",
-    issueTypeGroup: checklistItem.category || "资料核查",
+    issueTypeLabel: "鐠у嫭鏋￠崠鍛爱闁板秶宸辨径杈ㄥ灗瀵板懓藟",
+    issueTypeGroup: checklistItem.category || "鐠у嫭鏋￠弽鍛婄叀",
     riskLevel: highRisk ? "high" : finalDisposition === "warning" ? "low" : "medium",
     legalBasis: [
       {
-        title: "开工条件资料核查要求",
-        summary: "开工前应确保核查资料齐全、可追溯并满足复审要求。",
+        title: "瀵偓瀹搞儲娼禒鎯扮カ閺傛瑦鐗抽弻銉洣",
+        summary: "瀵偓瀹搞儱澧犳惔鏃傗€樻穱婵囩壋閺屻儴绁弬娆撶秷閸忋劊鈧礁褰叉潻鑺ュ嚱楠炶埖寮х搾鍐差槻鐎孤ゎ洣濮?,
       },
     ],
     rectificationRequirement:
       finalDisposition === "blocked"
-        ? "先解决前置门禁或授权边界，再补齐资料后重新发起复审。"
-        : "补齐对应资料或说明文件后重新提交复审。",
-    verificationGuidance: "结合核查项名称、资料包文件和人工说明确认是否已满足本轮核查要求。",
+        ? "閸忓牐袙閸愬啿澧犵純顕€妫粋浣瑰灗閹哄牊娼堟潏鍦櫕閿涘苯鍟€鐞涖儵缍堢挧鍕灐閸氬酣鍣搁弬鏉垮絺鐠у嘲顦茬€光槄鎷?
+        : "鐞涖儵缍堢€电懓绨茬挧鍕灐閹存牞顕╅弰搴㈡瀮娴犺泛鎮楅柌宥嗘煀閹绘劒姘︽径宥咁吀",
+    verificationGuidance: "缂佹挸鎮庨弽鍛婄叀妞ょ懓鎮曠粔鑸偓浣界カ閺傛瑥瀵橀弬鍥︽閸滃奔姹夊銉嚛閺勫海鈥樼拋銈嗘Ц閸氾箑鍑″陇鍐婚張顒冪枂閺嶅憡鐓＄憰浣圭湴",
     templateId: "opening-condition-material-gap-v1",
   };
 }
@@ -2731,7 +2835,7 @@ function deriveReportIssueTypeSummary(findings = []) {
     const issueTypeId = normalizeString(finding.issueTypeId, "uncategorized", 160);
     const current = summaryByType.get(issueTypeId) ?? {
       issueTypeId,
-      issueTypeLabel: finding.issueTypeLabel ?? "未分类问题",
+      issueTypeLabel: finding.issueTypeLabel ?? "閺堫亜鍨庣猾濠氭６",
       issueTypeGroup: finding.issueTypeGroup,
       riskLevel: finding.riskLevel ?? "medium",
       count: 0,
@@ -2755,24 +2859,24 @@ function deriveNextRectificationAdvice(findings = [], blockingReasons = []) {
   const pendingHumanCount = findings.filter((item) => item.disposition === "needs_human_review").length;
 
   if (blockedCount > 0) {
-    actions.push(`优先解除 ${blockedCount} 项前置门禁或授权边界阻塞，再进入下一轮正式核查。`);
+    actions.push(`娴兼ê鍘涚憴锝夋珟 ${blockedCount} 妞ょ懓澧犵純顕€妫粋浣瑰灗閹哄牊娼堟潏鍦櫕闂冭顢ｉ敍灞藉晙鏉╂稑鍙嗘稉瀣╃鏉烆喗顒滃蹇旂壋閺屻儯鈧繖);
   }
   if (rejectedCount > 0) {
-    actions.push(`针对 ${rejectedCount} 项人工驳回项补齐资料或说明后重新提交复审。`);
+    actions.push(`闁藉牆顕?${rejectedCount} 妞ら€涙眽瀹搞儵鈹忛崶鐐恒€嶇悰銉╃秷鐠у嫭鏋￠幋鏍嚛閺勫骸鎮楅柌宥嗘煀閹绘劒姘︽径宥咁吀閵嗕繖);
   }
   if (pendingHumanCount > 0) {
-    actions.push(`安排监理继续处理 ${pendingHumanCount} 项待人工判断事项，避免报告结论悬空。`);
+    actions.push(`鐎瑰甯撻惄鎴犳倞缂佈呯敾婢跺嫮鎮?${pendingHumanCount} 妞ょ懓绶熸禍鍝勪紣閸掋倖鏌囨禍瀣€嶉敍宀勪缉閸忓秵濮ら崨濠勭波鐠佺儤鍋撶粚鎭掆偓淇?;
   }
   if (actions.length === 0 && findings.length > 0) {
-    actions.push("结合当前问题清单补件并发起下一轮整改复审。");
+    actions.push("缂佹挸鎮庤ぐ鎾冲闂傤噣顣藉〒鍛礋鐞涖儰娆㈤獮璺哄絺鐠ц渹绗呮稉鈧潪顔芥殻閺€鐟邦槻鐎?);
   }
   if (blockingReasons.length > 0) {
-    actions.push(`当前前置门禁提示：${blockingReasons.join(" / ")}`);
+    actions.push(`瑜版挸澧犻崜宥囩枂闂傘劎顩﹂幓鎰仛${blockingReasons.join(" / ")}`);
   }
 
   return actions.length > 0
     ? {
-        headline: "下一轮整改复审建议",
+        headline: "娑撳绔存潪顔芥殻閺€鐟邦槻鐎光€崇紦",
         actions: actions.slice(0, 5),
       }
     : undefined;
@@ -3882,36 +3986,36 @@ function normalizeTrialMasterDataRecord(value, context, index = 0) {
       participatingOrganizationId: context.participatingOrganizationId,
     }),
     status: ["published", "human_approved"].includes(value.status) ? value.status : "human_approved",
-    validity: normalizeString(value.validity, "试点操作员确认，生产环境需由 OCR/人工正式确认后发布。", 300),
+    validity: normalizeString(value.validity, "鐠囨洜鍋ｉ幙宥勭稊閸涙鈥樼拋銈忕礉閻㈢喍楠囬悳顖氼暔闂団偓閿?OCR/娴滃搫浼愬锝呯础绾喛顓婚崥搴″絺鐢?, 300),
     confidence: ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "medium",
     safeNote: normalizeString(
       value.safeNote,
-      "单项目试点初始化生成的主数据，用于跑通人员/设备授权门禁；生产环境需替换为正式主数据确认流程。",
+      "閸楁洟銆嶉惄顔跨槸閻愮懓鍨垫慨瀣閻㈢喐鍨氶惃鍕瘜閺佺増宓侀敍宀€鏁ゆ禍搴ょ獓闁矮姹夐敓?鐠佹儳顦幒鍫熸綀闂傘劎顩﹂敍娑氭晸娴溠呭箚婢у啴娓堕弴鎸庡床娑撶儤顒滃蹇庡瘜閺佺増宓佺涵顔款吇濞翠胶鈻?,
       500,
     ),
   };
 }
 
 function buildDefaultTrialMasterDataRecords(context, basisObject) {
-  const basisFileName = basisObject?.fileName ?? "合同依据";
+  const basisFileName = basisObject?.fileName ?? "閸氬牆鎮撴笟婵囧祦";
   return [
     {
       id: `${context.workspaceId}-trial-personnel`,
       type: "personnel",
-      label: "试点人员范围：项目管理人员、专职安全员、特种作业人员",
-      validity: `依据 ${basisFileName} 由操作员试点确认。`,
+      label: "鐠囨洜鍋ｆ禍鍝勬喅閼煎啫娲块敍姘躲€嶉惄顔绢吀閻炲棔姹夐崨妯糕偓浣风瑩閼卞苯鐣ㄩ崗銊ユ喅閵嗕胶澹掔粔宥勭稊娑撴矮姹?,
+      validity: `娓氭繃宓?${basisFileName} 閻㈣鲸鎼锋担婊冩喅鐠囨洜鍋ｇ涵顔款吇閵嗕繖,
     },
     {
       id: `${context.workspaceId}-trial-equipment`,
       type: "equipment",
-      label: "试点设备范围：汽车吊、起重设备、泵车、检测仪器",
-      validity: `依据 ${basisFileName} 由操作员试点确认。`,
+      label: "鐠囨洜鍋ｇ拋鎯ь槵閼煎啫娲块敍姘嫰鏉烇箑鎮愰妴浣芥崳闁插秷顔曟径鍥モ偓浣硅溅鏉烇负鈧焦顥呭ù瀣╁崕",
+      validity: `娓氭繃宓?${basisFileName} 閻㈣鲸鎼锋担婊冩喅鐠囨洜鍋ｇ涵顔款吇閵嗕繖,
     },
     {
       id: `${context.workspaceId}-trial-approval-document`,
       type: "system_document",
-      label: "试点制度资料：开工申请审批表、签章文件",
-      validity: `依据 ${basisFileName} 由操作员试点确认。`,
+      label: "鐠囨洜鍋ｉ崚璺哄鐠у嫭鏋￠敍姘磻瀹搞儳鏁电拠宄邦吀閹电銆冮妴浣侯劮缁旂姵鏋?,
+      validity: `娓氭繃宓?${basisFileName} 閻㈣鲸鎼锋担婊冩喅鐠囨洜鍋ｇ涵顔款吇閵嗕繖,
     },
   ];
 }
@@ -4026,7 +4130,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       startSequence,
       existingTask ? "task.intake_initialized" : "task.created",
       nextTaskState,
-      existingTask ? "开工条件试点任务已重新初始化。" : "开工条件试点任务已初始化。",
+      existingTask ? "瀵偓瀹搞儲娼禒鎯扮槸閻愰€涙崲閸斺€冲嚒闁插秵鏌婇崚婵嗩潗閸栨牭鎷? : "瀵偓瀹搞儲娼禒鎯扮槸閻愰€涙崲閸斺€冲嚒閸掓繂顫愰崠?,
       5,
       {
         basisResolution,
@@ -4046,7 +4150,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       startSequence + 1,
       "packet.uploaded",
       nextTaskState,
-      `资料包已接收，包含 ${packet.sourceObjects.length} 个资料对象。`,
+      `鐠у嫭鏋￠崠鍛嚒閹恒儲鏁归敍灞藉瘶閿?${packet.sourceObjects.length} 娑擃亣绁弬娆忣嚠鐠灺扳偓淇?
       nextTaskState === "packet_uploaded" ? 15 : 10,
       {
         checklistFileName: packet.checklistObject.fileName,
@@ -4148,19 +4252,19 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
     context.workspaceId,
     basisId,
     {
-      title: normalizeString(input.basisTitle, "单项目试点合同与资质依据", 240),
+      title: normalizeString(input.basisTitle, "閸楁洟銆嶉惄顔跨槸閻愮懓鎮庨崥灞肩瑢鐠у嫯宸濇笟婵囧祦", 240),
       componentType: "contract_basis",
       version: normalizeString(input.basisVersion, "trial-published", 120),
       status: "confirmed",
       sourceObject: basisObject,
       applicability: normalizeString(
         input.basisApplicability,
-        "用于确认本次开工条件试点的合同主体、资质边界、人员设备范围和资料核查依据。",
+        "閻劋绨涵顔款吇閺堫剚顐煎鈧銉︽蒋娴犳儼鐦悙鍦畱閸氬牆鎮撴稉璁崇秼閵嗕浇绁拹銊ㄧ珶閻ｅ被鈧椒姹夐崨妯款啎婢跺洩瀵栭崶鏉戞嫲鐠у嫭鏋￠弽鍛婄叀娓氭繃宓?,
         500,
       ),
       confidence: "medium",
       ingestionPreview: basisIngestionPreview,
-      safeNote: "由单项目试点初始化入口写入，生产环境需经过正式依据确认流程。",
+      safeNote: "閻㈠崬宕熸い鍦窗鐠囨洜鍋ｉ崚婵嗩潗閸栨牕鍙嗛崣锝呭晸閸忋儻绱濋悽鐔堕獓閻滎垰顣ㄩ棁鈧紒蹇氱箖濮濓絽绱℃笟婵囧祦绾喛顓诲ù浣衡柤",
     },
     options,
   );
@@ -4220,11 +4324,11 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
       organizationId: context.participatingOrganizationId,
       contractPackageId: context.contractPackageId,
       subcontractTeamId: normalizeString(input.subcontractTeamId, context.participatingOrganizationId, 160),
-      label: normalizeString(input.knowledgeBaseLabel, "单项目试点分包队伍知识库", 240),
+      label: normalizeString(input.knowledgeBaseLabel, "閸楁洟銆嶉惄顔跨槸閻愮懓鍨庨崠鍛存Е娴煎秶鐓＄拠鍡楃氨", 240),
       status: providerRefs.some((item) => item.syncStatus === "ready") ? "ready" : "needs_review",
       summary: normalizeString(
         input.knowledgeBaseSummary,
-        "保存本次试点资料模板、证据摘要、人工修正和 MaxKB 检索支撑引用。",
+        "娣囨繂鐡ㄩ張顒侇偧鐠囨洜鍋ｇ挧鍕灐濡剝婢橀妴浣界槈閹诡喗鎲崇憰浣碘偓浣锋眽瀹搞儰鎱ㄥ锝呮嫲 MaxKB 濡偓缁便垺鏁幘鎴濈穿閻?,
         500,
       ),
       providerRefs,
@@ -4432,7 +4536,7 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
         type: "packet.uploaded",
         state: "packet_uploaded",
         occurredAt,
-        message: input.message ?? `资料包已接收，包含 ${packet.sourceObjects.length} 个资料对象。`,
+        message: input.message ?? `鐠у嫭鏋￠崠鍛嚒閹恒儲鏁归敍灞藉瘶閿?${packet.sourceObjects.length} 娑擃亣绁弬娆忣嚠鐠灺扳偓淇?
         progress: 15,
         safeDiagnostics: {
           checklistFileName: packet.checklistObject.fileName,
@@ -4550,8 +4654,8 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           name: item.name,
           required: false,
           verdict: "warning",
-          ruleExplanation: "该核查项属于当前试点不处理的现场、应急或非资料核查范围，未计入资料缺失。",
-          semanticNote: "当前开工条件试点只处理可由资料包和已发布主数据支撑的资料核查项。",
+          ruleExplanation: "鐠囥儲鐗抽弻銉┿€嶇仦鐐扮艾瑜版挸澧犵拠鏇犲仯娑撳秴顦╅悶鍡欐畱閻滄澘婧€閵嗕礁绨查幀銉﹀灗闂堢偠绁弬娆愮壋閺屻儴瀵栭崶杈剧礉閺堫亣顓搁崗銉ㄧカ閺傛瑧宸辨径?,
+          semanticNote: "瑜版挸澧犲鈧銉︽蒋娴犳儼鐦悙鐟板涧婢跺嫮鎮婇崣顖滄暠鐠у嫭鏋￠崠鍛嫲瀹告彃褰傜敮鍐у瘜閺佺増宓侀弨顖涙嫼閻ㄥ嫯绁弬娆愮壋閺屻儵銆?,
           basisVersionId: item.basisVersionId || basisVersionId,
           evidenceIds: [],
           masterDataIds: item.masterDataIds,
@@ -4589,7 +4693,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           taskId,
           itemId: item.id,
           objectRef: match.objectRef,
-          locator: match.entry.relativePath || "资料包文件清单",
+          locator: match.entry.relativePath || "鐠у嫭鏋￠崠鍛瀮娴犺埖绔?,
           extractedValue: match.objectRef.summary ?? match.objectRef.fileName,
           confidence: ambiguous ? "medium" : "high",
           masterDataIds: item.masterDataIds,
@@ -4633,17 +4737,17 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           targetLabel: item.name,
           category: item.category,
           subCategory: item.subCategory,
-          ruleExplanation: item.ruleExplanation ?? `正式核查项：${item.name}`,
+          ruleExplanation: item.ruleExplanation ?? `濮濓絽绱￠弽鍛婄叀妞ょ櫢绱?{item.name}`,
           expectedEvidenceHints: item.expectedEvidenceHints,
           reason: missing
-            ? "资料包中未找到稳定匹配文件。"
+            ? "鐠у嫭鏋￠崠鍛厬閺堫亝澹橀崚鎵旂€规艾灏柊宥嗘瀮娴犺鎷?
             : masterDataAuthorizationMissing
               ? isResourceItem
-                ? "人员或设备资料已命中候选文件，但缺少合同边界下已发布或人工批准的项目主数据授权。"
-                : "核查项引用的主数据尚未发布、人工批准或未绑定。"
+                ? "娴滃搫鎲抽幋鏍啎婢跺洩绁弬娆忓嚒閸涙垝鑵戦崐娆撯偓澶嬫瀮娴犺绱濇担鍡欏繁鐏忔垵鎮庨崥宀冪珶閻ｅ奔绗呭鎻掑絺鐢啯鍨ㄦ禍鍝勪紣閹电懓鍣惃鍕€嶉惄顔诲瘜閺佺増宓侀幒鍫熸綀閿?
+                : "閺嶅憡鐓℃い鐟扮穿閻劎娈戞稉缁樻殶閹诡喖鐨婚張顏勫絺鐢啨鈧椒姹夊銉﹀閸戝棙鍨ㄩ張顏嗙拨鐎规熬鎷?
               : visualReviewRequired
-                ? "签名、盖章、勾选或日期等视觉要素存在性或清晰度不足，需要人工确认。"
-                : "存在多个候选资料，需人工确认。",
+                ? "缁涙儳鎮曢妴浣烘磰缁旂姰鈧礁瀣€闁鍨ㄩ弮銉︽埂缁涘顫嬬憴澶庮洣缁辩姴鐡ㄩ崷銊︹偓褎鍨ㄥ〒鍛珰鎼达缚绗夌搾绛圭礉闂団偓鐟曚椒姹夊銉р€樼拋銈忔嫹?
+                : "鐎涙ê婀径姘嚋閸婃瑩鈧绁弬娆欑礉闂団偓娴滃搫浼愮涵顔款吇",
           status: "open",
           evidenceIds: itemEvidence,
         });
@@ -4658,8 +4762,8 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         required: item.required,
         verdict,
         ruleExplanation: missing
-          ? "确定性规则未在资料包文件名或摘要中命中所需资料。"
-          : `确定性规则命中 ${topMatches.length} 个候选资料。`,
+          ? "绾喖鐣鹃幀褑顫夐崚娆愭弓閸︺劏绁弬娆忓瘶閺傚洣娆㈤崥宥嗗灗閹芥顩︽稉顓炴嚒娑擃厽澧嶉棁鈧挧鍕灐閿?
+          : `绾喖鐣鹃幀褑顫夐崚娆忔嚒閿?${topMatches.length} 娑擃亜鈧瑩鈧绁弬娆嶁偓淇?
         semanticNote: buildSemanticNote(item, topMatches, verdict),
         basisVersionId: item.basisVersionId || basisVersionId,
         evidenceIds: itemEvidence,
@@ -4676,11 +4780,11 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
     const finalState = humanReviewQueue.length > 0 ? "awaiting_human_review" : "report_ready";
     const startSequence = existingTask.events.length + 1;
     const events = [
-      createMatchEvent(taskId, startSequence, "extraction.completed", "extracting", "资料包文件清单已归一化。", 35, {
+      createMatchEvent(taskId, startSequence, "extraction.completed", "extracting", "鐠у嫭鏋￠崠鍛瀮娴犺埖绔婚崡鏇炲嚒瑜版帊绔撮崠?, 35, {
         sourceObjectCount: existingTask.packet.sourceObjects.length,
         inventoryEntryCount: existingTask.packet.inventoryEntries.length,
       }),
-      createMatchEvent(taskId, startSequence + 1, "matching.started", "matching", "开始按核查表执行确定性匹配。", 50, {
+      createMatchEvent(taskId, startSequence + 1, "matching.started", "matching", "瀵偓婵瀵滈弽鍛婄叀鐞涖劍澧界悰宀€鈥樼€规碍鈧冨爱闁?, 50, {
         checklistItemCount: checklistItems.length,
       }),
       createMatchEvent(
@@ -4688,7 +4792,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         startSequence + 2,
         finalState === "report_ready" ? "matching.completed" : "human_review.waiting",
         finalState,
-        finalState === "report_ready" ? "核查项匹配完成，未发现阻塞人工复核项。" : "核查项匹配完成，存在待人工复核项。",
+        finalState === "report_ready" ? "閺嶅憡鐓℃い鐟板爱闁板秴鐣幋鎰剁礉閺堫亜褰傞悳浼存▎婵夌偘姹夊銉ヮ槻閺嶆悂銆嶉敓? : "閺嶅憡鐓℃い鐟板爱闁板秴鐣幋鎰剁礉鐎涙ê婀鍛眽瀹搞儱顦查弽鎼併€?,
         finalState === "report_ready" ? 85 : 70,
         {
           checkItemCount: checkItems.length,
@@ -4819,7 +4923,7 @@ export async function decideOpeningConditionPilotHumanReviewItem(taskId, reviewI
         type: blockingCount === 0 ? "report.ready" : "human_review.waiting",
         state: nextState,
         occurredAt: now,
-        message: blockingCount === 0 ? "阻塞人工复核项已处理，报告可生成。" : "人工复核决策已记录。",
+        message: blockingCount === 0 ? "闂冭顢ｆ禍鍝勪紣婢跺秵鐗虫い鐟板嚒婢跺嫮鎮婇敍灞惧Г閸涘﹤褰查悽鐔稿灇閿? : "娴滃搫浼愭径宥嗙壋閸愬磭鐡ュ鑼额唶瑜?,
         progress: blockingCount === 0 ? 85 : 75,
         safeDiagnostics: {
           reviewId,
@@ -4922,14 +5026,14 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
       {
         id: input.id ?? `report-${taskId}`,
         taskId,
-        title: input.title ?? "开工条件核查内部辅助意见",
+        title: input.title ?? "瀵偓瀹搞儲娼禒鑸电壋閺屻儱鍞撮柈銊ㄧ窡閸斺晜鍓?,
         status: "ready",
         summary,
         objectRef: input.objectRef,
         packageDiagnostics: input.packageDiagnostics ?? deriveReportPackageDiagnostics(reportTask, summary, "ready"),
         disclaimer:
           input.disclaimer ??
-          "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
+          "閺堫剛绮ㄩ弸婊€璐熼獮鍐插酱閺呴缚鍏樻潏鍛И鐎光剝鐓￠幇蹇氼潌閿涘奔绗夐弴澶稿敩閺傝棄浼愰崡鏇氱秴閵嗕胶娲冮悶鍡楀礋娴ｅ秴寮烽惄绋垮彠鐠愶絼鎹㈡禍铏规畱閺堚偓缂佸牆顓搁弽姝岀煑娴?,
         createdAt: now,
       },
       taskId,
@@ -4943,7 +5047,7 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
         type: "report.ready",
         state: "report_ready",
         occurredAt: now,
-        message: "内部辅助报告摘要已生成。",
+        message: "閸愬懘鍎存潏鍛И閹躲儱鎲￠幗妯款洣瀹歌尙鏁撻幋?,
         progress: 90,
         safeDiagnostics: {
           reportId: reportAsset.id,
@@ -5050,7 +5154,7 @@ export async function recordOpeningConditionPilotReportDocumentExport(taskId, in
       status: "exported",
       generatedObject,
       safeDiagnostics,
-      nextAction: "DOCX 报告已生成，可通过本次导出的下载链接交付；原表回填仍需单独适配。",
+      nextAction: "DOCX 閹躲儱鎲″鑼晸閹存劧绱濋崣顖炩偓姘崇箖閺堫剚顐肩€电厧鍤惃鍕瑓鏉炰粙鎽奸幒銉ゆ唉娴犳﹫绱遍崢鐔汇€冮崶鐐诧綖娴犲秹娓堕崡鏇犲闁倿鍘?,
     });
     const deliveryPackage = deriveReportDeliveryPackage(
       {
@@ -5196,7 +5300,7 @@ export async function archiveOpeningConditionPilotTask(taskId, input = {}, optio
         type: "task.archived",
         state: "archived",
         occurredAt: now,
-        message: input.message ?? "开工条件核查试点任务已归档。",
+        message: input.message ?? "瀵偓瀹搞儲娼禒鑸电壋閺屻儴鐦悙閫涙崲閸斺€冲嚒瑜版帗銆?,
         progress: 100,
         safeDiagnostics: {
           reportId: archivedReport.id,

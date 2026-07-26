@@ -1089,6 +1089,34 @@ export async function generateOpeningConditionPilotReport(taskId: string, object
   return readJson<OpeningConditionPilotReportResult>(response);
 }
 
+export interface ReviewReportExportResult {
+  ok: boolean;
+  status?: string;
+  taskId?: string;
+  adapterStatus?: string;
+  fallback?: "html";
+  safeDiagnostics?: string[];
+  message?: string;
+  export?: {
+    downloadUrl?: string;
+    fileName?: string;
+    fileSize?: number;
+    safeDiagnostics?: string[];
+  };
+}
+
+export async function exportReviewReportDocx(taskId: string): Promise<ReviewReportExportResult> {
+  const response = await fetch(
+    `/api/review-tasks/${encodeURIComponent(taskId)}/report/export-docx`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  return readJson<ReviewReportExportResult>(response);
+}
+
 export async function exportOpeningConditionPilotReportDocx(taskId: string) {
   const response = await fetch(
     `/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/report/export-docx`,
