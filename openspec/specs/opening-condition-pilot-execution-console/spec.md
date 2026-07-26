@@ -245,6 +245,17 @@ The opening-condition task workbench SHALL summarize AI findings and human-revie
 - **WHEN** a pilot task has a generated report asset
 - **THEN** the task row shows report readiness and whether the task is archived
 
+### Requirement: Task row rectification rerun summary
+The opening-condition task workbench SHALL show a compact rectification rerun summary for rows that can be compared with a previous archived run.
+
+#### Scenario: Row has previous archived comparison
+- **WHEN** a task row has a previous archived run available for comparison
+- **THEN** the row displays resolved, still-open, newly introduced, and pending-human-judgement counts derived from the same facts used by the report page
+
+#### Scenario: Row has no comparison baseline
+- **WHEN** a task row has no previous archived run available for comparison
+- **THEN** the row omits the rectification rerun summary instead of showing misleading zero counts
+
 ### Requirement: Secondary execution pages remain reachable from task rows
 The opening-condition task workbench SHALL keep routing operators to secondary execution pages when those pages are the recommended next action.
 
@@ -268,6 +279,17 @@ The opening-condition task workbench SHALL show a selected-task detail handoff f
 - **WHEN** the operator selects a different task row
 - **THEN** the detail handoff updates to that selected task
 - **AND** historical archived tasks remain marked as read-only
+
+### Requirement: Selected task rectification rerun summary
+The opening-condition selected-task detail handoff SHALL show the same compact rectification rerun summary when comparison data exists.
+
+#### Scenario: Selected task has comparison data
+- **WHEN** the selected task has a previous archived run available for comparison
+- **THEN** the handoff displays resolved, still-open, newly introduced, and pending-human-judgement counts derived from the same facts used by the report page
+
+#### Scenario: Selected task has no comparison data
+- **WHEN** the selected task has no previous archived run available for comparison
+- **THEN** the handoff omits the rectification rerun summary and keeps the normal next-action guidance visible
 
 ### Requirement: Selected task action routing
 The opening-condition selected-task detail handoff SHALL provide clear action routing for the selected task.
@@ -444,3 +466,26 @@ The opening-condition portal SHALL treat issue-closure summaries as derived UI h
 - **WHEN** the issue-closure summary is displayed in the task ledger or report page
 - **THEN** it is derived from report findings, human-review queue items, and rectification delivery rows
 - **AND** it does not create new backend facts, provider calls, human-review decisions, or archive events
+
+### Requirement: Task Ledger Shows Rectification Closure Summary
+The opening-condition task ledger SHALL show a compact rectification closure summary for a task when the platform can compare it with a previous archived run.
+
+#### Scenario: Ledger row has previous archived comparison
+- **WHEN** an opening-condition task row has a previous archived run available for comparison
+- **THEN** the task ledger displays compact counts for resolved issues, still-open issues, newly introduced issues, and items needing human judgement
+
+#### Scenario: Ledger row has no comparison baseline
+- **WHEN** an opening-condition task row has no previous archived run available for comparison
+- **THEN** the task ledger does not display misleading zero-count closure comparison content for that row
+
+### Requirement: Selected Task Handoff Shows Rectification Closure Summary
+The opening-condition selected-task handoff area SHALL show the selected task's compact rectification closure summary when comparison data exists.
+
+#### Scenario: Selected task has closure comparison
+- **WHEN** the operator selects an opening-condition task that can be compared with a previous archived run
+- **THEN** the handoff area displays resolved, still-open, new, and needs-human-judgement counts derived from the same facts as the report page
+
+#### Scenario: Selected task has no closure comparison
+- **WHEN** the selected task has no previous archived run comparison
+- **THEN** the handoff area omits the closure summary and keeps the normal task next-action guidance visible
+

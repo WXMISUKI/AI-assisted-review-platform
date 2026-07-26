@@ -1,5 +1,9 @@
 import { createSeedReviewTasks } from "./mockReviewTaskSeeds";
-import { syncPersistedReviewTasks, upsertPersistedReviewTask } from "./backendConnectivity";
+import {
+  deletePersistedReviewTask,
+  syncPersistedReviewTasks,
+  upsertPersistedReviewTask,
+} from "./backendConnectivity";
 import { mergeRecoveredStructureIssues } from "./reviewIssueDrafts";
 import { deriveReviewPipelineSnapshot } from "./reviewPipelineSnapshot";
 import type { ReviewStorageSnapshot, ReviewTask } from "./reviewTypes";
@@ -14,8 +18,9 @@ const LOCAL_STORAGE_ISSUE_LIMIT = 120;
 const LOCAL_STORAGE_TEXT_LIMIT = 800;
 
 export interface SaveReviewTasksOptions {
-  backendSync?: "none" | "upsert-changed" | "bulk-replace";
+  backendSync?: "none" | "upsert-changed" | "delete-changed" | "bulk-replace";
   changedTaskIds?: string[];
+  deletedTaskIds?: string[];
 }
 
 function canUseStorage() {
@@ -214,6 +219,18 @@ function syncChangedReviewTasks(tasks: ReviewTask[], changedTaskIds: string[]) {
   });
 }
 
+function syncDeletedReviewTasks(deletedTaskIds: string[]) {
+  if (!canSyncBackend() || deletedTaskIds.length === 0) {
+    return;
+  }
+
+  deletedTaskIds.forEach((taskId) => {
+    deletePersistedReviewTask(taskId).catch(() => {
+      // Keep local state as fallback when the backend is unavailable.
+    });
+  });
+}
+
 /**
  * Synchronous load for first render. Returns localStorage or backend cache.
  * Use hydrateReviewTasksFromBackend() in useEffect to get authoritative backend data.
@@ -274,6 +291,8 @@ export function saveReviewTasks(
     syncBackendReviewTasksBulk(tasks);
   } else if (backendSync === "upsert-changed") {
     syncChangedReviewTasks(tasks, options.changedTaskIds ?? []);
+  } else if (backendSync === "delete-changed") {
+    syncDeletedReviewTasks(options.deletedTaskIds ?? []);
   }
 
   return tasks;

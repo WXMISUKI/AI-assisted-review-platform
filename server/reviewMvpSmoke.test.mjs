@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  deleteReviewTask,
   listReviewTasks,
   getReviewTask,
   upsertReviewTask,
@@ -217,4 +218,15 @@ test("smoke: data isolation does not pollute default store", async () => {
   const defaultList = await listReviewTasks();
   const hasIsolated = defaultList.tasks.some((t) => t.id === "isolated-task");
   assert.equal(hasIsolated, false, "Smoke test must not pollute the default store.");
+});
+
+test("smoke: delete review task precisely", async () => {
+  const storePath = join(tempDir, "review-tasks-delete.json");
+  await upsertReviewTask("delete-task", createMockTask("delete-task"), storePath);
+
+  const deleteResult = await deleteReviewTask("delete-task", storePath);
+  assert.equal(deleteResult.ok, true);
+
+  const deletedTask = await getReviewTask("delete-task", storePath);
+  assert.equal(deletedTask, null);
 });

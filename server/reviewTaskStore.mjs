@@ -163,6 +163,37 @@ export async function upsertReviewTask(taskId, task, storePath = DEFAULT_STORE_P
   };
 }
 
+export async function deleteReviewTask(taskId, storePath = DEFAULT_STORE_PATH) {
+  const value = await mutateSnapshot((snapshot) => {
+    const index = snapshot.tasks.findIndex((task) => task.id === taskId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Review task not found.",
+        },
+      };
+    }
+
+    const nextTasks = snapshot.tasks.filter((task) => task.id !== taskId);
+    return {
+      snapshot: {
+        schemaVersion: STORAGE_VERSION,
+        tasks: nextTasks,
+      },
+      value: {
+        ok: true,
+        taskId,
+        deleted: true,
+      },
+    };
+  }, storePath);
+
+  return value;
+}
+
 export async function mutateReviewTask(taskId, updater, storePath = DEFAULT_STORE_PATH) {
   if (typeof updater !== "function") {
     return {

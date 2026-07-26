@@ -186,6 +186,13 @@ function updateTask(
   );
 }
 
+function persistChangedTask(taskId: string): Parameters<typeof saveReviewTasks>[1] {
+  return {
+    backendSync: "upsert-changed",
+    changedTaskIds: [taskId],
+  };
+}
+
 function createGenerationRunId(taskId: string) {
   return `review-generation-${taskId}-${Date.now().toString(36)}`;
 }
@@ -478,7 +485,7 @@ export function completeReviewGenerationRun(
     });
 
     return appendGenerationTerminalActivity(nextTask, input.status, input);
-  });
+  }, persistChangedTask(taskId));
 }
 
 export function failReviewGenerationRun(
@@ -503,7 +510,7 @@ export function failReviewGenerationRun(
         message: diagnostics.message,
       },
     ]);
-  });
+  }, persistChangedTask(taskId));
 }
 
 export function listReviewTasks(): ReviewTask[] {
@@ -632,7 +639,7 @@ export function updateDocumentTaskUploadResult(
       ? getIssueCounts(resolveRecoveredStructureIssues(task.issues, input.recoveredStructure)).total
       : task.issueCount,
     updatedAt: nowString(),
-  }));
+  }), persistChangedTask(taskId));
 }
 
 export function syncDocumentTaskOcrStatus(
@@ -649,6 +656,10 @@ export function syncDocumentTaskOcrStatus(
     } | null;
   },
 ): ReviewTask[] {
+  const shouldPersist = Boolean(
+    input.recoveredStructure || input.state === "submitted" || input.state === "done" || input.state === "failed",
+  );
+
   return updateTask(tasks, taskId, (task) => {
     const nextState =
       input.state === "submitted" ? "pending" : input.state ?? task.ocrJob?.state ?? "pending";
@@ -725,7 +736,7 @@ export function syncDocumentTaskOcrStatus(
           : task.issueCount,
       updatedAt: nowString(),
     };
-  });
+  }, shouldPersist ? persistChangedTask(taskId) : undefined);
 }
 
 export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask[] {
@@ -777,7 +788,8 @@ export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask
 
 export function deleteDocumentTask(tasks: ReviewTask[], taskId: string): ReviewTask[] {
   return saveReviewTasks(tasks.filter((task) => task.id !== taskId), {
-    backendSync: "bulk-replace",
+    backendSync: "delete-changed",
+    deletedTaskIds: [taskId],
   });
 }
 
@@ -871,7 +883,7 @@ export function markReviewTaskReady(
       : task.recoveredStructure,
     issueCount: getIssueCounts(task.issues).total,
     updatedAt: nowString(),
-  }));
+  }), persistChangedTask(taskId));
 }
 
 export function createReviewSession(task: ReviewTask, mode: ReviewMode): ReviewSession {
@@ -950,7 +962,7 @@ export function updateReviewTaskPreparationPackage(
         },
       ],
     );
-  });
+  }, persistChangedTask(taskId));
 }
 
 function mergeReviewIssues(existingIssues: ReviewIssue[], generatedIssues: ReviewIssue[]) {
@@ -1074,7 +1086,7 @@ export function mergeGeneratedReviewIssues(
           : undefined,
       completedAt,
     });
-  });
+  }, persistChangedTask(taskId));
 }
 
 export function resolveTaskIssue(

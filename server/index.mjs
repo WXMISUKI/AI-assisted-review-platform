@@ -69,6 +69,7 @@ import {
   upsertOpeningConditionPilotTask,
 } from "./openingConditionPilotStore.mjs";
 import {
+  deleteReviewTask,
   getReviewTask,
   getReviewTaskStoreInfo,
   listReviewTasks,
@@ -288,6 +289,7 @@ export function createBackendServer(options = {}) {
           "PUT /api/opening-condition/workspaces/:workspaceId/knowledge-bases/:knowledgeBaseId",
           "GET /api/review-tasks/:taskId",
           "PUT /api/review-tasks/:taskId",
+          "DELETE /api/review-tasks/:taskId",
           "POST /api/review-tasks/bulk",
           "POST /api/review-tasks/:taskId/issues/:issueId/resolve",
           "PATCH /api/review-tasks/:taskId/issues/:issueId/draft",
@@ -977,6 +979,12 @@ export function createBackendServer(options = {}) {
         const body = await readJson(request);
         const result = await upsertReviewTask(taskId, body.task ?? body);
         sendJson(response, result.ok ? 200 : 400, result);
+        return;
+      }
+
+      if (request.method === "DELETE") {
+        const result = await deleteReviewTask(taskId);
+        sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
         return;
       }
     }

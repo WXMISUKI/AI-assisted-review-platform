@@ -435,6 +435,14 @@ export interface ReviewTaskUpsertResult {
   message?: string;
 }
 
+export interface ReviewTaskDeleteResult {
+  ok: boolean;
+  status?: string;
+  taskId?: string;
+  deleted?: boolean;
+  message?: string;
+}
+
 export interface ReviewTaskMutationResult {
   ok: boolean;
   status?: string;
@@ -680,6 +688,13 @@ export async function upsertPersistedReviewTask(task: ReviewTask) {
     body: JSON.stringify({ task }),
   });
   return readJson<ReviewTaskUpsertResult>(response);
+}
+
+export async function deletePersistedReviewTask(taskId: string) {
+  const response = await fetch(`/api/review-tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
+  return readJson<ReviewTaskDeleteResult>(response);
 }
 
 export async function resolvePersistedReviewTaskIssue(input: {
