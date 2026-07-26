@@ -912,10 +912,14 @@ function OpeningConditionReviewTaskWorkbench({
   rows,
   onGoToIntake,
   onGoToPage,
+  onFocusCheckItem,
+  onFocusHumanReview,
 }: {
   rows: OpeningConditionTaskWorkbenchRow[];
   onGoToIntake: () => void;
   onGoToPage: (page: OpeningConditionPortalPage) => void;
+  onFocusCheckItem?: (checkItemId: string) => void;
+  onFocusHumanReview?: (reviewId: string) => void;
 }) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(rows[0]?.taskId ?? null);
   const selectedRow = rows.find((row) => row.taskId === selectedTaskId) ?? rows[0] ?? null;
@@ -1101,6 +1105,13 @@ function OpeningConditionReviewTaskWorkbench({
                           <span className="opening-report-chip tone-muted">{item.evidenceLabel}</span>
                         </div>
                         <p>{item.reason}</p>
+                        {onFocusCheckItem && (
+                          <div className="dialog-actions compact">
+                            <button type="button" className="secondary" onClick={() => onFocusCheckItem(item.id)}>
+                              定位核查项
+                            </button>
+                          </div>
+                        )}
                       </article>
                     ))}
                   </div>
@@ -1129,6 +1140,13 @@ function OpeningConditionReviewTaskWorkbench({
                         </div>
                         <span className="opening-report-chip tone-warning">{item.statusLabel}</span>
                         <p>{item.reason}</p>
+                        {onFocusHumanReview && (
+                          <div className="dialog-actions compact">
+                            <button type="button" className="secondary" onClick={() => onFocusHumanReview(item.id)}>
+                              定位复核项
+                            </button>
+                          </div>
+                        )}
                       </article>
                     ))}
                   </div>
@@ -1674,6 +1692,30 @@ export function OpeningConditionWorkspaceShell({
 }) {
   const activeNavLabel = openingWorkspacePageLabels[activePage] ?? openingWorkspacePageLabels["workspace-context"];
   const activePageIsPrimary = openingPrimaryNavPageIds.has(activePage);
+  const [focusedCheckItemId, setFocusedCheckItemId] = useState<string | null>(null);
+  const [focusedHumanReviewId, setFocusedHumanReviewId] = useState<string | null>(null);
+
+  function clearOpeningFocus() {
+    setFocusedCheckItemId(null);
+    setFocusedHumanReviewId(null);
+  }
+
+  function goToOpeningPage(page: OpeningConditionPortalPage) {
+    clearOpeningFocus();
+    onSelectPage(page);
+  }
+
+  function focusOpeningChecklistItem(checkItemId: string) {
+    setFocusedCheckItemId(checkItemId);
+    setFocusedHumanReviewId(null);
+    onSelectPage("check-tasks");
+  }
+
+  function focusOpeningHumanReviewItem(reviewId: string) {
+    setFocusedHumanReviewId(reviewId);
+    setFocusedCheckItemId(null);
+    onSelectPage("human-review");
+  }
 
   return (
     <main className="platform-shell opening-portal-shell">
@@ -1693,7 +1735,7 @@ export function OpeningConditionWorkspaceShell({
               icon={item.icon}
               label={item.label}
               active={activePage === item.id}
-              onClick={() => onSelectPage(item.id)}
+              onClick={() => goToOpeningPage(item.id)}
             />
           ))}
           {!activePageIsPrimary && (
@@ -1701,7 +1743,7 @@ export function OpeningConditionWorkspaceShell({
               <span>二级执行页</span>
               <strong>{activeNavLabel}</strong>
               <p>当前页面从任务台账进入，用于完成选中 run 的具体操作。</p>
-              <button type="button" className="theme-toggle" onClick={() => onSelectPage("workspace-context")}>
+              <button type="button" className="theme-toggle" onClick={() => goToOpeningPage("workspace-context")}>
                 <ArrowLeft size={16} />
                 返回核查任务台账
               </button>
@@ -1755,8 +1797,10 @@ export function OpeningConditionWorkspaceShell({
               allPilotTasks={allPilotTasks}
               pilotReadiness={pilotReadiness}
               onSelectWorkspace={onSelectWorkspace}
-              onGoToIntake={() => onSelectPage("material-intake")}
-              onGoToPage={onSelectPage}
+              onGoToIntake={() => goToOpeningPage("material-intake")}
+              onGoToPage={goToOpeningPage}
+              onFocusCheckItem={focusOpeningChecklistItem}
+              onFocusHumanReview={focusOpeningHumanReviewItem}
             />
           )}
           {activePage === "material-intake" && (
@@ -1784,7 +1828,7 @@ export function OpeningConditionWorkspaceShell({
               onEnsureKnowledgeBase={onEnsureKnowledgeBase}
               onTrialBootstrapComplete={onTrialBootstrapComplete}
               getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
-              onGoToReports={() => onSelectPage("reports")}
+              onGoToReports={() => goToOpeningPage("reports")}
             />
           )}
           {activePage === "basis-sets" && (
@@ -1799,17 +1843,26 @@ export function OpeningConditionWorkspaceShell({
               pilotBusy={pilotBusy}
               onRefreshBasisPreview={onRefreshPilotBasisPreview}
               onIngestProviderPreview={onIngestPilotBasisProviderPreview}
-              onGoToPage={onSelectPage}
+              onGoToPage={goToOpeningPage}
             />
           )}
-          {activePage === "check-tasks" && <OpeningConditionCheckTasksPage packet={packet} pilotTask={pilotTask} />}
+          {activePage === "check-tasks" && (
+            <OpeningConditionCheckTasksPage
+              packet={packet}
+              pilotTask={pilotTask}
+              focusedCheckItemId={focusedCheckItemId}
+              onClearFocusedCheckItem={clearOpeningFocus}
+            />
+          )}
           {activePage === "human-review" && (
             <OpeningConditionHumanReviewQueuePage
               packet={packet}
               pilotTask={pilotTask}
               pilotBusy={pilotBusy}
               onReviewDecision={onReviewDecision}
-              onGoToPage={onSelectPage}
+              onGoToPage={goToOpeningPage}
+              focusedHumanReviewId={focusedHumanReviewId}
+              onClearFocusedHumanReview={clearOpeningFocus}
             />
           )}
           {activePage === "reports" && (
@@ -1947,6 +2000,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onSelectWorkspace,
   onGoToIntake,
   onGoToPage,
+  onFocusCheckItem,
+  onFocusHumanReview,
 }: {
   packet: OpeningConditionReviewPacket;
   workspaces: OpeningConditionWorkspace[];
@@ -1957,6 +2012,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onSelectWorkspace: (workspaceId: string) => void;
   onGoToIntake: () => void;
   onGoToPage: (page: OpeningConditionPortalPage) => void;
+  onFocusCheckItem?: (checkItemId: string) => void;
+  onFocusHumanReview?: (reviewId: string) => void;
 }) {
   const verdictSummary = getOpeningConditionVerdictSummary(packet);
   const riskSummary = getOpeningConditionRiskSummary(packet);
@@ -2030,6 +2087,8 @@ function OpeningConditionObjectOverviewProductizedPage({
         rows={taskWorkbenchRows}
         onGoToIntake={onGoToIntake}
         onGoToPage={onGoToPage}
+        onFocusCheckItem={onFocusCheckItem}
+        onFocusHumanReview={onFocusHumanReview}
       />
 
       {actionOwnership ? (
@@ -3737,11 +3796,16 @@ function buildChecklistRows(packet: OpeningConditionReviewPacket, pilotTask?: Op
 function OpeningConditionCheckTasksPage({
   packet,
   pilotTask,
+  focusedCheckItemId,
+  onClearFocusedCheckItem,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
+  focusedCheckItemId?: string | null;
+  onClearFocusedCheckItem?: () => void;
 }) {
   const rows = buildChecklistRows(packet, pilotTask);
+  const focusedRow = focusedCheckItemId ? rows.find((row) => row.id === focusedCheckItemId) ?? null : null;
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -3752,9 +3816,22 @@ function OpeningConditionCheckTasksPage({
         <span>Evidence {pilotTask?.trialPackage?.matching.evidenceCount ?? 0}</span>
         <span>Human review {pilotTask?.trialPackage?.humanReview.blockingCount ?? 0}</span>
       </div>
+      {focusedCheckItemId && (
+        <div className="opening-focused-context-banner">
+          <div>
+            <strong>{focusedRow ? `当前聚焦核查项：${focusedRow.title}` : "当前聚焦核查项未在本轮找到"}</strong>
+            <span>{focusedRow ? `${focusedRow.category} | ${focusedRow.id}` : focusedCheckItemId}</span>
+          </div>
+          {onClearFocusedCheckItem && (
+            <button type="button" className="secondary" onClick={onClearFocusedCheckItem}>
+              取消聚焦
+            </button>
+          )}
+        </div>
+      )}
       <div className="opening-record-list">
         {rows.map((row) => (
-          <div key={row.id}>
+          <div key={row.id} className={row.id === focusedCheckItemId ? "opening-record-focused" : undefined}>
             <strong>{row.title}</strong>
             <span>{row.category} | {row.id}</span>
             <p>
@@ -3776,12 +3853,16 @@ function OpeningConditionHumanReviewQueuePage({
   pilotBusy,
   onReviewDecision,
   onGoToPage,
+  focusedHumanReviewId,
+  onClearFocusedHumanReview,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
   pilotBusy?: boolean;
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
   onGoToPage?: (page: OpeningConditionPortalPage) => void;
+  focusedHumanReviewId?: string | null;
+  onClearFocusedHumanReview?: () => void;
 }) {
   const queue = pilotTask?.humanReviewQueue ?? [];
   const evidenceById = new Map((pilotTask?.evidence ?? []).map((item) => [item.id, item]));
@@ -3791,6 +3872,7 @@ function OpeningConditionHumanReviewQueuePage({
   const pendingQueue = queue.filter((item) => item.status === "open");
   const deferredQueue = queue.filter((item) => item.status === "deferred");
   const resolvedQueue = queue.filter((item) => item.status !== "open" && item.status !== "deferred");
+  const focusedReviewItem = focusedHumanReviewId ? queue.find((item) => item.id === focusedHumanReviewId) ?? null : null;
 
   function renderQueueItem(item: OpeningConditionPilotHumanReviewItem) {
     const fallbackContext = checkItemsById.get(item.targetId) ?? definitionsById.get(item.targetId);
@@ -3802,7 +3884,14 @@ function OpeningConditionHumanReviewQueuePage({
       .join(" / ");
 
     return (
-      <div key={item.id} className="opening-human-review-item">
+      <div
+        key={item.id}
+        className={
+          item.id === focusedHumanReviewId
+            ? "opening-human-review-item opening-review-focused"
+            : "opening-human-review-item"
+        }
+      >
         <strong>{item.targetLabel ?? fallbackContext?.name ?? item.targetId}</strong>
         <span>
           {(item.category ?? fallbackContext?.category ?? "未分类")}
@@ -3866,6 +3955,23 @@ function OpeningConditionHumanReviewQueuePage({
         <span>已处理 {resolvedQueue.length}</span>
         <span>报告 {pilotTask?.trialPackage?.reportStatus ?? "missing"}</span>
       </div>
+      {focusedHumanReviewId && (
+        <div className="opening-focused-context-banner">
+          <div>
+            <strong>
+              {focusedReviewItem
+                ? `当前聚焦复核项：${focusedReviewItem.targetLabel ?? focusedReviewItem.targetId}`
+                : "当前聚焦复核项未在本轮找到"}
+            </strong>
+            <span>{focusedReviewItem ? `${focusedReviewItem.category ?? "未分类"} | ${focusedReviewItem.id}` : focusedHumanReviewId}</span>
+          </div>
+          {onClearFocusedHumanReview && (
+            <button type="button" className="secondary" onClick={onClearFocusedHumanReview}>
+              取消聚焦
+            </button>
+          )}
+        </div>
+      )}
       <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />
       <OpeningConditionActionOwnershipSummary
         summary={actionOwnership}

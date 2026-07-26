@@ -97,3 +97,20 @@ test("UI smoke exposes selected-task issue and human-review summaries", async ()
   assert.match(source, /进入报告归档/);
   assert.match(source, /opening-task-detail-summary-grid/);
 });
+
+test("UI smoke routes selected task rows to focused checklist and human-review details", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /focusedCheckItemId/);
+  assert.match(source, /focusedHumanReviewId/);
+  assert.match(source, /focusOpeningChecklistItem/);
+  assert.match(source, /focusOpeningHumanReviewItem/);
+  assert.match(source, /onFocusCheckItem/);
+  assert.match(source, /onFocusHumanReview/);
+  assert.match(source, /定位核查项/);
+  assert.match(source, /定位复核项/);
+  assert.match(source, /opening-focused-context-banner/);
+  assert.match(source, /opening-record-focused/);
+  assert.match(source, /opening-review-focused/);
+  assert.match(source, /取消聚焦/);
+});
