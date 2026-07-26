@@ -1877,6 +1877,8 @@ export function OpeningConditionWorkspaceShell({
               onExportReport={onExportReport}
               onArchive={onArchivePilotTask}
               onStartRectificationRerun={onStartRectificationRerun}
+              onFocusCheckItem={focusOpeningChecklistItem}
+              onFocusHumanReview={focusOpeningHumanReviewItem}
             />
           )}
         </div>
@@ -4466,6 +4468,8 @@ function OpeningConditionReportDeliveryWorkbench({
   onExportReport,
   onArchive,
   onStartRectificationRerun,
+  onFocusCheckItem,
+  onFocusHumanReview,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
@@ -4477,6 +4481,8 @@ function OpeningConditionReportDeliveryWorkbench({
   onExportReport?: (taskId: string) => void;
   onArchive?: () => void;
   onStartRectificationRerun?: () => void;
+  onFocusCheckItem?: (checkItemId: string) => void;
+  onFocusHumanReview?: (reviewId: string) => void;
 }) {
   const [hiddenRunAudits, setHiddenRunAudits] = useState<HiddenPilotRunAudit[]>(() =>
     readHiddenPilotRunAudits(packet.workspaceId),
@@ -4498,6 +4504,11 @@ function OpeningConditionReportDeliveryWorkbench({
   const currentRound = runSnapshot.currentRound;
   const findings = buildReportFindings(selectedTask);
   const findingGroups = buildReportFindingGroups(findings);
+  const unresolvedReviewByTargetId = new Map(
+    (selectedTask?.humanReviewQueue ?? [])
+      .filter((item) => item.status === "open" || item.status === "deferred")
+      .map((item) => [item.targetId, item]),
+  );
   const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
   const closureDiff = runSnapshot.closureDiff;
   const previousRun = runSnapshot.previousRun;
@@ -4877,52 +4888,70 @@ function OpeningConditionReportDeliveryWorkbench({
               </div>
               <div className="opening-finding-group-list">
                 {group.findings.map((finding) => (
-                  <div key={finding.id} className="opening-report-finding">
-                    <div className="opening-report-finding-header">
-                      <strong>{finding.title}</strong>
-                      <div className="opening-report-chip-row">
-                        <span className={`opening-report-chip tone-${finding.dispositionTone}`}>{finding.dispositionLabel}</span>
-                        <span className={`opening-report-chip tone-${finding.severityTone}`}>{finding.severityLabel}</span>
-                        <span className="opening-report-chip tone-muted">{finding.statusLabel}</span>
+                  (() => {
+                    const unresolvedReview = unresolvedReviewByTargetId.get(finding.id);
+
+                    return (
+                      <div key={finding.id} className="opening-report-finding">
+                        <div className="opening-report-finding-header">
+                          <strong>{finding.title}</strong>
+                          <div className="opening-report-chip-row">
+                            <span className={`opening-report-chip tone-${finding.dispositionTone}`}>{finding.dispositionLabel}</span>
+                            <span className={`opening-report-chip tone-${finding.severityTone}`}>{finding.severityLabel}</span>
+                            <span className="opening-report-chip tone-muted">{finding.statusLabel}</span>
+                          </div>
+                        </div>
+                        <span>{finding.category}</span>
+                        <p>{finding.description}</p>
+                        <div className="opening-report-detail-list opening-report-finding-detail-grid">
+                          <small>
+                            <strong>结论</strong>
+                            {finding.dispositionLabel}
+                          </small>
+                          <small>
+                            <strong>风险</strong>
+                            {finding.severityLabel}
+                          </small>
+                          <small>
+                            <strong>范围</strong>
+                            {finding.statusLabel}
+                          </small>
+                          <small>
+                            <strong>依据</strong>
+                            {finding.basis}
+                          </small>
+                          <small>
+                            <strong>整改建议</strong>
+                            {finding.rectification}
+                          </small>
+                          {finding.evidence.length > 0 && (
+                            <small>
+                              <strong>证据</strong>
+                              {finding.evidence.join(" / ")}
+                            </small>
+                          )}
+                          {finding.humanReview.length > 0 && (
+                            <small>
+                              <strong>人工复核</strong>
+                              {finding.humanReview.join(" / ")}
+                            </small>
+                          )}
+                        </div>
+                        <div className="dialog-actions compact">
+                          {onFocusCheckItem && (
+                            <button type="button" className="secondary" onClick={() => onFocusCheckItem(finding.id)}>
+                              定位核查项
+                            </button>
+                          )}
+                          {onFocusHumanReview && unresolvedReview && (
+                            <button type="button" className="secondary" onClick={() => onFocusHumanReview(unresolvedReview.id)}>
+                              定位复核项
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <span>{finding.category}</span>
-                    <p>{finding.description}</p>
-                    <div className="opening-report-detail-list opening-report-finding-detail-grid">
-                      <small>
-                        <strong>结论</strong>
-                        {finding.dispositionLabel}
-                      </small>
-                      <small>
-                        <strong>风险</strong>
-                        {finding.severityLabel}
-                      </small>
-                      <small>
-                        <strong>范围</strong>
-                        {finding.statusLabel}
-                      </small>
-                      <small>
-                        <strong>依据</strong>
-                        {finding.basis}
-                      </small>
-                      <small>
-                        <strong>整改建议</strong>
-                        {finding.rectification}
-                      </small>
-                      {finding.evidence.length > 0 && (
-                        <small>
-                          <strong>证据</strong>
-                          {finding.evidence.join(" / ")}
-                        </small>
-                      )}
-                      {finding.humanReview.length > 0 && (
-                        <small>
-                          <strong>人工复核</strong>
-                          {finding.humanReview.join(" / ")}
-                        </small>
-                      )}
-                    </div>
-                  </div>
+                    );
+                  })()
                 ))}
               </div>
             </div>

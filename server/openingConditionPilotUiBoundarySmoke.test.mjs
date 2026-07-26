@@ -114,3 +114,15 @@ test("UI smoke routes selected task rows to focused checklist and human-review d
   assert.match(source, /opening-review-focused/);
   assert.match(source, /取消聚焦/);
 });
+
+test("UI smoke routes report findings to focused checklist and unresolved human-review details", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /OpeningConditionReportDeliveryWorkbench/);
+  assert.match(source, /onFocusCheckItem=\{focusOpeningChecklistItem\}/);
+  assert.match(source, /onFocusHumanReview=\{focusOpeningHumanReviewItem\}/);
+  assert.match(source, /unresolvedReviewByTargetId/);
+  assert.match(source, /\.filter\(\(item\) => item\.status === "open" \|\| item\.status === "deferred"\)/);
+  assert.match(source, /onFocusCheckItem\(finding\.id\)/);
+  assert.match(source, /onFocusHumanReview\(unresolvedReview\.id\)/);
+});
