@@ -51,3 +51,15 @@ The system SHALL provide a lightweight UI or render-level smoke guard for the mo
 - **WHEN** the UI smoke renders a report-ready or archived run
 - **THEN** the report page exposes the selected round, report status, finding summary, decision ledger or safe empty state, and the correct next-run entry behavior
 
+### Requirement: Smoke verifies MVP acceptance snapshot
+The opening-condition pilot acceptance smoke SHALL verify that the backend acceptance snapshot follows the report, export, and archive lifecycle.
+
+#### Scenario: Report-ready snapshot
+- **WHEN** the smoke generates a report after human review is closed
+- **THEN** the report diagnostics include an acceptance snapshot with completed intake, match, human-review, and report steps
+- **AND** the archive step remains pending
+
+#### Scenario: Archived snapshot
+- **WHEN** the smoke archives the same task
+- **THEN** the acceptance snapshot marks the archive step complete
+- **AND** the overall snapshot is completed and read-only

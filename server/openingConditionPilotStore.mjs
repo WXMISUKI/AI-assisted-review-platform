@@ -1558,9 +1558,53 @@ function normalizeReportPackageDiagnostics(value) {
     deliveryHandoff: normalizeReportDeliveryHandoff(value.deliveryHandoff),
     exportHandoff: normalizeReportExportHandoff(value.exportHandoff),
     deliveryPackage: normalizeReportDeliveryPackage(value.deliveryPackage),
+    mvpAcceptance: normalizeReportMvpAcceptance(value.mvpAcceptance),
     providerReadiness: normalizeTrialPackageProviderReadiness(value.providerReadiness),
     blockingReasons: normalizeStringList(value.blockingReasons, 30, 240),
     archiveStatus: ["pending", "ready", "archived"].includes(value.archiveStatus) ? value.archiveStatus : "pending",
+    generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
+  });
+}
+
+const reportMvpAcceptanceStepKeys = new Set(["intake", "match", "human_review", "report", "archive"]);
+const reportMvpAcceptanceStepStatuses = new Set(["pending", "complete", "blocked"]);
+
+function normalizeReportMvpAcceptanceStep(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const key = normalizeString(value.key, "", 80);
+  if (!reportMvpAcceptanceStepKeys.has(key)) {
+    return null;
+  }
+
+  return sanitizeOpeningConditionPilotValue({
+    key,
+    label: normalizeString(value.label, key, 120),
+    status: reportMvpAcceptanceStepStatuses.has(value.status) ? value.status : "pending",
+    detail: normalizeString(value.detail, "", 300),
+  });
+}
+
+function normalizeReportMvpAcceptance(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const status = ["blocked", "ready_for_archive", "archived", "failed"].includes(value.status) ? value.status : "blocked";
+  return sanitizeOpeningConditionPilotValue({
+    schemaVersion: "opening-condition-mvp-acceptance.v1",
+    status,
+    statusLabel: normalizeString(value.statusLabel, "MVP 验收未完成", 120),
+    completed: Boolean(value.completed),
+    readOnly: Boolean(value.readOnly),
+    currentOwner: normalizeString(value.currentOwner, "平台操作员", 120),
+    nextAction: normalizeString(value.nextAction, "继续完成当前轮次闭环。", 300),
+    blockingReasons: normalizeStringList(value.blockingReasons, 20, 240),
+    steps: Array.isArray(value.steps)
+      ? value.steps.map(normalizeReportMvpAcceptanceStep).filter(Boolean).slice(0, 5)
+      : [],
     generatedAt: normalizeString(value.generatedAt, new Date().toISOString(), 80),
   });
 }
@@ -2133,9 +2177,99 @@ function deriveReportPackageDiagnostics(task, summary, archiveStatus = "ready") 
     deliveryHandoff: deriveReportDeliveryHandoff(task, findings, humanReview, archiveStatus),
     exportHandoff: deriveReportExportHandoff(task, findings, trialPackage, archiveStatus),
     deliveryPackage: deriveReportDeliveryPackage(task, findings, humanReview, archiveStatus),
+    mvpAcceptance: deriveReportMvpAcceptance(task, summary, humanReview, archiveStatus),
     providerReadiness: trialPackage.providerReadiness,
     blockingReasons: trialPackage.blockingReasons,
     archiveStatus,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+function deriveReportMvpAcceptance(task, summary, humanReview, archiveStatus = "ready") {
+  const taskState = task.state;
+  const archived = taskState === "archived" || archiveStatus === "archived";
+  const failed = ["failed", "canceled"].includes(taskState);
+  const hasPacket = Boolean(task.packet);
+  const hasMatch = Boolean((task.checkItems ?? []).length > 0) || ["awaiting_human_review", "report_ready", "archived"].includes(taskState);
+  const openHumanReviewCount = (task.humanReviewQueue ?? []).filter((item) => item.status === "open" || item.status === "deferred").length;
+  const humanReviewComplete = hasMatch && openHumanReviewCount === 0;
+  const reportComplete = Boolean(task.reportAsset) || ["ready", "archived"].includes(archiveStatus) || task.reportAsset?.status === "ready";
+
+  const steps = [
+    {
+      key: "intake",
+      label: "资料接入",
+      status: hasPacket ? "complete" : "blocked",
+      detail: hasPacket ? "资料包已形成本轮核查输入。" : "尚未完成资料包接入。",
+    },
+    {
+      key: "match",
+      label: "正式核查",
+      status: !hasPacket ? "pending" : hasMatch ? "complete" : "blocked",
+      detail: hasMatch
+        ? `已形成 ${summary?.total ?? task.checkItems?.length ?? 0} 个核查项结果。`
+        : "尚未形成正式核查结果。",
+    },
+    {
+      key: "human_review",
+      label: "人工复核",
+      status: !hasMatch ? "pending" : humanReviewComplete ? "complete" : "blocked",
+      detail: humanReviewComplete ? "人工复核阻塞项已关闭。" : `仍有 ${openHumanReviewCount} 项待处理或延期。`,
+    },
+    {
+      key: "report",
+      label: "报告生成",
+      status: !humanReviewComplete ? "pending" : reportComplete ? "complete" : "blocked",
+      detail: reportComplete ? "报告资产已生成，可进入交付或归档。" : "尚未生成报告资产。",
+    },
+    {
+      key: "archive",
+      label: "归档留痕",
+      status: !reportComplete ? "pending" : archived ? "complete" : "pending",
+      detail: archived ? "本轮已归档为只读历史。" : "报告生成后等待操作员归档。",
+    },
+  ];
+
+  const firstBlockingStep = steps.find((step) => step.status === "blocked");
+  const blockingReasons = [];
+  if (failed) blockingReasons.push("task_failed_or_canceled");
+  if (!hasPacket) blockingReasons.push("packet_required");
+  else if (!hasMatch) blockingReasons.push("formal_match_required");
+  else if (!humanReviewComplete) blockingReasons.push("human_review_required");
+  else if (!reportComplete) blockingReasons.push("report_generation_required");
+
+  let status = "blocked";
+  let statusLabel = firstBlockingStep ? `${firstBlockingStep.label}未完成` : "MVP 闭环待推进";
+  let currentOwner = "平台操作员";
+  let nextAction = firstBlockingStep?.detail ?? "继续完成当前轮次闭环。";
+
+  if (failed) {
+    status = "failed";
+    statusLabel = "MVP 验收失败";
+    currentOwner = "平台管理员";
+    nextAction = "查看失败事件并重新发起试点 run。";
+  } else if (archived) {
+    status = "archived";
+    statusLabel = "MVP 单轮闭环已归档";
+    currentOwner = "监理/平台归档";
+    nextAction = "保留本轮报告和处理记录，必要时发起下一轮整改复审。";
+  } else if (reportComplete && humanReviewComplete) {
+    status = "ready_for_archive";
+    statusLabel = "MVP 已达可归档";
+    currentOwner = "监理工程师";
+    nextAction = "确认报告结论后归档本轮，形成历史留痕。";
+  }
+
+  return normalizeReportMvpAcceptance({
+    schemaVersion: "opening-condition-mvp-acceptance.v1",
+    status,
+    statusLabel,
+    completed: archived,
+    readOnly: archived,
+    currentOwner,
+    nextAction,
+    blockingReasons,
+    steps,
     generatedAt: new Date().toISOString(),
   });
 }
@@ -5098,6 +5232,19 @@ export async function recordOpeningConditionPilotReportDocumentExport(taskId, in
       currentDiagnostics.humanReview ?? summarizeHumanReviewQueue(existingTask.humanReviewQueue ?? []),
       existingTask.state === "archived" ? "archived" : "ready",
     );
+    const nextArchiveStatus = existingTask.state === "archived" ? "archived" : "ready";
+    const mvpAcceptance = deriveReportMvpAcceptance(
+      {
+        ...existingTask,
+        reportAsset: {
+          ...existingTask.reportAsset,
+          objectRef: generatedObject,
+        },
+      },
+      existingTask.reportAsset.summary,
+      currentDiagnostics.humanReview ?? summarizeHumanReviewQueue(existingTask.humanReviewQueue ?? []),
+      nextArchiveStatus,
+    );
     const reportAsset = normalizeReportAsset(
       {
         ...existingTask.reportAsset,
@@ -5106,6 +5253,7 @@ export async function recordOpeningConditionPilotReportDocumentExport(taskId, in
           ...currentDiagnostics,
           exportHandoff,
           deliveryPackage,
+          mvpAcceptance,
         },
       },
       taskId,
@@ -5215,6 +5363,12 @@ export async function archiveOpeningConditionPilotTask(taskId, input = {}, optio
           archiveStatus: "archived",
           deliveryHandoff: deriveReportDeliveryHandoff(archivedTaskForDiagnostics, archivedFindings, archivedHumanReview, "archived"),
           deliveryPackage: deriveReportDeliveryPackage(archivedTaskForDiagnostics, archivedFindings, archivedHumanReview, "archived"),
+          mvpAcceptance: deriveReportMvpAcceptance(
+            archivedTaskForDiagnostics,
+            existingTask.reportAsset.summary,
+            archivedHumanReview,
+            "archived",
+          ),
         },
       },
       taskId,

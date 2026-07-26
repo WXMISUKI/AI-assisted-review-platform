@@ -49,6 +49,7 @@ import type {
   OpeningConditionPilotHumanReviewItem,
   OpeningConditionPilotKnowledgeBaseRef,
   OpeningConditionPilotLegalBasisReference,
+  OpeningConditionPilotMvpAcceptanceSnapshot,
   OpeningConditionPilotReportDeliveryPackage,
   OpeningConditionPilotReportDeliveryPackageRow,
   OpeningConditionPilotTask,
@@ -520,6 +521,77 @@ function OpeningConditionReportDeliveryPackageSummary({
             </small>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function getOpeningConditionMvpAcceptanceTone(status: OpeningConditionPilotMvpAcceptanceSnapshot["status"]) {
+  if (status === "archived" || status === "ready_for_archive") {
+    return "success";
+  }
+  if (status === "failed") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function getOpeningConditionMvpAcceptanceStepTone(status: OpeningConditionPilotMvpAcceptanceSnapshot["steps"][number]["status"]) {
+  if (status === "complete") {
+    return "success";
+  }
+  if (status === "blocked") {
+    return "danger";
+  }
+  return "muted";
+}
+
+function OpeningConditionMvpAcceptanceSnapshotPanel({
+  snapshot,
+}: {
+  snapshot?: OpeningConditionPilotMvpAcceptanceSnapshot;
+}) {
+  if (!snapshot) {
+    return null;
+  }
+
+  return (
+    <div className="opening-report-delivery-handoff">
+      <div className="opening-report-finding-header">
+        <div>
+          <span className="eyebrow">MVP Acceptance</span>
+          <strong>{snapshot.statusLabel}</strong>
+        </div>
+        <div className="opening-report-chip-row">
+          <span className={`opening-report-chip tone-${getOpeningConditionMvpAcceptanceTone(snapshot.status)}`}>
+            {snapshot.completed ? "闭环完成" : "闭环推进中"}
+          </span>
+          <span className="opening-report-chip tone-info">{snapshot.currentOwner}</span>
+          {snapshot.readOnly && <span className="opening-report-chip tone-muted">只读留痕</span>}
+        </div>
+      </div>
+      <div className="opening-report-context-grid">
+        <div className="opening-action-summary-item">
+          <strong>下一动作</strong>
+          <small>{snapshot.nextAction}</small>
+        </div>
+        <div className="opening-action-summary-item">
+          <strong>阻塞原因</strong>
+          <small>{snapshot.blockingReasons.length > 0 ? snapshot.blockingReasons.join(" / ") : "无阻塞原因。"}</small>
+        </div>
+        <div className="opening-action-summary-item">
+          <strong>生成时间</strong>
+          <small>{snapshot.generatedAt}</small>
+        </div>
+      </div>
+      <div className="opening-report-summary-grid">
+        {snapshot.steps.map((step) => (
+          <div key={step.key} className={`opening-report-summary-card tone-${getOpeningConditionMvpAcceptanceStepTone(step.status)}`}>
+            <strong>{step.label}</strong>
+            <span>{step.status === "complete" ? "完成" : step.status === "blocked" ? "阻塞" : "待推进"}</span>
+            <p>{step.detail}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -4108,6 +4180,7 @@ function OpeningConditionReportDeliveryWorkbench({
   const packageDiagnostics = reportAsset?.packageDiagnostics;
   const runRoundMap = runSnapshot.runRoundMap;
   const currentRound = runSnapshot.currentRound;
+  const selectedOpenReviewCount = runSnapshot.blockingReviewCount;
   const findings = buildReportFindings(selectedTask);
   const findingGroups = buildReportFindingGroups(findings);
   const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
@@ -4120,7 +4193,6 @@ function OpeningConditionReportDeliveryWorkbench({
   const exportHandoff = packageDiagnostics?.exportHandoff;
   const isCurrentRun = runSnapshot.isCurrentRun;
   const selectedActionOwnership = deriveOpeningConditionRunActionOwnership({ pilotTask: selectedTask });
-  const selectedOpenReviewCount = runSnapshot.blockingReviewCount;
   const findingSummary = {
     blocked: findings.filter((item) => item.disposition === "blocked").length,
     failed: findings.filter((item) => item.disposition === "fail" || item.disposition === "reject").length,
@@ -4209,6 +4281,8 @@ function OpeningConditionReportDeliveryWorkbench({
                 : "历史轮次只保留当时的责任边界与处理语义，便于复盘和对比，不再提供直接变更入口。"
             }
           />
+
+          <OpeningConditionMvpAcceptanceSnapshotPanel snapshot={packageDiagnostics?.mvpAcceptance} />
 
           {deliveryHandoff && (
             <div className="opening-report-delivery-handoff">

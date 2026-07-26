@@ -484,6 +484,30 @@ export interface OpeningConditionPilotReportDeliveryPackage {
   safeDiagnostics: string[];
 }
 
+export type OpeningConditionPilotMvpAcceptanceStatus = "blocked" | "ready_for_archive" | "archived" | "failed";
+
+export type OpeningConditionPilotMvpAcceptanceStepKey = "intake" | "match" | "human_review" | "report" | "archive";
+
+export interface OpeningConditionPilotMvpAcceptanceStep {
+  key: OpeningConditionPilotMvpAcceptanceStepKey;
+  label: string;
+  status: "pending" | "complete" | "blocked";
+  detail: string;
+}
+
+export interface OpeningConditionPilotMvpAcceptanceSnapshot {
+  schemaVersion: "opening-condition-mvp-acceptance.v1";
+  status: OpeningConditionPilotMvpAcceptanceStatus;
+  statusLabel: string;
+  completed: boolean;
+  readOnly: boolean;
+  currentOwner: string;
+  nextAction: string;
+  blockingReasons: string[];
+  steps: OpeningConditionPilotMvpAcceptanceStep[];
+  generatedAt: string;
+}
+
 export interface OpeningConditionPilotTrialPackage {
   taskId: string;
   workspaceId: string;
@@ -511,6 +535,7 @@ export interface OpeningConditionPilotReportPackageDiagnostics {
   deliveryHandoff?: OpeningConditionPilotReportDeliveryHandoff;
   exportHandoff?: OpeningConditionPilotReportExportHandoff;
   deliveryPackage?: OpeningConditionPilotReportDeliveryPackage;
+  mvpAcceptance?: OpeningConditionPilotMvpAcceptanceSnapshot;
   providerReadiness?: OpeningConditionPilotProviderReadinessSummary;
   blockingReasons: string[];
   archiveStatus: "pending" | "ready" | "archived";
