@@ -1804,6 +1804,7 @@ export function OpeningConditionWorkspaceShell({
   onPublishPilotBasisDecision,
   onRefreshPilotBasisPreview,
   onIngestPilotBasisProviderPreview,
+  onIngestPilotMasterDataProviderPreview,
   onConfirmPilotMasterData,
   onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
@@ -1844,6 +1845,7 @@ export function OpeningConditionWorkspaceShell({
   onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
   onRefreshPilotBasisPreview?: (basisId: string) => void;
   onIngestPilotBasisProviderPreview?: (basisId: string) => void;
+  onIngestPilotMasterDataProviderPreview?: (recordId: string) => void;
   onConfirmPilotMasterData?: () => void;
   onDecidePilotMasterDataCandidate?: (
     recordId: string,
@@ -2009,6 +2011,7 @@ export function OpeningConditionWorkspaceShell({
               onPublishPilotBasisDecision={onPublishPilotBasisDecision}
               onRefreshPilotBasisPreview={onRefreshPilotBasisPreview}
               onIngestPilotBasisProviderPreview={onIngestPilotBasisProviderPreview}
+              onIngestPilotMasterDataProviderPreview={onIngestPilotMasterDataProviderPreview}
               onConfirmPilotMasterData={onConfirmPilotMasterData}
               onDecidePilotMasterDataCandidate={onDecidePilotMasterDataCandidate}
               onRunPilotMatch={onRunPilotMatch}
@@ -2030,6 +2033,7 @@ export function OpeningConditionWorkspaceShell({
               pilotBusy={pilotBusy}
               onRefreshBasisPreview={onRefreshPilotBasisPreview}
               onIngestProviderPreview={onIngestPilotBasisProviderPreview}
+              onIngestMasterDataProviderPreview={onIngestPilotMasterDataProviderPreview}
               onGoToPage={goToOpeningPage}
             />
           )}
@@ -3507,6 +3511,7 @@ function OpeningConditionPublicationGovernancePage({
   pilotBusy?: boolean;
   onRefreshBasisPreview?: (basisId: string) => void;
   onIngestProviderPreview?: (basisId: string) => void;
+  onIngestMasterDataProviderPreview?: (recordId: string) => void;
   onGoToPage?: (page: OpeningConditionPortalPage) => void;
 }) {
   const displayedBasisRecords = basisRecords && basisRecords.length > 0 ? basisRecords : packet.basisVersions;
@@ -3703,6 +3708,20 @@ function OpeningConditionPublicationGovernancePage({
                 </button>
               </div>
             )}
+            {item.assetType === "master_data" &&
+              onIngestMasterDataProviderPreview &&
+              item.meta.group !== "published" && (
+                <div className="dialog-actions compact">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => onIngestMasterDataProviderPreview(item.id)}
+                    disabled={pilotBusy}
+                  >
+                    导入 provider 候选预览
+                  </button>
+                </div>
+              )}
             <small>后端状态：{item.statusLabel}</small>
           </div>
         ))}

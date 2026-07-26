@@ -762,6 +762,49 @@ function buildSupervisorReportFallbackHtml(asset: Extract<ReviewResultAsset, { t
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><title>施工方案审查报告</title><style>body{font-family:SimSun,serif;margin:32pt;color:#20242a}table{border-collapse:collapse;width:100%}th,td{border:1px solid #8c949e;padding:5pt}h1{text-align:center}</style></head><body><h1>施工方案审查报告</h1><p><strong>文档：</strong>${escapeResultHtml(asset.documentName)}</p><p><strong>项目：</strong>${escapeResultHtml(asset.projectName)}</p><p><strong>生成时间：</strong>${escapeResultHtml(asset.createdAt)}</p><h2>审查整体情况</h2><p>${escapeResultHtml(asset.summary)}</p><p>总计：${stats?.total ?? 0}，采纳：${stats?.accepted ?? 0}，拒绝：${stats?.rejected ?? 0}</p><h2>审查意见明细</h2><table><tr><th>序号</th><th>问题标题</th><th>风险</th><th>处理</th><th>意见</th></tr>${issueRows || "<tr><td colspan=5>暂无审查意见。</td></tr>"}</table><h2>审查结论</h2><p>${escapeResultHtml(asset.conclusion)}</p></body></html>`;
 }
 
+function buildRevisedPlanSnapshotFallbackHtml(asset: Extract<ReviewResultAsset, { type: "revised-plan-snapshot" }>) {
+  const stats = asset.issueStats;
+  const acceptedRows = Array.isArray(asset.acceptedChanges)
+    ? asset.acceptedChanges
+        .slice(0, 100)
+        .map(
+          (change, index) =>
+            `<tr><td>${index + 1}</td><td>${escapeResultHtml(change.issueId)}</td><td>${escapeResultHtml(change.originalText)}</td><td>${escapeResultHtml(change.revisedText)}</td></tr>`,
+        )
+        .join("")
+    : "";
+  const rejectedRows = Array.isArray(asset.rejectedItems)
+    ? asset.rejectedItems
+        .slice(0, 100)
+        .map(
+          (item, index) =>
+            `<tr><td>${index + 1}</td><td>${escapeResultHtml(item.issueId)}</td><td>${escapeResultHtml(item.title)}</td><td>${escapeResultHtml(item.reason)}</td></tr>`,
+        )
+        .join("")
+    : "";
+  const paragraphItems = Array.isArray(asset.processedParagraphs)
+    ? asset.processedParagraphs
+        .slice(0, 120)
+        .map(
+          (paragraph, index) =>
+            `<article style="margin-bottom:10pt;"><p style="margin:0 0 3pt;"><strong>${index + 1}. ${escapeResultHtml(paragraph.section)}</strong></p><p style="margin:0;">${escapeResultHtml(paragraph.text)}</p></article>`,
+        )
+        .join("")
+    : "";
+
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><title>整改后方案快照</title><style>body{font-family:SimSun,serif;margin:32pt;color:#20242a}table{border-collapse:collapse;width:100%}th,td{border:1px solid #8c949e;padding:5pt;vertical-align:top;word-break:break-word}h1{text-align:center}</style></head><body><h1>整改后方案快照</h1><p><strong>文档：</strong>${escapeResultHtml(asset.documentName)}</p><p><strong>项目：</strong>${escapeResultHtml(asset.projectName)}</p><p><strong>生成时间：</strong>${escapeResultHtml(asset.createdAt)}</p><h2>处理概况</h2><p>${escapeResultHtml(asset.processingSummary)}</p><p>总数：${stats?.total ?? 0}，已采纳：${stats?.accepted ?? 0}，保留：${stats?.rejected ?? 0}</p><h2>已采纳修改</h2><table><tr><th>序号</th><th>问题ID</th><th>原文</th><th>整改后</th></tr>${acceptedRows || "<tr><td colspan=4>暂无已采纳修改。</td></tr>"}</table><h2>保留项</h2><table><tr><th>序号</th><th>问题ID</th><th>标题</th><th>原因</th></tr>${rejectedRows || "<tr><td colspan=4>暂无保留项。</td></tr>"}</table><h2>整改后文本快照</h2>${paragraphItems || "<p>暂无可导出的整改后文本。</p>"}</body></html>`;
+}
+
+function buildResultFallbackHtml(asset: ReviewResultAsset) {
+  if (asset.type === "supervisor-report") {
+    return buildSupervisorReportFallbackHtml(asset);
+  }
+  if (asset.type === "revised-plan-snapshot") {
+    return buildRevisedPlanSnapshotFallbackHtml(asset);
+  }
+  return "";
+}
+
 export function ResultPreviewPage({
   document,
   sessionSnapshot,
@@ -786,9 +829,13 @@ export function ResultPreviewPage({
   const [exportStatus, setExportStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportDownloadUrl, setExportDownloadUrl] = useState<string | null>(null);
+  const exportDocxLabel = asset?.type === "revised-plan-snapshot" ? "导出 DOCX 快照" : "导出 DOCX 报告";
+  const fallbackHtmlLabel = asset?.type === "revised-plan-snapshot" ? "下载 HTML 快照" : "下载 HTML 版";
+  const fallbackHtmlFilenamePrefix =
+    asset?.type === "revised-plan-snapshot" ? "施工方案整改快照" : "施工方案审查报告";
 
   async function handleExportDocx() {
-    if (!asset || asset.type !== "supervisor-report") {
+    if (!asset) {
       return;
     }
     setExportStatus("loading");
@@ -812,15 +859,20 @@ export function ResultPreviewPage({
   }
 
   function handleHtmlFallback() {
-    if (!asset || asset.type !== "supervisor-report") {
+    if (!asset) {
       return;
     }
-    const fallbackHtml = buildSupervisorReportFallbackHtml(asset);
+    const fallbackHtml = buildResultFallbackHtml(asset);
+    if (!fallbackHtml) {
+      return;
+    }
     const fallbackBlob = new Blob([fallbackHtml], { type: "text/html;charset=utf-8" });
     const fallbackUrl = URL.createObjectURL(fallbackBlob);
     const fallbackLink = window.document.createElement("a");
     fallbackLink.href = fallbackUrl;
+    fallbackLink.download = `${fallbackHtmlFilenamePrefix}-${asset.documentName || document.id}.html`;
     fallbackLink.download = `施工方案审查报告-${asset.documentName || document.id}.html`;
+    fallbackLink.download = `${fallbackHtmlFilenamePrefix}-${asset.documentName || document.id}.html`;
     fallbackLink.click();
     URL.revokeObjectURL(fallbackUrl);
     return;
@@ -894,7 +946,7 @@ export function ResultPreviewPage({
           </p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-end" }}>
-          {asset?.type === "supervisor-report" ? (
+          {asset ? (
             <>
               <button
                 type="button"

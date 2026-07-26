@@ -998,6 +998,95 @@ function normalizeMasterDataPreview(value, fallback = {}) {
   });
 }
 
+function normalizeMasterDataProviderPreview(input = {}, masterDataRecord = {}) {
+  const providerOutput = isPlainObject(input.providerOutput) ? input.providerOutput : isPlainObject(input.provider) ? input.provider : input;
+  const factsPayload = isPlainObject(providerOutput.facts) ? providerOutput.facts : providerOutput;
+  const explicitFacts = Array.isArray(input.facts)
+    ? input.facts.map(normalizeMasterDataPreviewFact).filter(Boolean).slice(0, 12)
+    : [];
+  const derivedFacts =
+    explicitFacts.length > 0
+      ? explicitFacts
+      : Object.entries(factsPayload)
+          .filter(([key]) => !unsafeKeyPattern.test(key))
+          .map(([key, value]) =>
+            normalizeMasterDataPreviewFact(
+              {
+                label: key,
+                value: typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : "",
+                source: "provider_structured_output",
+              },
+              0,
+            ),
+          )
+          .filter(Boolean)
+          .slice(0, 12);
+
+  const snippets = normalizeStringList(
+    Array.isArray(providerOutput.snippets)
+      ? providerOutput.snippets.map((item) => (isPlainObject(item) ? item.text ?? item.content ?? item.summary : item))
+      : [providerOutput.snippet ?? providerOutput.safeSnippet ?? providerOutput.boundedText],
+    5,
+    240,
+  );
+  const sourceEvidence = normalizeMasterDataSourceEvidence(
+    input.sourceEvidence,
+    Array.isArray(masterDataRecord.evidenceRefs) ? masterDataRecord.evidenceRefs : [],
+  );
+  const missingFields = Array.isArray(input.missingFields)
+    ? input.missingFields.map((item) => normalizeString(item, "", 120)).filter(Boolean).slice(0, 20)
+    : derivedFacts.length === 0
+      ? ["structured_fact_summary"]
+      : [];
+  const providerScore = Number(providerOutput.score ?? providerOutput.confidenceScore);
+  const confidence = ["high", "medium", "low"].includes(providerOutput.confidence)
+    ? providerOutput.confidence
+    : Number.isFinite(providerScore)
+      ? providerScore >= 0.8
+        ? "high"
+        : providerScore >= 0.5
+          ? "medium"
+          : "low"
+      : missingFields.length > 2
+        ? "medium"
+        : "high";
+  const matchedSignals = derivedFacts.map((fact) => fact.label).slice(0, 20);
+
+  return sanitizeOpeningConditionPilotValue({
+    status: normalizeString(input.status, "needs_confirmation", 80),
+    lifecycleLabel: deriveMasterDataLifecycle(masterDataRecord.status).lifecycleLabel,
+    readinessGroup: deriveMasterDataLifecycle(masterDataRecord.status).readinessGroup,
+    sourceEvidence,
+    facts: derivedFacts,
+    missingFields,
+    confidence,
+    nextAction:
+      normalizeString(
+        input.nextAction,
+        "",
+        300,
+      ) || "请人工确认候选主数据事实后，再决定是否作为当前 run 可用事实或发布为工作区可复用事实。",
+    safeNote: normalizeString(
+      input.safeNote,
+      masterDataRecord.preview?.safeNote ?? masterDataRecord.safeNote ?? "",
+      500,
+    ) || undefined,
+    provenance: sanitizeOpeningConditionPilotValue({
+      extractor: normalizeString(providerOutput.extractor, "provider_structured_master_data_preview_v1", 80),
+      source: "provider_structured_output",
+      provider: normalizeString(providerOutput.provider ?? input.providerName, "", 80) || undefined,
+      providerJobId: normalizeString(providerOutput.jobId ?? input.providerJobId, "", 180) || undefined,
+      providerDocumentId: normalizeString(providerOutput.documentId ?? input.providerDocumentId, "", 180) || undefined,
+      providerChunkId: normalizeString(providerOutput.chunkId ?? input.providerChunkId, "", 180) || undefined,
+      providerScore: Number.isFinite(providerScore) ? Math.max(0, Math.min(providerScore, 1)) : undefined,
+      extractedAt: normalizeString(providerOutput.extractedAt ?? input.extractedAt, new Date().toISOString(), 80),
+      boundedTextLength: snippets.join(" / ").length,
+      boundedTextExcerpt: snippets.join(" / ").slice(0, 500) || undefined,
+      matchedSignals,
+    }),
+  });
+}
+
 function normalizeMasterDataRecord(value, workspaceId = "") {
   if (!isPlainObject(value)) {
     return null;
@@ -3607,6 +3696,53 @@ export async function decideOpeningConditionPilotMasterDataRecord(workspaceId, r
       },
       value: {
         ok: true,
+        masterDataRecord: nextRecord,
+      },
+    };
+  }, options.storePath);
+}
+
+export async function ingestOpeningConditionPilotMasterDataProviderPreview(workspaceId, recordId, input = {}, options = {}) {
+  return mutateSnapshot((snapshot) => {
+    const index = snapshot.masterDataRecords.findIndex((item) => item.workspaceId === workspaceId && item.id === recordId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition master-data record not found.",
+        },
+      };
+    }
+
+    const existingRecord = snapshot.masterDataRecords[index];
+    const nextRecord = normalizeMasterDataRecord({
+      ...existingRecord,
+      preview: normalizeMasterDataProviderPreview(input, existingRecord),
+      safeNote: normalizeString(input.safeNote, existingRecord.safeNote ?? "", 500) || existingRecord.safeNote,
+    });
+    if (!nextRecord) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "invalid_record",
+          message: "Opening-condition master-data provider preview could not be normalized.",
+        },
+      };
+    }
+    const nextRecords = [...snapshot.masterDataRecords];
+    nextRecords[index] = nextRecord;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        masterDataRecords: nextRecords,
+      },
+      value: {
+        ok: true,
+        workspaceId,
         masterDataRecord: nextRecord,
       },
     };

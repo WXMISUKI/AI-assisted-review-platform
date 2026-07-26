@@ -24,7 +24,7 @@ import { generateReviewIssuesForDocument } from "./reviewLlmGenerator.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
 import { exportHtmlToDocxUrl } from "./httpToolsDocumentConversionAdapter.mjs";
-import { buildReviewReportHtml } from "./reviewReportHtml.mjs";
+import { buildReviewResultHtml } from "./reviewReportHtml.mjs";
 import {
   addManualReviewTaskIssue,
   completeReviewTaskDecision,
@@ -52,6 +52,7 @@ import {
   getOpeningConditionPilotTaskReadiness,
   initializeOpeningConditionPilotTaskIntake,
   ingestOpeningConditionPilotBasisProviderPreview,
+  ingestOpeningConditionPilotMasterDataProviderPreview,
   intakeOpeningConditionPilotPacket,
   bindOpeningConditionPilotKnowledgeBase,
   listOpeningConditionPilotHumanReviewItems,
@@ -931,6 +932,18 @@ export function createBackendServer(options = {}) {
         sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
         return;
       }
+
+      if (request.method === "POST" && recordId && action === "provider-preview") {
+        const body = await readJson(request);
+        const result = await ingestOpeningConditionPilotMasterDataProviderPreview(
+          workspaceId,
+          recordId,
+          body,
+          openingConditionStoreOptions,
+        );
+        sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+        return;
+      }
     }
 
     const openingConditionKnowledgeBaseMatch = url.pathname.match(
@@ -1119,31 +1132,35 @@ export function createBackendServer(options = {}) {
       }
 
       const asset = task.resultAsset;
-      if (!asset || asset.type !== "supervisor-report") {
+      if (!asset) {
         sendJson(response, 400, {
           ok: false,
           status: "missing_report",
-          message: "A supervisor-report result asset is required before exporting a DOCX report.",
+          message: "A review result asset is required before exporting a DOCX document.",
         });
         return;
       }
 
-      const html = buildReviewReportHtml(asset);
+      const html = buildReviewResultHtml(asset);
       if (!html) {
         sendJson(response, 400, {
           ok: false,
-          status: "build_failed",
-          message: "Failed to generate report HTML from result asset.",
+          status: "unsupported_result_type",
+          message: "The current result asset type is not supported for DOCX export.",
         });
         return;
       }
 
-      const safeDocumentName = String(asset.documentName || "review-report")
+      const safeDocumentName = String(asset.documentName || "review-result")
         .replace(/[^a-zA-Z0-9一-龥_-]/g, "_")
         .slice(0, 60);
+      const exportPrefix =
+        asset.type === "revised-plan-snapshot"
+          ? "construction-plan-revised-snapshot"
+          : "construction-plan-report";
       const exportResult = await exportHtmlToDocxUrl({
         html,
-        filename: `construction-plan-report-${safeDocumentName}-${taskId}.docx`,
+        filename: `${exportPrefix}-${safeDocumentName}-${taskId}.docx`,
       });
 
       if (!exportResult.ok) {

@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import test from "node:test";
 
-import { buildReviewReportHtml } from "./reviewReportHtml.mjs";
+import { buildReviewReportHtml, buildReviewResultHtml } from "./reviewReportHtml.mjs";
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -116,6 +115,46 @@ function createSupervisorReportAsset(overrides = {}) {
   };
 }
 
+function createRevisedPlanSnapshotAsset(overrides = {}) {
+  return {
+    id: "result-snapshot-1",
+    type: "revised-plan-snapshot",
+    documentName: "G15-10标承台施工方案",
+    projectName: "测试项目1",
+    mode: "review",
+    createdAt: "2026-07-26 10:10",
+    issueStats: { total: 3, pending: 0, accepted: 2, rejected: 1, modified: 0 },
+    acceptedIssueIds: ["issue-1", "issue-3"],
+    rejectedIssueIds: ["issue-2"],
+    processingSummary: "已根据采纳意见生成整改后快照<script>alert(3)</script>",
+    acceptedChanges: [
+      {
+        issueId: "issue-1",
+        originalText: "原文段落A",
+        revisedText: "整改后段落A<script>alert(4)</script>",
+      },
+    ],
+    rejectedItems: [
+      {
+        issueId: "issue-2",
+        title: "保留原文标题",
+        reason: "现场条件暂不满足修改",
+      },
+    ],
+    processedParagraphs: [
+      {
+        id: "p-1",
+        index: 0,
+        page: 1,
+        section: "4.3.1 基坑开挖技术措施",
+        type: "body",
+        text: "整改后文本快照第一段<script>alert(5)</script>",
+      },
+    ],
+    ...overrides,
+  };
+}
+
 function createTask(taskId, overrides = {}) {
   return {
     id: taskId,
@@ -157,6 +196,18 @@ test("review report html builder escapes unsafe text and includes required secti
   assert.match(html, /&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
 });
 
+test("revised plan snapshot html builder escapes unsafe text and includes required sections", async () => {
+  const html = buildReviewResultHtml(createRevisedPlanSnapshotAsset());
+
+  assert.ok(html);
+  assert.match(html, /整改后方案快照|鏁存敼鍚庢柟妗堝揩鐓?/);
+  assert.match(html, /处理概况|澶勭悊姒傚喌/);
+  assert.match(html, /已采纳修改|宸查噰绾充慨鏀?/);
+  assert.match(html, /&lt;script&gt;alert\(3\)&lt;\/script&gt;/);
+  assert.match(html, /&lt;script&gt;alert\(4\)&lt;\/script&gt;/);
+  assert.match(html, /&lt;script&gt;alert\(5\)&lt;\/script&gt;/);
+});
+
 test("report export endpoint returns missing_report when result asset is absent", async () => {
   await writeReviewStore(tempDir, [createTask("task-no-report", { resultAsset: undefined })]);
   const backend = await importFreshBackendServer(tempDir, { HTTP_TOOLS_BASE_URL: "" });
@@ -190,6 +241,37 @@ test("report export endpoint returns safe export_failed diagnostics when http to
       baseUrl,
       "POST",
       "/api/review-tasks/task-export-fallback/report/export-docx",
+      {},
+    );
+
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.payload.ok, false);
+    assert.equal(response.payload.status, "export_failed");
+    assert.equal(response.payload.adapterStatus, "not_configured");
+    assert.equal(response.payload.fallback, "html");
+    assert.ok(Array.isArray(response.payload.safeDiagnostics));
+    assert.ok(response.payload.safeDiagnostics.includes("capability:html2docx"));
+  } finally {
+    await close(server);
+    backend.restore();
+  }
+});
+
+test("revised snapshot export returns safe export_failed diagnostics when http tools are not configured", async () => {
+  await writeReviewStore(tempDir, [
+    createTask("task-snapshot-export-fallback", {
+      resultAsset: createRevisedPlanSnapshotAsset(),
+    }),
+  ]);
+  const backend = await importFreshBackendServer(tempDir, { HTTP_TOOLS_BASE_URL: "", HTTP_TOOLS_TIMEOUT_MS: "1500" });
+  const server = backend.createBackendServer();
+
+  try {
+    const baseUrl = await listen(server);
+    const response = await requestJson(
+      baseUrl,
+      "POST",
+      "/api/review-tasks/task-snapshot-export-fallback/report/export-docx",
       {},
     );
 

@@ -219,6 +219,11 @@ The pilot operational API SHALL include bounded delivery handoff fields in repor
 ### Requirement: Master-data candidate API diagnostics
 The pilot operational API SHALL return bounded diagnostics for master-data candidates and decisions.
 
+#### Scenario: Operator ingests master-data provider preview
+- **WHEN** the frontend submits provider structured preview output for a workspace master-data record
+- **THEN** the API returns the normalized master-data record with safe preview facts, missing fields, confidence, source evidence, and next action
+- **AND** the API does not expose raw provider traces, private URLs, prompts, credentials, or unbounded OCR text
+
 #### Scenario: Master data is listed
 - **WHEN** the frontend requests workspace master data
 - **THEN** the API returns lifecycle status, operator-facing readiness fields, source evidence, candidate facts, missing fields, confidence, and next action where available
@@ -233,6 +238,11 @@ The pilot operational API SHALL return bounded diagnostics for master-data candi
 
 ### Requirement: Preflight master-data readiness diagnostics
 The pilot operational API SHALL explain master-data readiness using operator-facing blocking reasons.
+
+#### Scenario: Provider-derived candidate is not yet usable
+- **WHEN** a current run depends on master-data records that only have provisional provider-derived preview facts
+- **THEN** the API keeps formal matching blocked or gated according to existing rules
+- **AND** the returned readiness explains that provider preview alone does not make the record usable for formal checks
 
 #### Scenario: Required master data is missing
 - **WHEN** formal matching readiness is evaluated and required master data is absent

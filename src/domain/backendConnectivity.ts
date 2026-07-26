@@ -1127,6 +1127,40 @@ export async function decideOpeningConditionPilotMasterData(
   return readJson<OpeningConditionPilotMasterDataResult>(response);
 }
 
+export async function ingestOpeningConditionPilotMasterDataProviderPreview(
+  workspaceId: string,
+  recordId: string,
+  input: {
+    providerOutput?: Record<string, unknown>;
+    provider?: Record<string, unknown>;
+    facts?: Array<Record<string, unknown> | string>;
+    snippets?: Array<Record<string, unknown> | string>;
+    snippet?: string;
+    safeSnippet?: string;
+    boundedText?: string;
+    providerName?: string;
+    providerJobId?: string;
+    providerDocumentId?: string;
+    providerChunkId?: string;
+    sourceEvidence?: Array<Record<string, unknown> | string>;
+    missingFields?: string[];
+    safeNote?: string;
+    nextAction?: string;
+  } = {},
+) {
+  const response = await fetch(
+    `/api/opening-condition/workspaces/${encodeURIComponent(workspaceId)}/master-data/${encodeURIComponent(recordId)}/provider-preview`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    },
+  );
+  return readJson<OpeningConditionPilotMasterDataResult>(response);
+}
+
 export async function fetchOpeningConditionPilotHumanReview(taskId: string) {
   const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/human-review`);
   return readJson<OpeningConditionPilotHumanReviewResult>(response);

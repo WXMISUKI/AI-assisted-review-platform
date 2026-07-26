@@ -22,6 +22,7 @@ import {
   generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotIntake,
   ingestOpeningConditionPilotBasisProviderPreview,
+  ingestOpeningConditionPilotMasterDataProviderPreview,
   publishOpeningConditionPilotBasis,
   refreshOpeningConditionPilotBasisPreview,
   runOpeningConditionPilotMatch,
@@ -744,6 +745,73 @@ export function App() {
     }
   }
 
+  async function ingestOpeningPilotMasterDataProviderPreview(recordId: string) {
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可导入 provider 预览的主数据记录，请先初始化试点任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，不能再导入主数据 provider 预览；请发起新的整改复审 run。");
+      return;
+    }
+
+    const record = openingPilotMasterDataRecords.find((item) => item.id === recordId);
+    if (!record) {
+      setOpeningPilotStatus("未找到对应的主数据记录，无法导入 provider 预览。");
+      return;
+    }
+
+    setOpeningPilotBusy(true);
+    try {
+      const previewFacts = record.preview?.facts ?? [];
+      const result = await ingestOpeningConditionPilotMasterDataProviderPreview(
+        openingPilotTask.context.workspaceId,
+        recordId,
+        {
+          providerOutput: {
+            provider: "mock-ocr-provider",
+            jobId: `demo-master-data-${recordId}`,
+            extractedAt: new Date().toISOString(),
+            score: 0.78,
+            facts: Object.fromEntries(
+              previewFacts.map((fact) => [fact.label, fact.value]).filter((entry) => entry[0] && entry[1]),
+            ),
+            snippets: [
+              record.preview?.safeNote ??
+                record.safeNote ??
+                record.evidenceRefs?.[0]?.summary ??
+                record.evidenceRefs?.[0]?.fileName ??
+                record.label,
+            ],
+          },
+          sourceEvidence:
+            record.preview?.sourceEvidence?.length && record.preview.sourceEvidence.length > 0
+              ? record.preview.sourceEvidence
+              : record.evidenceRefs?.map((item) => item.fileName).filter(Boolean),
+          missingFields: record.preview?.missingFields ?? [],
+          safeNote: "Operator imported provider structured preview into master-data candidate governance.",
+        },
+      );
+
+      if (!result.ok) {
+        setOpeningPilotStatus(result.message ?? "主数据 provider 预览导入失败。");
+        return;
+      }
+
+      setOpeningPilotMasterDataRecords((result.masterDataRecords ?? []).length > 0 ? result.masterDataRecords : openingPilotMasterDataRecords);
+      await refreshOpeningPilotTask(openingPilotTask.id, { preserveStatus: true });
+      const providerName =
+        typeof result.masterDataRecord?.preview?.provenance?.provider === "string"
+          ? result.masterDataRecord.preview.provenance.provider
+          : "provider";
+      setOpeningPilotStatus(`已导入 ${providerName} 主数据候选预览，请人工确认后再决定是否发布。`);
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "主数据 provider 预览导入失败。");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
   async function exportOpeningPilotReportDocx(taskId = openingPilotTask?.id) {
     const targetTask = openingPilotAllTasks.find((task) => task.id === taskId) ?? openingPilotTask;
     if (!targetTask?.reportAsset || !taskId) {
@@ -961,6 +1029,7 @@ export function App() {
       onPublishPilotBasisDecision={(basisId, safeNote) => void publishOpeningPilotBasisRecord({ basisId, safeNote })}
       onRefreshPilotBasisPreview={(basisId) => void refreshOpeningPilotBasisPreview(basisId)}
       onIngestPilotBasisProviderPreview={(basisId) => void ingestOpeningPilotBasisProviderPreview(basisId)}
+      onIngestPilotMasterDataProviderPreview={(recordId) => void ingestOpeningPilotMasterDataProviderPreview(recordId)}
       onConfirmPilotMasterData={() => void confirmOpeningPilotMasterDataRecords()}
       onDecidePilotMasterDataCandidate={(recordId, decision, safeNote) =>
         void decideOpeningPilotMasterDataRecord(recordId, decision, safeNote)
