@@ -25,6 +25,14 @@ test("product boundary smoke keeps the two MVP contracts independent", async () 
     packageJson.scripts["smoke:opening-condition"],
     "node --test server/openingConditionPilotStore.test.mjs",
   );
+  assert.equal(
+    packageJson.scripts["smoke:opening-condition:http"],
+    "node --test server/openingConditionPilotHttpSmoke.test.mjs server/openingConditionPilotWorkspaceAssetRegistrySmoke.test.mjs",
+  );
+  assert.equal(
+    packageJson.scripts["smoke:opening-condition:acceptance"],
+    "node scripts/openingConditionAcceptanceSmoke.mjs",
+  );
   assert.equal(packageJson.scripts.typecheck, "tsc --noEmit");
 });
 
@@ -37,4 +45,3 @@ test("product boundary smoke keeps the construction-plan entry independent", asy
   assert.doesNotMatch(constructionSource, /openingConditionPilotStore/);
   assert.doesNotMatch(openingSource, /ReviewWorkbenchPage/);
 });
-

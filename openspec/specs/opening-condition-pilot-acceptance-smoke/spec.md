@@ -27,6 +27,11 @@ The system SHALL provide a retained smoke gate that verifies the single-project 
 - **WHEN** a developer runs the opening-condition smoke npm script
 - **THEN** the retained test executes the pilot acceptance scenarios without requiring browser interaction or provider secrets
 
+#### Scenario: Unified acceptance command runs all smoke layers
+- **WHEN** an operator or developer runs the opening-condition acceptance command
+- **THEN** the command executes the retained domain smoke, HTTP smoke, and UI smoke in sequence
+- **AND** the output identifies which smoke layer passed or failed
+
 ### Requirement: HTTP opening-condition pilot smoke gate
 The system SHALL provide an HTTP-level smoke path that verifies the opening-condition pilot chain through public API routes without exposing provider secrets, raw OCR text, raw prompts, private object URLs, or browser-local paths.
 
@@ -63,3 +68,8 @@ The opening-condition pilot acceptance smoke SHALL verify that the backend accep
 - **WHEN** the smoke archives the same task
 - **THEN** the acceptance snapshot marks the archive step complete
 - **AND** the overall snapshot is completed and read-only
+
+#### Scenario: Runbook references the same acceptance entry
+- **WHEN** the single-project trial runbook describes preflight or regression verification
+- **THEN** it references the same acceptance command
+- **AND** it explains that the command covers domain, HTTP, and UI smoke layers

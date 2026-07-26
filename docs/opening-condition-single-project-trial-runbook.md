@@ -135,7 +135,13 @@
 联调时请记录页面显示的新任务 ID，以及是否仍出现 `Cannot reinitialize opening-condition pilot task while task is archived.`。修复后的预期是：已归档旧任务保持不变，新上传进入新的 `packet_uploaded` 或后端派生状态。
 ## 自动化验收 smoke
 
-每次修改开工条件链路的状态、按钮边界、报告页或后端路由后，至少执行：
+每次修改开工条件链路的状态、按钮边界、报告页或后端路由后，优先执行统一验收入口：
+
+```bash
+npm run smoke:opening-condition:acceptance
+```
+
+该命令会顺序执行 domain / HTTP / UI 三层 smoke，并输出当前失败层级。若需要定点排查，再分别执行：
 
 ```bash
 npm run smoke:opening-condition
