@@ -515,4 +515,6 @@ export interface CreateReviewTaskInput {
   recoveredStructure?: RecoveredDocumentStructure;
   previousTaskId?: string;
   issues?: ReviewIssue[];
+  reviewGenerationRun?: ReviewGenerationRunSnapshot;
+  reviewGenerationActivities?: ReviewGenerationActivity[];
 }

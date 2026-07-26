@@ -3,3 +3,36 @@
  * Keep selectors scoped to construction-plan pages and use semantic theme tokens.
  */
 
+.review-generation-notice {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin: 0 1.25rem 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.35));
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--surface-elevated, #111827) 92%, transparent);
+  color: var(--text-primary, #e5e7eb);
+}
+
+.review-generation-notice strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.review-generation-notice p {
+  margin: 0;
+  color: var(--text-secondary, #cbd5e1);
+  line-height: 1.45;
+}
+
+.review-generation-notice.degraded {
+  border-color: color-mix(in srgb, #f59e0b 55%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
+.review-generation-notice.failed {
+  border-color: color-mix(in srgb, #ef4444 55%, transparent);
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+}
+

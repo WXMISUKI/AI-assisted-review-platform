@@ -3,14 +3,12 @@ import {
   ArrowLeft,
   Archive,
   BookOpen,
-  ClipboardCheck,
   EyeOff,
   FileSearch,
   LogOut,
   RotateCcw,
   ShieldCheck,
   SunMoon,
-  Upload,
   Users,
 } from "lucide-react";
 import { ConnectivityStatus, formatFileSize, MetricBlock, NavButton } from "./appShellDisplay";
@@ -53,6 +51,7 @@ import type {
   OpeningConditionPilotLegalBasisReference,
   OpeningConditionPilotTask,
 } from "./domain/openingConditionPilot";
+import { openingConditionPilotStateLabels } from "./domain/openingConditionPilot";
 
 // Opening-condition product boundary: workspace, preflight, packet matching, human review,
 // rectification runs, report delivery, and archive history.
@@ -79,14 +78,25 @@ import {
 const openingWorkspaceNav: Array<{
   id: OpeningConditionPortalPage;
   label: string;
+  icon: typeof BookOpen;
 }> = [
-  { id: "workspace-context", label: "工作台概览" },
-  { id: "material-intake", label: "资料接入" },
-  { id: "basis-sets", label: "资产治理（后续）" },
-  { id: "check-tasks", label: "资料核查" },
-  { id: "human-review", label: "人工复核" },
-  { id: "reports", label: "报告归档" },
+  { id: "workspace-context", label: "核查任务台账", icon: BookOpen },
+  { id: "human-review", label: "人工复核", icon: FileSearch },
+  { id: "reports", label: "报告归档", icon: Archive },
+  { id: "basis-sets", label: "资产治理（后续）", icon: ShieldCheck },
 ];
+
+const openingWorkspacePageLabels: Record<OpeningConditionPortalPage, string> = {
+  "workspace-context": "核查任务台账",
+  "material-intake": "资料接入执行页",
+  "basis-sets": "资产治理（后续）",
+  "master-data": "主数据治理",
+  "check-tasks": "资料核查详情",
+  "human-review": "人工复核",
+  reports: "报告归档",
+};
+
+const openingPrimaryNavPageIds = new Set<OpeningConditionPortalPage>(openingWorkspaceNav.map((item) => item.id));
 
 const readinessLabels: Record<string, string> = {
   ready: "就绪",
@@ -298,6 +308,249 @@ type ReportFindingGroup = {
   tone: "danger" | "warning" | "info" | "muted";
   findings: ReportFinding[];
 };
+
+type OpeningConditionTaskWorkbenchRow = {
+  taskId: string;
+  roundLabel: string;
+  targetLabel: string;
+  participantLabel: string;
+  stateLabel: string;
+  stateTone: "danger" | "warning" | "success" | "info" | "muted";
+  owner: string;
+  nextAction: string;
+  totalCheckItems: number;
+  problemCount: number;
+  openHumanReviewCount: number;
+  evidenceCount: number;
+  reportLabel: string;
+  reportTone: "danger" | "warning" | "success" | "info" | "muted";
+  updatedAt: string;
+  readOnly: boolean;
+  recommendedPage: OpeningConditionPortalPage;
+  actionLabel: string;
+};
+
+function getOpeningConditionTaskStateTone(
+  state: OpeningConditionPilotTask["state"],
+): OpeningConditionTaskWorkbenchRow["stateTone"] {
+  switch (state) {
+    case "archived":
+    case "report_ready":
+      return "success";
+    case "awaiting_human_review":
+    case "packet_uploaded":
+    case "extracting":
+    case "matching":
+      return "info";
+    case "blocked_missing_basis":
+    case "blocked_missing_master_data":
+      return "warning";
+    case "failed":
+    case "canceled":
+      return "danger";
+    default:
+      return "muted";
+  }
+}
+
+function getOpeningConditionTaskReportStatus(task: OpeningConditionPilotTask): {
+  label: string;
+  tone: OpeningConditionTaskWorkbenchRow["reportTone"];
+} {
+  if (task.state === "archived") {
+    return { label: task.reportAsset?.status === "ready" ? "已归档，可查看报告" : "已归档，报告待补齐", tone: "success" };
+  }
+
+  if (task.reportAsset?.status === "ready") {
+    return { label: "报告已生成", tone: "success" };
+  }
+
+  if (task.state === "report_ready") {
+    return { label: "待生成报告", tone: "warning" };
+  }
+
+  if (task.state === "awaiting_human_review") {
+    return { label: "复核后生成", tone: "info" };
+  }
+
+  return { label: "尚未到报告阶段", tone: "muted" };
+}
+
+function getOpeningConditionFallbackPage(task: OpeningConditionPilotTask): OpeningConditionPortalPage {
+  if (task.state === "archived" || task.state === "report_ready" || task.reportAsset?.status === "ready") {
+    return "reports";
+  }
+  if (task.state === "awaiting_human_review") {
+    return "human-review";
+  }
+  if (task.checkItems.length > 0 || task.state === "extracting" || task.state === "matching") {
+    return "check-tasks";
+  }
+  return "material-intake";
+}
+
+function getOpeningConditionFallbackActionLabel(page: OpeningConditionPortalPage) {
+  switch (page) {
+    case "reports":
+      return "查看报告";
+    case "human-review":
+      return "处理复核";
+    case "check-tasks":
+      return "查看核查";
+    case "material-intake":
+      return "继续接入";
+    default:
+      return "进入详情";
+  }
+}
+
+function deriveOpeningConditionTaskWorkbenchRows({
+  selectedWorkspaceId,
+  currentWorkspace,
+  pilotTask,
+  allPilotTasks,
+  pilotReadiness,
+}: {
+  selectedWorkspaceId: string;
+  currentWorkspace: OpeningConditionWorkspace;
+  pilotTask?: OpeningConditionPilotTask | null;
+  allPilotTasks?: OpeningConditionPilotTask[];
+  pilotReadiness?: OpeningConditionPilotReadinessResult | null;
+}): OpeningConditionTaskWorkbenchRow[] {
+  const byId = new Map<string, OpeningConditionPilotTask>();
+  (allPilotTasks ?? [])
+    .filter((task) => task.context.workspaceId === selectedWorkspaceId)
+    .forEach((task) => byId.set(task.id, task));
+
+  if (pilotTask && pilotTask.context.workspaceId === selectedWorkspaceId) {
+    byId.set(pilotTask.id, pilotTask);
+  }
+
+  const tasks = [...byId.values()].sort(compareTaskByUpdatedAtDesc);
+  const roundMap = buildRunRoundMap(tasks);
+
+  return tasks.map((task) => {
+    const ownership = deriveOpeningConditionRunActionOwnership({
+      pilotTask: task,
+      readiness: task.id === pilotTask?.id ? pilotReadiness : undefined,
+    });
+    const findings = buildReportFindings(task);
+    const problemCount = findings.filter((item) =>
+      item.disposition === "fail" || item.disposition === "reject" || item.disposition === "blocked"
+    ).length;
+    const openHumanReviewCount = task.humanReviewQueue.filter(
+      (item) => item.status === "open" || item.status === "deferred",
+    ).length;
+    const reportStatus = getOpeningConditionTaskReportStatus(task);
+    const recommendedPage = ownership?.recommendedPage ?? getOpeningConditionFallbackPage(task);
+
+    return {
+      taskId: task.id,
+      roundLabel: `第 ${roundMap.get(task.id) ?? "-"} 轮`,
+      targetLabel: currentWorkspace.reviewObjectName,
+      participantLabel: currentWorkspace.participantEntityName,
+      stateLabel: openingConditionPilotStateLabels[task.state] ?? task.state,
+      stateTone: getOpeningConditionTaskStateTone(task.state),
+      owner: ownership?.currentOwner ?? "资料接入责任人",
+      nextAction: ownership?.nextAction ?? "进入资料接入，创建或恢复本轮核查任务。",
+      totalCheckItems: task.checkItems.length || task.checklistDefinition.length,
+      problemCount,
+      openHumanReviewCount,
+      evidenceCount: task.evidence.length,
+      reportLabel: reportStatus.label,
+      reportTone: reportStatus.tone,
+      updatedAt: task.updatedAt,
+      readOnly: ownership?.readOnly ?? task.state === "archived",
+      recommendedPage,
+      actionLabel: ownership?.primaryActionLabel ?? getOpeningConditionFallbackActionLabel(recommendedPage),
+    };
+  });
+}
+
+function OpeningConditionReviewTaskWorkbench({
+  rows,
+  onGoToIntake,
+  onGoToPage,
+}: {
+  rows: OpeningConditionTaskWorkbenchRow[];
+  onGoToIntake: () => void;
+  onGoToPage: (page: OpeningConditionPortalPage) => void;
+}) {
+  return (
+    <section className="opening-panel opening-panel-wide opening-task-workbench-panel">
+      <div className="opening-report-workbench-header">
+        <div>
+          <span className="eyebrow">Review Task Workbench</span>
+          <h2>开工条件核查任务台账</h2>
+          <p>按轮次查看资料接入、智能核查、人工复核、报告生成和归档状态。先看任务行，再进入详情处理。</p>
+        </div>
+        <div className="dialog-actions compact">
+          <button type="button" className="primary" onClick={onGoToIntake}>
+            新建/上传资料
+          </button>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="opening-task-workbench-empty">
+          <strong>当前工作区还没有核查任务</strong>
+          <p>先进入资料接入页，上传合同/资质依据、资料核查表和条件核查资料包，系统会生成第一条试点任务。</p>
+          <button type="button" className="primary" onClick={onGoToIntake}>
+            进入资料接入
+          </button>
+        </div>
+      ) : (
+        <div className="opening-task-workbench-list">
+          {rows.map((row) => (
+            <article key={row.taskId} className="opening-task-workbench-row">
+              <div className="opening-task-workbench-main">
+                <div className="opening-task-workbench-title">
+                  <strong>{row.roundLabel}</strong>
+                  <span>{row.targetLabel}</span>
+                  <small>{row.participantLabel}</small>
+                </div>
+                <div className="opening-report-chip-row">
+                  <span className={`opening-report-chip tone-${row.stateTone}`}>{row.stateLabel}</span>
+                  {row.readOnly && <span className="opening-report-chip tone-muted">历史只读</span>}
+                  <span className={`opening-report-chip tone-${row.reportTone}`}>{row.reportLabel}</span>
+                </div>
+                <p>{row.nextAction}</p>
+                <small className="opening-task-workbench-id">{row.taskId}</small>
+              </div>
+
+              <div className="opening-task-workbench-stats">
+                <span>
+                  <strong>{row.totalCheckItems}</strong>
+                  核查项
+                </span>
+                <span className={row.problemCount > 0 ? "tone-danger" : "tone-success"}>
+                  <strong>{row.problemCount}</strong>
+                  问题
+                </span>
+                <span className={row.openHumanReviewCount > 0 ? "tone-warning" : "tone-success"}>
+                  <strong>{row.openHumanReviewCount}</strong>
+                  待复核
+                </span>
+                <span>
+                  <strong>{row.evidenceCount}</strong>
+                  证据
+                </span>
+              </div>
+
+              <div className="opening-task-workbench-action">
+                <small>处理人：{row.owner}</small>
+                <small>更新：{row.updatedAt}</small>
+                <button type="button" className="secondary" onClick={() => onGoToPage(row.recommendedPage)}>
+                  {row.actionLabel}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
 type RectificationClosureItem = {
   id: string;
@@ -795,7 +1048,8 @@ export function OpeningConditionWorkspaceShell({
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
   getNextOpeningPilotRunTaskId?: () => string;
 }) {
-  const activeNav = openingWorkspaceNav.find((item) => item.id === activePage) ?? openingWorkspaceNav[0];
+  const activeNavLabel = openingWorkspacePageLabels[activePage] ?? openingWorkspacePageLabels["workspace-context"];
+  const activePageIsPrimary = openingPrimaryNavPageIds.has(activePage);
 
   return (
     <main className="platform-shell opening-portal-shell">
@@ -812,24 +1066,18 @@ export function OpeningConditionWorkspaceShell({
           {openingWorkspaceNav.map((item) => (
             <NavButton
               key={item.id}
-              icon={
-                item.id === "workspace-context"
-                  ? BookOpen
-                  : item.id === "material-intake"
-                    ? Upload
-                    : item.id === "basis-sets"
-                      ? BookOpen
-                      : item.id === "check-tasks"
-                        ? ClipboardCheck
-                        : item.id === "human-review"
-                          ? FileSearch
-                          : Archive
-              }
+              icon={item.icon}
               label={item.label}
               active={activePage === item.id}
               onClick={() => onSelectPage(item.id)}
             />
           ))}
+          {!activePageIsPrimary && (
+            <button type="button" className="theme-toggle" onClick={() => onSelectPage("workspace-context")}>
+              <ArrowLeft size={16} />
+              返回核查任务台账
+            </button>
+          )}
         </nav>
 
         <div className="shell-sidebar-foot">
@@ -853,7 +1101,7 @@ export function OpeningConditionWorkspaceShell({
         <header className="shell-topbar">
           <div>
             <span className="eyebrow">AI资料审查平台 / 开工条件核查</span>
-            <h1>{activeNav.label}</h1>
+            <h1>{activeNavLabel}</h1>
             <div className="opening-shell-context-meta">
               <span>{packet.workspaceContext.projectCode}</span>
               <span>{packet.workspaceContext.reviewObjectName}</span>
@@ -1101,6 +1349,17 @@ function OpeningConditionObjectOverviewProductizedPage({
     pilotTask,
     readiness: pilotReadiness,
   });
+  const taskWorkbenchRows = useMemo(
+    () =>
+      deriveOpeningConditionTaskWorkbenchRows({
+        selectedWorkspaceId,
+        currentWorkspace,
+        pilotTask,
+        allPilotTasks,
+        pilotReadiness,
+      }),
+    [allPilotTasks, currentWorkspace, pilotReadiness, pilotTask, selectedWorkspaceId],
+  );
   const activeCheckItems = pilotTask?.checkItems.length ?? verdictSummary.total;
   const evidenceCount = pilotTask?.evidence.length ?? packet.evidence.length;
   const activeHumanReviews =
@@ -1137,6 +1396,12 @@ function OpeningConditionObjectOverviewProductizedPage({
         <MetricBlock label="高风险" value={riskSummary.critical + riskSummary.high} tone="danger" />
         <MetricBlock label="证据" value={evidenceCount} tone={readiness.status === "ready" ? "success" : "neutral"} />
       </section>
+
+      <OpeningConditionReviewTaskWorkbench
+        rows={taskWorkbenchRows}
+        onGoToIntake={onGoToIntake}
+        onGoToPage={onGoToPage}
+      />
 
       {actionOwnership ? (
         <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />

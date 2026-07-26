@@ -207,9 +207,13 @@ function getGenerationRunSummaryLabel(document: LibraryDocument) {
   }
 
   if (run.status === "degraded") {
-    return run.diagnostics?.message
-      ? `降级可审查 · ${run.diagnostics.status}`
-      : `降级可审查 · ${run.generatedIssueCount} 条候选`;
+    if (run.diagnostics?.message) {
+      const shortMessage = run.diagnostics.message.length > 36
+        ? `${run.diagnostics.message.slice(0, 36)}…`
+        : run.diagnostics.message;
+      return `规则兜底可审查 · ${shortMessage}`;
+    }
+    return `规则兜底可审查 · ${run.generatedIssueCount} 条候选`;
   }
 
   if (run.status === "failed") {

@@ -26,6 +26,7 @@ import type {
   ReviewGenerationActivity,
   ReviewGenerationRunActiveStage,
   ReviewGenerationRunDiagnostics,
+  ReviewGenerationRunSnapshot,
   ReviewGenerationRunStatus,
   ReviewIssue,
   ReviewMode,
@@ -39,6 +40,95 @@ import type {
   ReviewViewContext,
 } from "./reviewTypes";
 
+function nowIsoString() {
+  return new Date().toISOString();
+}
+
+export function buildDocxIssueGenerationSnapshot(input: {
+  issues: ReviewIssue[];
+  llmIssueCount?: number;
+  ruleIssueCount?: number;
+  message?: string;
+}): {
+  reviewGenerationRun: ReviewGenerationRunSnapshot;
+  reviewGenerationActivities: ReviewGenerationActivity[];
+  issues: ReviewIssue[];
+} {
+  const issues = Array.isArray(input.issues) ? input.issues : [];
+  const llmIssueCount = Number.isFinite(input.llmIssueCount) ? Number(input.llmIssueCount) : 0;
+  const ruleIssueCount = Number.isFinite(input.ruleIssueCount)
+    ? Number(input.ruleIssueCount)
+    : issues.filter((issue) => issue.kernel?.engineSource === "rule" || issue.id.startsWith("rule-")).length;
+  const hasLlm = llmIssueCount > 0 || issues.some((issue) => issue.id.startsWith("llm-"));
+  const hasRule = ruleIssueCount > 0 || issues.some((issue) => issue.kernel?.engineSource === "rule" || issue.id.startsWith("rule-"));
+  const status: ReviewGenerationRunStatus = !hasLlm && hasRule
+    ? "degraded"
+    : hasLlm && hasRule
+      ? "degraded"
+      : issues.length > 0
+        ? "ready"
+        : "degraded";
+  const generationSource: ReviewDraftIssueGenerationSource = hasLlm && !hasRule
+    ? "llm"
+    : "deterministic-fallback";
+  const message = input.message
+    || (!hasLlm && hasRule
+      ? `LLM 未返回问题，已使用规则兜底 ${issues.length} 条，可继续人工审查。`
+      : hasLlm && hasRule
+        ? `已合并 LLM ${llmIssueCount || issues.filter((issue) => issue.id.startsWith("llm-")).length} 条与规则 ${ruleIssueCount} 条，可继续人工审查。`
+        : hasLlm
+          ? `DOCX 审查问题已生成 ${issues.length} 条。`
+          : "未生成审查问题，请检查文档内容或重新解析。");
+
+  const startedAt = nowIsoString();
+  const completedAt = nowIsoString();
+  const runId = `docx-gen-${Date.now().toString(36)}`;
+  const taggedIssues: ReviewIssue[] = issues.map((issue) => {
+    const isRule = issue.kernel?.engineSource === "rule" || issue.id.startsWith("rule-");
+    return {
+      ...issue,
+      generation: issue.generation ?? {
+        generationRunId: runId,
+        generationSource: isRule ? "deterministic-fallback" : generationSource,
+        generatedAt: completedAt,
+      },
+    };
+  });
+
+  const reviewGenerationRun: ReviewGenerationRunSnapshot = {
+    runId,
+    status,
+    startedAt,
+    updatedAt: completedAt,
+    completedAt,
+    activeStage: undefined,
+    generatedIssueCount: taggedIssues.length,
+    diagnostics: {
+      status: status === "degraded" ? "rule-fallback" : "ready",
+      message,
+      source: hasLlm ? "draft-issue-generation" : "local-fallback",
+    },
+  };
+
+  const reviewGenerationActivities: ReviewGenerationActivity[] = [
+    {
+      id: `docx-gen-act-${Date.now().toString(36)}`,
+      type: status === "degraded" ? "run-degraded" : "run-ready",
+      occurredAt: completedAt,
+      runId,
+      status,
+      issueCount: taggedIssues.length,
+      message,
+    },
+  ];
+
+  return {
+    reviewGenerationRun,
+    reviewGenerationActivities,
+    issues: taggedIssues,
+  };
+}
+
 function nowString() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
@@ -46,10 +136,6 @@ function nowString() {
   ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
     date.getMinutes(),
   ).padStart(2, "0")}`;
-}
-
-function nowIsoString() {
-  return new Date().toISOString();
 }
 
 function cloneParagraphs(paragraphs: DocumentParagraph[]) {
@@ -468,6 +554,10 @@ export function createDocumentTask(
     ocrJob: input.ocrJob,
     failure: input.status === "failed" ? input.failure : undefined,
     previousTaskId: input.previousTaskId,
+    reviewGenerationRun: input.reviewGenerationRun,
+    reviewGenerationActivities: input.reviewGenerationActivities
+      ? input.reviewGenerationActivities.map((activity) => structuredClone(activity))
+      : undefined,
   };
 
   return saveReviewTasks([newTask, ...tasks]);

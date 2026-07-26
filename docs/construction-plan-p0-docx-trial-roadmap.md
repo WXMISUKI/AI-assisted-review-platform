@@ -72,6 +72,13 @@ pnpm smoke:review
 pnpm smoke:review:docx
 ```
 
+## P0 收口（2026-07-26）
+
+| 任务 | 目标 | 规格 |
+|------|------|------|
+| 规则兜底提示 | LLM 空/失败时，文档库 + 工作台明确“规则兜底可审查” | `openspec/changes/2026-07-26-construction-plan-p0-rule-fallback-notice/` |
+| 锚点验收 | DOCX smoke 校验 issue.anchor.paragraphId 可落回真实段落 | 同上 |
+
 ## 下一阶段（不在本 P0 实现）
 
 1. 开工条件 MaxKB 本机联调（P1，另一窗口）

@@ -218,3 +218,40 @@ The opening-condition MVP SHALL be considered minimally runnable when one run ca
 #### Scenario: Current run is archived
 - **WHEN** a pilot run is archived with a report asset
 - **THEN** the MVP status shows the run as closed and points the operator to report history or next-round rerun
+
+### Requirement: Review task workbench
+The opening-condition portal SHALL provide a task-list workbench as the primary MVP entry for pilot runs.
+
+#### Scenario: Operator opens workspace overview
+- **WHEN** a workspace has current or historical opening-condition pilot runs
+- **THEN** the overview shows each run as a review task row with run id, review target, state, current owner, next action, issue counts, report status, updated time, and recommended action
+
+#### Scenario: Operator opens recommended task action
+- **WHEN** the operator clicks a task row's primary action
+- **THEN** the portal navigates to the recommended execution page for that run state
+
+#### Scenario: No run exists
+- **WHEN** the selected workspace has no pilot run
+- **THEN** the workbench guides the operator to the material-intake page to create the first review task
+
+### Requirement: Task row issue summary
+The opening-condition task workbench SHALL summarize AI findings and human-review needs without exposing internal provider diagnostics.
+
+#### Scenario: Matching has produced check items
+- **WHEN** a pilot task contains check items or human-review queue items
+- **THEN** the task row shows counts for total check items, blocking or failed findings, and open human-review items
+
+#### Scenario: Report exists
+- **WHEN** a pilot task has a generated report asset
+- **THEN** the task row shows report readiness and whether the task is archived
+
+### Requirement: Secondary execution pages remain reachable from task rows
+The opening-condition task workbench SHALL keep routing operators to secondary execution pages when those pages are the recommended next action.
+
+#### Scenario: Task requires intake or matching
+- **WHEN** a task row recommends material intake or checklist matching
+- **THEN** the operator can open that secondary page from the row action even though it is not a primary sidebar entry
+
+#### Scenario: Task requires review or reporting
+- **WHEN** a task row recommends human review or report archive
+- **THEN** the operator can open the corresponding primary destination from the row action

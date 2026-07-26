@@ -38,6 +38,7 @@ import type { ReviewStreamEvent, ReviewStreamSubscriptionHandlers } from "./doma
 import { mockStreamingStages as reviewStreamingStages } from "./domain/mockReviewTaskSeeds";
 import {
   addManualTaskIssue,
+  buildDocxIssueGenerationSnapshot,
   completeReviewTask,
   completeReviewGenerationRun,
   createDocumentTask,
@@ -775,11 +776,25 @@ export function ConstructionPlanReviewApp({
         ocrResult.ok &&
         (ocrResult.status === "done" || ocrResult.state === "done") &&
         Boolean(ocrResult.result?.recoveredStructure);
-      const reviewIssues =
+      const rawIssues =
         ocrResult.result?.issues ??
         ocrResult.result?.llmIssues ??
         ocrResult.result?.ruleIssues ??
         [];
+      const llmIssueCount = Array.isArray(ocrResult.result?.llmIssues)
+        ? ocrResult.result.llmIssues.length
+        : rawIssues.filter((issue) => String(issue.id ?? "").startsWith("llm-")).length;
+      const ruleIssueCount = Array.isArray(ocrResult.result?.ruleIssues)
+        ? ocrResult.result.ruleIssues.length
+        : rawIssues.filter((issue) => String(issue.id ?? "").startsWith("rule-") || issue.kernel?.engineSource === "rule").length;
+      const docxGeneration = isDocxReady
+        ? buildDocxIssueGenerationSnapshot({
+            issues: rawIssues,
+            llmIssueCount,
+            ruleIssueCount,
+            message: ocrResult.message,
+          })
+        : null;
       const ocrJob = {
         jobId: ocrResult.jobId ?? null,
         state: isDocxReady
@@ -790,7 +805,9 @@ export function ConstructionPlanReviewApp({
         submittedAt: ocrSubmittedAt,
         sourceObjectKey: uploadResult.object.key,
         message: isDocxReady
-          ? ocrResult.message || "DOCX 已解析完成，可进入审查。"
+          ? docxGeneration?.reviewGenerationRun.diagnostics?.message
+            || ocrResult.message
+            || "DOCX 已解析完成，可进入审查。"
           : ocrResult.ok
             ? ocrResult.status || "OCR 任务已提交。"
             : ocrResult.message || ocrResult.status || "OCR 任务提交失败。",
@@ -805,7 +822,9 @@ export function ConstructionPlanReviewApp({
         sourceObject: uploadResult.object,
         ocrJob,
         recoveredStructure: isDocxReady ? ocrResult.result?.recoveredStructure : undefined,
-        issues: isDocxReady ? reviewIssues : undefined,
+        issues: isDocxReady ? docxGeneration?.issues : undefined,
+        reviewGenerationRun: isDocxReady ? docxGeneration?.reviewGenerationRun : undefined,
+        reviewGenerationActivities: isDocxReady ? docxGeneration?.reviewGenerationActivities : undefined,
         failure: ocrJob.state === "failed"
           ? { message: ocrJob.message || "OCR 任务提交失败。", failedAt: new Date().toISOString() }
           : undefined,
@@ -1076,6 +1095,18 @@ export function ConstructionPlanReviewApp({
         onToggleTheme={onToggleTheme}
         onComplete={completeReview}
         readonly={selectedDocument.status === "completed"}
+        generationNotice={
+          selectedDocument.reviewGenerationRun
+            ? {
+                status: selectedDocument.reviewGenerationRun.status,
+                message:
+                  selectedDocument.reviewGenerationRun.diagnostics?.message
+                  || (selectedDocument.reviewGenerationRun.status === "degraded"
+                    ? "当前以规则兜底结果可继续人工审查。"
+                    : undefined),
+              }
+            : null
+        }
         sessionSnapshot={selectedDocumentSession ?? undefined}
         paragraphs={selectedDocumentSession?.paragraphs ?? selectedDocument.paragraphs}
         initialIssues={selectedDocumentSession?.issues ?? selectedDocument.issues}

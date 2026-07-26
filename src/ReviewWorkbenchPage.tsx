@@ -69,6 +69,10 @@ export interface ReviewWorkbenchPageProps {
   onViewContextChange?: (context: ReviewViewContext) => void;
   recoveredStructure?: RecoveredDocumentStructure;
   sessionSnapshot?: ReviewSession;
+  generationNotice?: {
+    status?: "ready" | "degraded" | "failed" | "running" | "idle";
+    message?: string;
+  } | null;
 }
 
 interface SelectionDraft {
@@ -234,6 +238,7 @@ export function ReviewWorkbenchPage({
   recoveredStructure,
   sessionSnapshot,
   readonly = false,
+  generationNotice = null,
 }: ReviewWorkbenchPageProps = {}) {
   const sessionIssues = sessionSnapshot?.issues ?? initialIssuesProp;
   const sessionRecoveredStructure = sessionSnapshot?.recoveredStructure ?? recoveredStructure;
@@ -820,6 +825,31 @@ export function ReviewWorkbenchPage({
           <span>Mock 数据</span>
         </div>
       </header>
+
+      {generationNotice?.message && (
+        <section
+          className={
+            generationNotice.status === "degraded"
+              ? "review-generation-notice degraded"
+              : generationNotice.status === "failed"
+                ? "review-generation-notice failed"
+                : "review-generation-notice"
+          }
+          aria-label="审查生成说明"
+        >
+          <AlertTriangle size={16} />
+          <div>
+            <strong>
+              {generationNotice.status === "degraded"
+                ? "规则兜底可审查"
+                : generationNotice.status === "failed"
+                  ? "审查生成异常"
+                  : "审查问题已就绪"}
+            </strong>
+            <p>{generationNotice.message}</p>
+          </div>
+        </section>
+      )}
 
       <section className="summary-strip" aria-label="审查进度">
         <Metric label="全部问题" value={counts.total} />

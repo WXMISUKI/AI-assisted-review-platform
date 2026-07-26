@@ -45,6 +45,22 @@ test("construction-plan DOCX smoke converts rule findings into limited review is
   assert.ok(ruleIssues[0].finding.title);
 });
 
+test("construction-plan DOCX smoke anchors map back to recovered paragraphs", async () => {
+  const structure = await parseDocxFile(sampleDocxPath);
+  const findings = runRuleEngine(structure.paragraphs);
+  const ruleIssues = convertRuleFindingsToIssues(findings, { limit: 20 });
+  const paragraphIds = new Set(structure.paragraphs.map((paragraph) => paragraph.id));
+
+  assert.ok(ruleIssues.length > 0, "expected rule issues for anchor validation");
+  for (const issue of ruleIssues) {
+    assert.ok(
+      paragraphIds.has(issue.anchor.paragraphId),
+      `missing paragraph for issue anchor ${issue.anchor.paragraphId}`,
+    );
+    assert.ok(issue.anchor.text, "anchor text should not be empty");
+  }
+});
+
 test("construction-plan DOCX smoke stays isolated from opening-condition modules", async () => {
   const source = await import("node:fs/promises").then((fs) =>
     fs.readFile(new URL("./reviewDocxMvpSmoke.test.mjs", import.meta.url), "utf8"),

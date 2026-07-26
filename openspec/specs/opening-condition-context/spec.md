@@ -66,3 +66,27 @@ The opening-condition workspace navigation SHALL distinguish the current MVP exe
 - **WHEN** the operator views the opening-condition workspace navigation
 - **THEN** pages required for the minimum closure loop are labeled as execution steps
 - **AND** governance pages are labeled as follow-up asset governance rather than primary MVP completion pages
+
+### Requirement: Workspace overview frames MVP task flow
+The opening-condition workspace overview SHALL frame the MVP as review tasks rather than raw governance assets.
+
+#### Scenario: Operator enters opening-condition workspace
+- **WHEN** the operator opens the workspace overview
+- **THEN** the page prioritizes the review-task workbench and task next actions before asset-governance diagnostics
+
+#### Scenario: Operator needs asset governance
+- **WHEN** the operator needs to inspect basis, master data, or knowledge-base governance
+- **THEN** those controls remain accessible through a secondary governance entry
+
+### Requirement: Operator task shell navigation
+The opening-condition workspace shell SHALL expose primary navigation entries based on operator goals rather than internal execution steps.
+
+#### Scenario: Operator scans the opening-condition sidebar
+- **WHEN** the opening-condition workspace shell is rendered
+- **THEN** the primary sidebar shows task workbench, human review, report archive, and follow-up asset governance entries
+- **AND** material intake and checklist matching are not shown as equal primary navigation entries
+
+#### Scenario: Operator opens a secondary execution page
+- **WHEN** the operator navigates from a task row into material intake or checklist matching
+- **THEN** the page title still shows the correct secondary page label
+- **AND** the primary sidebar remains focused on operator-level destinations
