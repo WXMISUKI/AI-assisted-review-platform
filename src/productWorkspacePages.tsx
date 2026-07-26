@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -322,6 +322,8 @@ type OpeningConditionTaskWorkbenchRow = {
   problemCount: number;
   openHumanReviewCount: number;
   evidenceCount: number;
+  matchingComplete: boolean;
+  reportActionAvailable: boolean;
   reportLabel: string;
   reportTone: "danger" | "warning" | "success" | "info" | "muted";
   updatedAt: string;
@@ -329,6 +331,49 @@ type OpeningConditionTaskWorkbenchRow = {
   recommendedPage: OpeningConditionPortalPage;
   actionLabel: string;
 };
+
+type OpeningConditionTaskHandoffStep = {
+  key: "intake" | "match" | "humanReview" | "report" | "archive";
+  label: string;
+  done: boolean;
+  description: string;
+};
+
+function deriveOpeningConditionTaskHandoffSteps(row: OpeningConditionTaskWorkbenchRow): OpeningConditionTaskHandoffStep[] {
+  return [
+    {
+      key: "intake",
+      label: "资料接入",
+      done: true,
+      description: "本轮任务已经创建并进入台账。",
+    },
+    {
+      key: "match",
+      label: "核查匹配",
+      done: row.matchingComplete,
+      description: row.matchingComplete ? "已形成核查项结果。" : "尚未形成核查项结果。",
+    },
+    {
+      key: "humanReview",
+      label: "人工复核",
+      done: row.matchingComplete && row.openHumanReviewCount === 0,
+      description:
+        row.openHumanReviewCount > 0 ? `仍有 ${row.openHumanReviewCount} 项待复核。` : "暂无打开的人工复核项。",
+    },
+    {
+      key: "report",
+      label: "报告交付",
+      done: row.reportActionAvailable,
+      description: row.reportLabel,
+    },
+    {
+      key: "archive",
+      label: "归档留痕",
+      done: row.readOnly,
+      description: row.readOnly ? "该轮次已作为历史只读记录保留。" : "归档后将进入历史只读状态。",
+    },
+  ];
+}
 
 function getOpeningConditionTaskStateTone(
   state: OpeningConditionPilotTask["state"],
@@ -443,6 +488,9 @@ function deriveOpeningConditionTaskWorkbenchRows({
     ).length;
     const reportStatus = getOpeningConditionTaskReportStatus(task);
     const recommendedPage = ownership?.recommendedPage ?? getOpeningConditionFallbackPage(task);
+    const matchingComplete = task.checkItems.length > 0;
+    const reportActionAvailable =
+      task.state === "report_ready" || task.state === "archived" || task.reportAsset?.status === "ready";
 
     return {
       taskId: task.id,
@@ -457,6 +505,8 @@ function deriveOpeningConditionTaskWorkbenchRows({
       problemCount,
       openHumanReviewCount,
       evidenceCount: task.evidence.length,
+      matchingComplete,
+      reportActionAvailable,
       reportLabel: reportStatus.label,
       reportTone: reportStatus.tone,
       updatedAt: task.updatedAt,
@@ -476,6 +526,20 @@ function OpeningConditionReviewTaskWorkbench({
   onGoToIntake: () => void;
   onGoToPage: (page: OpeningConditionPortalPage) => void;
 }) {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(rows[0]?.taskId ?? null);
+  const selectedRow = rows.find((row) => row.taskId === selectedTaskId) ?? rows[0] ?? null;
+  const selectedSteps = selectedRow ? deriveOpeningConditionTaskHandoffSteps(selectedRow) : [];
+
+  useEffect(() => {
+    if (rows.length === 0) {
+      setSelectedTaskId(null);
+      return;
+    }
+    if (!rows.some((row) => row.taskId === selectedTaskId)) {
+      setSelectedTaskId(rows[0].taskId);
+    }
+  }, [rows, selectedTaskId]);
+
   return (
     <section className="opening-panel opening-panel-wide opening-task-workbench-panel">
       <div className="opening-report-workbench-header">
@@ -500,9 +564,17 @@ function OpeningConditionReviewTaskWorkbench({
           </button>
         </div>
       ) : (
+        <>
         <div className="opening-task-workbench-list">
           {rows.map((row) => (
-            <article key={row.taskId} className="opening-task-workbench-row">
+            <article
+              key={row.taskId}
+              className={
+                selectedRow?.taskId === row.taskId
+                  ? "opening-task-workbench-row opening-task-workbench-row-selected"
+                  : "opening-task-workbench-row"
+              }
+            >
               <div className="opening-task-workbench-main">
                 <div className="opening-task-workbench-title">
                   <strong>{row.roundLabel}</strong>
@@ -540,6 +612,9 @@ function OpeningConditionReviewTaskWorkbench({
               <div className="opening-task-workbench-action">
                 <small>处理人：{row.owner}</small>
                 <small>更新：{row.updatedAt}</small>
+                <button type="button" className="secondary" onClick={() => setSelectedTaskId(row.taskId)}>
+                  查看本轮详情
+                </button>
                 <button type="button" className="secondary" onClick={() => onGoToPage(row.recommendedPage)}>
                   {row.actionLabel}
                 </button>
@@ -547,6 +622,63 @@ function OpeningConditionReviewTaskWorkbench({
             </article>
           ))}
         </div>
+        {selectedRow && (
+          <div className="opening-task-handoff-panel">
+            <div className="opening-task-handoff-header">
+              <div>
+                <span className="eyebrow">Selected Review Task</span>
+                <h3>{selectedRow.roundLabel} · {selectedRow.targetLabel}</h3>
+                <p>{selectedRow.nextAction}</p>
+              </div>
+              <div className="opening-report-chip-row">
+                <span className={`opening-report-chip tone-${selectedRow.stateTone}`}>{selectedRow.stateLabel}</span>
+                {selectedRow.readOnly && <span className="opening-report-chip tone-muted">历史只读</span>}
+                <span className={`opening-report-chip tone-${selectedRow.reportTone}`}>{selectedRow.reportLabel}</span>
+              </div>
+            </div>
+
+            <div className="opening-task-handoff-stage-list">
+              {selectedSteps.map((step) => (
+                <div key={step.key} className={step.done ? "opening-task-handoff-stage done" : "opening-task-handoff-stage"}>
+                  <strong>{step.label}</strong>
+                  <span>{step.done ? "已完成" : "待推进"}</span>
+                  <small>{step.description}</small>
+                </div>
+              ))}
+            </div>
+
+            <div className="opening-task-handoff-summary-grid">
+              <div>
+                <strong>当前处理人</strong>
+                <small>{selectedRow.owner}</small>
+              </div>
+              <div>
+                <strong>问题与复核</strong>
+                <small>{selectedRow.problemCount} 项问题 / {selectedRow.openHumanReviewCount} 项待复核</small>
+              </div>
+              <div>
+                <strong>核查与证据</strong>
+                <small>{selectedRow.totalCheckItems} 项核查 / {selectedRow.evidenceCount} 条证据</small>
+              </div>
+              <div>
+                <strong>任务编号</strong>
+                <small>{selectedRow.taskId}</small>
+              </div>
+            </div>
+
+            <div className="dialog-actions compact">
+              <button type="button" className="primary" onClick={() => onGoToPage(selectedRow.recommendedPage)}>
+                {selectedRow.actionLabel}
+              </button>
+              {selectedRow.reportActionAvailable && (
+                <button type="button" className="secondary" onClick={() => onGoToPage("reports")}>
+                  查看报告/归档
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        </>
       )}
     </section>
   );

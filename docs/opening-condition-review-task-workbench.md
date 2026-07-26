@@ -43,6 +43,19 @@ Secondary execution pages:
 
 Secondary pages remain reachable from task-row recommended actions. This keeps the current MVP chain runnable while making the first-level shell closer to mature review platforms: operators start from a register, then drill into the next action for a specific task.
 
+## Selected Task Detail Layer
+
+The task ledger should not behave only as a list of jump buttons. When a task row is selected, the workbench should show a compact handoff panel for that round:
+
+- Stage progress: intake, matching, human review, report delivery, archive.
+- Current owner and next action.
+- Problem count, human-review count, checklist count, evidence count.
+- Report/archive state and read-only state.
+- Primary action to continue the recommended next step.
+- Secondary report/archive action when the selected task has reached report or archive relevance.
+
+This selected-task layer is the near-term bridge between a simple register and a future evidence-preview workbench. It should stay compact and avoid expanding every row at once.
+
 ## Future Evidence Preview Direction
 
 The next substantial interaction upgrade should be issue-centered evidence preview:

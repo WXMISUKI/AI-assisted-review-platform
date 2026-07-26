@@ -1090,6 +1090,12 @@
   background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface));
 }
 
+.opening-task-workbench-row-selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary-soft) 56%, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent) inset;
+}
+
 .opening-task-workbench-main,
 .opening-task-workbench-action {
   display: grid;
@@ -1194,6 +1200,100 @@
 .opening-task-workbench-empty p {
   color: var(--text-secondary);
   line-height: 1.7;
+}
+
+.opening-task-handoff-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.opening-task-handoff-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.opening-task-handoff-header h3,
+.opening-task-handoff-header p {
+  margin: 0;
+}
+
+.opening-task-handoff-header h3 {
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.opening-task-handoff-header p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.opening-task-handoff-stage-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.opening-task-handoff-stage {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-muted);
+}
+
+.opening-task-handoff-stage.done {
+  border-color: color-mix(in srgb, var(--success) 44%, var(--border-soft));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+}
+
+.opening-task-handoff-stage strong,
+.opening-task-handoff-stage span,
+.opening-task-handoff-stage small,
+.opening-task-handoff-summary-grid strong,
+.opening-task-handoff-summary-grid small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opening-task-handoff-stage strong,
+.opening-task-handoff-summary-grid strong {
+  color: var(--text-primary);
+}
+
+.opening-task-handoff-stage span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.opening-task-handoff-stage small,
+.opening-task-handoff-summary-grid small {
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.opening-task-handoff-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.opening-task-handoff-summary-grid > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface));
 }
 
 .opening-object-switcher-group {
@@ -1391,8 +1491,14 @@
   .opening-overview-command-hero,
   .opening-overview-context-grid,
   .opening-task-workbench-row,
+  .opening-task-handoff-stage-list,
+  .opening-task-handoff-summary-grid,
   .opening-object-participant-list {
     grid-template-columns: 1fr;
+  }
+
+  .opening-task-handoff-header {
+    flex-direction: column;
   }
 
   .opening-overview-run-panel {
