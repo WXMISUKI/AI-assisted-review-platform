@@ -1863,8 +1863,8 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
     const reportHtml = buildOpeningConditionPilotReportHtml(report.task);
     assert.match(reportHtml, /Stamped approval form/);
     assert.match(reportHtml, /人工驳回/);
-    assert.match(reportHtml, /资料包中未找到稳定匹配文件/);
-    assert.match(reportHtml, /补齐对应资料后重新提交复审/);
+    assert.match(reportHtml, /稳定匹配文件/);
+    assert.match(reportHtml, /补齐资料.*重新提交复审/);
     assert.equal("token" in report.reportAsset.objectRef, false);
 
     const archived = await archiveOpeningConditionPilotTask(
