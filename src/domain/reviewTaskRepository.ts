@@ -7,6 +7,10 @@ const STORAGE_KEY = "ai-assisted-review-platform.review-tasks";
 const STORAGE_VERSION = 1;
 const BACKEND_TASKS_ENDPOINT = "/api/review-tasks";
 const BACKEND_TASKS_BULK_ENDPOINT = "/api/review-tasks/bulk";
+const LOCAL_STORAGE_TASK_LIMIT = 20;
+const LOCAL_STORAGE_PARAGRAPH_LIMIT = 80;
+const LOCAL_STORAGE_ISSUE_LIMIT = 120;
+const LOCAL_STORAGE_TEXT_LIMIT = 800;
 
 function canUseStorage() {
   return typeof window !== "undefined" && Boolean(window.localStorage);
@@ -19,6 +23,89 @@ function isValidSnapshot(value: unknown): value is ReviewStorageSnapshot {
 
   const snapshot = value as ReviewStorageSnapshot;
   return snapshot.schemaVersion === STORAGE_VERSION && Array.isArray(snapshot.tasks);
+}
+
+function compactText(value: string, maxLength = LOCAL_STORAGE_TEXT_LIMIT) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}...`;
+}
+
+function compactParagraph(paragraph: ReviewTask["paragraphs"][number]) {
+  return {
+    ...paragraph,
+    text: compactText(paragraph.text),
+  };
+}
+
+function compactIssue(issue: ReviewTask["issues"][number]) {
+  return {
+    ...issue,
+    anchor: {
+      ...issue.anchor,
+      text: compactText(issue.anchor.text, 240),
+    },
+    finding: {
+      ...issue.finding,
+      reason: compactText(issue.finding.reason),
+      basis: compactText(issue.finding.basis),
+      suggestion: compactText(issue.finding.suggestion),
+    },
+  };
+}
+
+function compactReviewTaskForLocalStorage(task: ReviewTask): ReviewTask {
+  const paragraphs = task.paragraphs.slice(0, LOCAL_STORAGE_PARAGRAPH_LIMIT).map(compactParagraph);
+  const recoveredParagraphs = task.recoveredStructure?.paragraphs.slice(0, LOCAL_STORAGE_PARAGRAPH_LIMIT).map(compactParagraph);
+
+  return {
+    ...task,
+    paragraphs,
+    recoveredStructure: task.recoveredStructure
+      ? {
+          ...task.recoveredStructure,
+          sections: task.recoveredStructure.sections.slice(0, LOCAL_STORAGE_PARAGRAPH_LIMIT).map((section) => ({
+            ...section,
+            paragraphIds: section.paragraphIds.slice(0, LOCAL_STORAGE_PARAGRAPH_LIMIT),
+          })),
+          paragraphs: recoveredParagraphs ?? [],
+        }
+      : undefined,
+    issues: task.issues.slice(0, LOCAL_STORAGE_ISSUE_LIMIT).map(compactIssue),
+    reviewGenerationActivities: task.reviewGenerationActivities?.slice(-20),
+    reviewDecisionActivities: task.reviewDecisionActivities?.slice(-50),
+  };
+}
+
+function buildLocalStorageSnapshot(tasks: ReviewTask[], compact = false): ReviewStorageSnapshot {
+  return {
+    schemaVersion: STORAGE_VERSION,
+    tasks: compact ? tasks.slice(0, LOCAL_STORAGE_TASK_LIMIT).map(compactReviewTaskForLocalStorage) : tasks,
+  };
+}
+
+function persistReviewTasksToLocalStorage(key: string, tasks: ReviewTask[]) {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(buildLocalStorageSnapshot(tasks)));
+    return;
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "QuotaExceededError") {
+      throw error;
+    }
+  }
+
+  try {
+    window.localStorage.removeItem(key);
+    window.localStorage.setItem(key, JSON.stringify(buildLocalStorageSnapshot(tasks, true)));
+  } catch {
+    window.localStorage.removeItem(key);
+  }
 }
 
 function normalizeLoadedTask(task: ReviewTask): ReviewTask {
@@ -86,15 +173,7 @@ function loadBackendCachedReviewTasks() {
 }
 
 function cacheBackendReviewTasks(tasks: ReviewTask[]) {
-  if (!canUseStorage()) {
-    return;
-  }
-
-  const snapshot: ReviewStorageSnapshot = {
-    schemaVersion: STORAGE_VERSION,
-    tasks,
-  };
-  window.localStorage.setItem(`${STORAGE_KEY}.backend-cache`, JSON.stringify(snapshot));
+  persistReviewTasksToLocalStorage(`${STORAGE_KEY}.backend-cache`, tasks);
 }
 
 function syncBackendReviewTasks(tasks: ReviewTask[]) {
@@ -150,13 +229,7 @@ export async function hydrateReviewTasksFromBackend(): Promise<ReviewTask[] | nu
     const tasks = (payload as ReviewStorageSnapshot).tasks.map(normalizeLoadedTask);
 
     cacheBackendReviewTasks(tasks);
-    if (canUseStorage()) {
-      const snapshot: ReviewStorageSnapshot = {
-        schemaVersion: STORAGE_VERSION,
-        tasks,
-      };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-    }
+    persistReviewTasksToLocalStorage(STORAGE_KEY, tasks);
 
     return tasks;
   } catch {
@@ -165,13 +238,7 @@ export async function hydrateReviewTasksFromBackend(): Promise<ReviewTask[] | nu
 }
 
 export function saveReviewTasks(tasks: ReviewTask[]): ReviewTask[] {
-  if (canUseStorage()) {
-    const snapshot: ReviewStorageSnapshot = {
-      schemaVersion: STORAGE_VERSION,
-      tasks,
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  }
+  persistReviewTasksToLocalStorage(STORAGE_KEY, tasks);
 
   syncBackendReviewTasks(tasks);
 

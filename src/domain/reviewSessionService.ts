@@ -510,29 +510,37 @@ export function createDocumentTask(
   tasks: ReviewTask[],
   input: CreateReviewTaskInput,
 ): ReviewTask[] {
+  const taskStatus = input.status ?? "uploaded";
+  const usePlaceholderContent = taskStatus === "uploaded" || taskStatus === "parsing";
   const recoveredStructure =
     input.recoveredStructure ??
-    (input.status === "uploaded" || input.status === "parsing"
+    (usePlaceholderContent
       ? createIdleRecoveredStructure()
       : recoverStructureFromParagraphs(cloneParagraphs(documentParagraphs)));
+  const paragraphs = input.recoveredStructure
+    ? cloneParagraphsFromStructure(input.recoveredStructure)
+    : usePlaceholderContent
+      ? []
+      : cloneParagraphs(documentParagraphs);
   const providedIssues = Array.isArray(input.issues) ? input.issues : null;
   const issues = providedIssues
     ? providedIssues.map((issue) => structuredClone(issue))
-    : recoveredStructure
+    : usePlaceholderContent
+      ? []
+      : recoveredStructure
       ? resolveRecoveredStructureIssues(cloneIssues(), recoveredStructure)
       : cloneIssues();
+  const firstParagraph = paragraphs[0];
   const newTask: ReviewTask = {
     id: `doc-${Date.now()}`,
     name: input.name,
     project: input.project,
     uploader: input.uploader,
     updatedAt: nowString(),
-    status: input.status ?? "uploaded",
+    status: taskStatus,
     issueCount: getIssueCounts(issues).total,
     mode: input.mode,
-    paragraphs: input.recoveredStructure
-      ? cloneParagraphsFromStructure(input.recoveredStructure)
-      : cloneParagraphs(documentParagraphs),
+    paragraphs,
     issues,
     recoveredStructure,
     streamStageIndex: 0,
@@ -540,19 +548,18 @@ export function createDocumentTask(
       stageIndex: 0,
       stageType: "structure-restoration",
       agentKey: "structure-restoration",
-      paragraphIndex: input.recoveredStructure?.paragraphs.length ? 1 : undefined,
-      paragraphTotal: input.recoveredStructure?.paragraphs.length ?? documentParagraphs.length,
-      currentParagraphId: input.recoveredStructure?.paragraphs[0]?.id ?? documentParagraphs[0]?.id,
-      paragraphLabel: input.recoveredStructure?.paragraphs[0]?.section ?? documentParagraphs[0]?.section,
+      paragraphIndex: paragraphs.length > 0 ? 1 : undefined,
+      paragraphTotal: paragraphs.length,
+      currentParagraphId: firstParagraph?.id,
+      paragraphLabel: firstParagraph?.section,
       currentSection:
         input.recoveredStructure?.progress.currentSection ??
-        input.recoveredStructure?.paragraphs[0]?.section ??
-        documentParagraphs[0]?.section,
+        firstParagraph?.section,
       updatedAt: nowString(),
     }),
     sourceObject: input.sourceObject,
     ocrJob: input.ocrJob,
-    failure: input.status === "failed" ? input.failure : undefined,
+    failure: taskStatus === "failed" ? input.failure : undefined,
     previousTaskId: input.previousTaskId,
     reviewGenerationRun: input.reviewGenerationRun,
     reviewGenerationActivities: input.reviewGenerationActivities

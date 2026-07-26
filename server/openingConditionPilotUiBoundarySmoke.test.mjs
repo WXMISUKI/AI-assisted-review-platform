@@ -51,6 +51,7 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
   assert.match(source, /expectedEvidenceHints/);
   assert.match(source, /rectification/);
   assert.match(source, /opening-report-finding-detail-grid/);
+  assert.match(source, /OpeningConditionMvpAcceptanceSnapshotPanel/);
   assert.match(source, /Basis Preview/);
   assert.match(source, /Extraction/);
   assert.match(source, /summarizeBasisPreviewProvenance/);
@@ -67,4 +68,32 @@ test("UI smoke exposes workspace asset registry summaries on the overview", asyn
   assert.match(workspaceSource, /Current workspace assets/);
   assert.match(workspaceSource, /formatWorkspaceAssetCompactSummary/);
   assert.match(workspaceSource, /formatWorkspaceLatestRun/);
+});
+
+test("UI smoke keeps the task ledger as primary opening-condition MVP routing surface", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /openingWorkspaceNav/);
+  assert.match(source, /核查任务台账/);
+  assert.match(source, /openingPrimaryNavPageIds/);
+  assert.match(source, /opening-secondary-route-card/);
+  assert.match(source, /返回核查任务台账/);
+  assert.match(source, /executionRouteLabel/);
+  assert.match(source, /acceptanceSnapshot/);
+  assert.match(source, /acceptanceLabel/);
+});
+
+test("UI smoke exposes selected-task issue and human-review summaries", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /buildOpeningConditionTaskIssuePreviewRows/);
+  assert.match(source, /buildOpeningConditionTaskPendingReviewRows/);
+  assert.match(source, /issuePreviewRows/);
+  assert.match(source, /pendingReviewRows/);
+  assert.match(source, /deliverySummary/);
+  assert.match(source, /AI 问题与整改摘要/);
+  assert.match(source, /待人工判断/);
+  assert.match(source, /证据命中/);
+  assert.match(source, /进入报告归档/);
+  assert.match(source, /opening-task-detail-summary-grid/);
 });

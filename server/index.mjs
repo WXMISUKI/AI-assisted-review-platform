@@ -416,12 +416,18 @@ export function createBackendServer(options = {}) {
 
       if (isDocx) {
         try {
-          const { readFile } = await import("node:fs/promises");
           const { tmpdir } = await import("node:os");
           const { join } = await import("node:path");
-          const fetch = (await import("node-fetch")).default ?? globalThis.fetch;
+          const fetchImpl = globalThis.fetch;
 
-          const response2 = await fetch(presigned.url);
+          if (typeof fetchImpl !== "function") {
+            throw new Error("Global fetch is unavailable in the current Node runtime.");
+          }
+
+          const response2 = await fetchImpl(presigned.url);
+          if (!response2.ok) {
+            throw new Error(`Failed to download DOCX object: ${response2.status} ${response2.statusText}`);
+          }
           const buffer = Buffer.from(await response2.arrayBuffer());
           const tmpFile = join(tmpdir(), `docx-parse-${Date.now()}.docx`);
           await (await import("node:fs/promises")).writeFile(tmpFile, buffer);

@@ -279,3 +279,66 @@ The opening-condition selected-task detail handoff SHALL provide clear action ro
 #### Scenario: Report or archive is relevant
 - **WHEN** the selected task has a report-ready, report-generated, or archived state
 - **THEN** the detail handoff provides a report/archive action that routes to the reports page
+
+### Requirement: Task ledger is the MVP primary entry
+The opening-condition portal SHALL present the review task ledger as the primary MVP entry and SHALL treat material intake and checklist detail pages as task-routed execution pages.
+
+#### Scenario: Operator opens opening-condition workspace
+- **WHEN** the opening-condition workspace renders
+- **THEN** the primary sidebar exposes the task ledger, human review, report archive, and asset governance destinations
+- **AND** secondary execution pages are reachable from task-row or selected-task actions rather than as equivalent primary destinations
+
+#### Scenario: Selected task needs a secondary execution page
+- **WHEN** the selected task's recommended next action is material intake or checklist detail
+- **THEN** the task ledger shows that destination as the selected task's primary continuation action
+- **AND** the shell labels the active page as a secondary execution page with a route back to the task ledger
+
+### Requirement: Selected task handoff includes MVP acceptance status
+The opening-condition task ledger SHALL show the selected run's backend MVP acceptance snapshot when report diagnostics provide it.
+
+#### Scenario: Selected task has report diagnostics
+- **WHEN** a selected task has `reportAsset.packageDiagnostics.mvpAcceptance`
+- **THEN** the selected-task handoff shows acceptance status, current owner, next action, read-only state, and stage completion
+- **AND** it uses backend diagnostics instead of deriving a conflicting completion label in the UI
+
+#### Scenario: Selected task has no report diagnostics
+- **WHEN** a selected task has not generated a report yet
+- **THEN** the selected-task handoff falls back to task state, ownership, issue counts, and existing stage progress
+
+### Requirement: Task row report routing remains explicit
+The task ledger SHALL make report or archive availability visible from both task rows and the selected-task handoff.
+
+#### Scenario: Report is relevant for selected task
+- **WHEN** the selected task is report-ready, has a report asset, or is archived
+- **THEN** the selected-task handoff provides a secondary report/archive action
+- **AND** the task row continues to expose the recommended next action for the current state
+
+### Requirement: Selected task issue summary
+The opening-condition task ledger SHALL show a compact issue summary for the selected task using existing task facts.
+
+#### Scenario: Selected task has findings
+- **WHEN** the selected task contains failed, blocked, rejected, warning, or needs-human-review findings
+- **THEN** the selected-task detail shows prioritized issue rows with check item title, category, disposition, risk, evidence status, and a bounded reason
+- **AND** the summary caps visible rows while keeping the full checklist and report pages as detail destinations
+
+#### Scenario: Selected task has no findings
+- **WHEN** the selected task has no reportable findings
+- **THEN** the selected-task detail shows a safe empty state and keeps the recommended next action visible
+
+### Requirement: Selected task pending human-review summary
+The opening-condition task ledger SHALL distinguish unresolved human-review items from AI-detected issues.
+
+#### Scenario: Human-review queue has open items
+- **WHEN** the selected task has open or deferred human-review items
+- **THEN** the selected-task detail shows the pending review count, representative review items, and a route to the human-review page
+
+#### Scenario: Human-review queue is closed
+- **WHEN** the selected task has no open or deferred human-review items
+- **THEN** the selected-task detail indicates that no blocking human-review item remains
+
+### Requirement: Selected task evidence and report handoff summary
+The opening-condition task ledger SHALL expose evidence and report handoff readiness without duplicating the full report page.
+
+#### Scenario: Evidence or report asset exists
+- **WHEN** the selected task has matched evidence or a report asset
+- **THEN** the selected-task detail shows evidence count, report status, MVP acceptance status when available, and a report/archive route when relevant

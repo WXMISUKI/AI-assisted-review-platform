@@ -618,6 +618,38 @@ type OpeningConditionTaskWorkbenchRow = {
   readOnly: boolean;
   recommendedPage: OpeningConditionPortalPage;
   actionLabel: string;
+  executionRouteLabel: string;
+  acceptanceSnapshot?: OpeningConditionPilotMvpAcceptanceSnapshot;
+  acceptanceLabel: string;
+  acceptanceTone: "danger" | "warning" | "success" | "info" | "muted";
+  issuePreviewRows: OpeningConditionTaskIssuePreviewRow[];
+  pendingReviewRows: OpeningConditionTaskPendingReviewRow[];
+  deliverySummary: {
+    findingCount: number;
+    deliveryRowCount: number;
+    evidenceCount: number;
+    reportStatus: string;
+  };
+};
+
+type OpeningConditionTaskIssuePreviewRow = {
+  id: string;
+  title: string;
+  category: string;
+  dispositionLabel: string;
+  dispositionTone: ReportFinding["dispositionTone"];
+  severityLabel: string;
+  severityTone: ReportFinding["severityTone"];
+  evidenceLabel: string;
+  reason: string;
+};
+
+type OpeningConditionTaskPendingReviewRow = {
+  id: string;
+  title: string;
+  category: string;
+  statusLabel: string;
+  reason: string;
 };
 
 type OpeningConditionTaskHandoffStep = {
@@ -628,6 +660,15 @@ type OpeningConditionTaskHandoffStep = {
 };
 
 function deriveOpeningConditionTaskHandoffSteps(row: OpeningConditionTaskWorkbenchRow): OpeningConditionTaskHandoffStep[] {
+  if (row.acceptanceSnapshot?.steps.length) {
+    return row.acceptanceSnapshot.steps.map((step) => ({
+      key: step.key === "human_review" ? "humanReview" : step.key,
+      label: step.label,
+      done: step.status === "complete",
+      description: step.detail,
+    }));
+  }
+
   return [
     {
       key: "intake",
@@ -737,6 +778,52 @@ function getOpeningConditionFallbackActionLabel(page: OpeningConditionPortalPage
   }
 }
 
+function getOpeningConditionExecutionRouteLabel(page: OpeningConditionPortalPage) {
+  const label = openingWorkspacePageLabels[page] ?? "任务详情";
+  return openingPrimaryNavPageIds.has(page) ? label : `${label}（二级执行页）`;
+}
+
+function buildOpeningConditionTaskIssuePreviewRows(findings: ReportFinding[]): OpeningConditionTaskIssuePreviewRow[] {
+  const priority: Record<string, number> = {
+    blocked: 0,
+    reject: 1,
+    fail: 2,
+    needs_human_review: 3,
+    warning: 4,
+  };
+
+  return [...findings]
+    .filter((finding) => reportDeliveryDispositions.has(finding.disposition))
+    .sort((left, right) => (priority[left.disposition] ?? 9) - (priority[right.disposition] ?? 9))
+    .slice(0, 5)
+    .map((finding) => ({
+      id: finding.id,
+      title: finding.title,
+      category: finding.category,
+      dispositionLabel: finding.dispositionLabel,
+      dispositionTone: finding.dispositionTone,
+      severityLabel: finding.severityLabel,
+      severityTone: finding.severityTone,
+      evidenceLabel: finding.evidence.length > 0 ? `${finding.evidence.length} 条证据` : "未命中稳定证据",
+      reason: finding.description || finding.rectification || "未记录问题原因。",
+    }));
+}
+
+function buildOpeningConditionTaskPendingReviewRows(
+  task: OpeningConditionPilotTask,
+): OpeningConditionTaskPendingReviewRow[] {
+  return task.humanReviewQueue
+    .filter((item) => item.status === "open" || item.status === "deferred")
+    .slice(0, 5)
+    .map((item) => ({
+      id: item.id,
+      title: item.targetLabel ?? item.targetId,
+      category: [item.category, item.subCategory].filter(Boolean).join(" / ") || item.targetType,
+      statusLabel: getHumanReviewStatusLabel(item.status),
+      reason: item.reason,
+    }));
+}
+
 function deriveOpeningConditionTaskWorkbenchRows({
   selectedWorkspaceId,
   currentWorkspace,
@@ -776,6 +863,10 @@ function deriveOpeningConditionTaskWorkbenchRows({
     ).length;
     const reportStatus = getOpeningConditionTaskReportStatus(task);
     const recommendedPage = ownership?.recommendedPage ?? getOpeningConditionFallbackPage(task);
+    const acceptanceSnapshot = task.reportAsset?.packageDiagnostics?.mvpAcceptance;
+    const issuePreviewRows = buildOpeningConditionTaskIssuePreviewRows(findings);
+    const pendingReviewRows = buildOpeningConditionTaskPendingReviewRows(task);
+    const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
     const matchingComplete = task.checkItems.length > 0;
     const reportActionAvailable =
       task.state === "report_ready" || task.state === "archived" || task.reportAsset?.status === "ready";
@@ -801,6 +892,18 @@ function deriveOpeningConditionTaskWorkbenchRows({
       readOnly: ownership?.readOnly ?? task.state === "archived",
       recommendedPage,
       actionLabel: ownership?.primaryActionLabel ?? getOpeningConditionFallbackActionLabel(recommendedPage),
+      executionRouteLabel: getOpeningConditionExecutionRouteLabel(recommendedPage),
+      acceptanceSnapshot,
+      acceptanceLabel: acceptanceSnapshot?.statusLabel ?? "尚未形成 MVP 验收快照",
+      acceptanceTone: acceptanceSnapshot ? getOpeningConditionMvpAcceptanceTone(acceptanceSnapshot.status) : "muted",
+      issuePreviewRows,
+      pendingReviewRows,
+      deliverySummary: {
+        findingCount: findings.length,
+        deliveryRowCount: rectificationDeliveryRows.length,
+        evidenceCount: task.evidence.length,
+        reportStatus: reportStatus.label,
+      },
     };
   });
 }
@@ -875,7 +978,9 @@ function OpeningConditionReviewTaskWorkbench({
                   <span className={`opening-report-chip tone-${row.reportTone}`}>{row.reportLabel}</span>
                 </div>
                 <p>{row.nextAction}</p>
-                <small className="opening-task-workbench-id">{row.taskId}</small>
+                <small className="opening-task-workbench-id">
+                  {row.taskId} · 下一入口：{row.executionRouteLabel}
+                </small>
               </div>
 
               <div className="opening-task-workbench-stats">
@@ -900,6 +1005,7 @@ function OpeningConditionReviewTaskWorkbench({
               <div className="opening-task-workbench-action">
                 <small>处理人：{row.owner}</small>
                 <small>更新：{row.updatedAt}</small>
+                <small>验收：{row.acceptanceLabel}</small>
                 <button type="button" className="secondary" onClick={() => setSelectedTaskId(row.taskId)}>
                   查看本轮详情
                 </button>
@@ -922,6 +1028,22 @@ function OpeningConditionReviewTaskWorkbench({
                 <span className={`opening-report-chip tone-${selectedRow.stateTone}`}>{selectedRow.stateLabel}</span>
                 {selectedRow.readOnly && <span className="opening-report-chip tone-muted">历史只读</span>}
                 <span className={`opening-report-chip tone-${selectedRow.reportTone}`}>{selectedRow.reportLabel}</span>
+                <span className={`opening-report-chip tone-${selectedRow.acceptanceTone}`}>{selectedRow.acceptanceLabel}</span>
+              </div>
+            </div>
+
+            <div className="opening-report-context-grid">
+              <div className="opening-action-summary-item">
+                <strong>推荐入口</strong>
+                <small>{selectedRow.executionRouteLabel}</small>
+              </div>
+              <div className="opening-action-summary-item">
+                <strong>MVP 验收</strong>
+                <small>{selectedRow.acceptanceLabel}</small>
+              </div>
+              <div className="opening-action-summary-item">
+                <strong>历史属性</strong>
+                <small>{selectedRow.readOnly ? "该轮次只读，用于留痕和复盘。" : "该轮次仍是当前可推进任务。"}</small>
               </div>
             </div>
 
@@ -952,6 +1074,88 @@ function OpeningConditionReviewTaskWorkbench({
                 <strong>任务编号</strong>
                 <small>{selectedRow.taskId}</small>
               </div>
+            </div>
+
+            <div className="opening-task-detail-summary-grid">
+              <div className="opening-task-detail-summary-card">
+                <div className="opening-task-detail-summary-header">
+                  <div>
+                    <strong>AI 问题与整改摘要</strong>
+                    <small>{selectedRow.deliverySummary.findingCount} 项问题候选 / {selectedRow.deliverySummary.deliveryRowCount} 项可进整改清单</small>
+                  </div>
+                  <button type="button" className="secondary" onClick={() => onGoToPage("check-tasks")}>
+                    查看核查详情
+                  </button>
+                </div>
+                {selectedRow.issuePreviewRows.length > 0 ? (
+                  <div className="opening-task-issue-preview-list">
+                    {selectedRow.issuePreviewRows.map((item) => (
+                      <article key={item.id} className="opening-task-issue-preview-row">
+                        <div>
+                          <strong>{item.title}</strong>
+                          <small>{item.category}</small>
+                        </div>
+                        <div className="opening-report-chip-row">
+                          <span className={`opening-report-chip tone-${item.dispositionTone}`}>{item.dispositionLabel}</span>
+                          <span className={`opening-report-chip tone-${item.severityTone}`}>{item.severityLabel}</span>
+                          <span className="opening-report-chip tone-muted">{item.evidenceLabel}</span>
+                        </div>
+                        <p>{item.reason}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="opening-task-detail-empty">当前选中轮次暂无需要在台账中优先提示的问题项。</p>
+                )}
+              </div>
+
+              <div className="opening-task-detail-summary-card">
+                <div className="opening-task-detail-summary-header">
+                  <div>
+                    <strong>待人工判断</strong>
+                    <small>{selectedRow.openHumanReviewCount} 项 open/deferred 复核项</small>
+                  </div>
+                  <button type="button" className="secondary" onClick={() => onGoToPage("human-review")}>
+                    处理人工复核
+                  </button>
+                </div>
+                {selectedRow.pendingReviewRows.length > 0 ? (
+                  <div className="opening-task-issue-preview-list">
+                    {selectedRow.pendingReviewRows.map((item) => (
+                      <article key={item.id} className="opening-task-issue-preview-row">
+                        <div>
+                          <strong>{item.title}</strong>
+                          <small>{item.category}</small>
+                        </div>
+                        <span className="opening-report-chip tone-warning">{item.statusLabel}</span>
+                        <p>{item.reason}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="opening-task-detail-empty">当前没有阻塞报告生成的人工复核项。</p>
+                )}
+              </div>
+            </div>
+
+            <div className="opening-task-detail-delivery-strip">
+              <div>
+                <strong>证据命中</strong>
+                <small>{selectedRow.deliverySummary.evidenceCount} 条证据记录</small>
+              </div>
+              <div>
+                <strong>报告状态</strong>
+                <small>{selectedRow.deliverySummary.reportStatus}</small>
+              </div>
+              <div>
+                <strong>MVP 验收</strong>
+                <small>{selectedRow.acceptanceLabel}</small>
+              </div>
+              {selectedRow.reportActionAvailable && (
+                <button type="button" className="secondary" onClick={() => onGoToPage("reports")}>
+                  进入报告归档
+                </button>
+              )}
             </div>
 
             <div className="dialog-actions compact">
@@ -1493,10 +1697,15 @@ export function OpeningConditionWorkspaceShell({
             />
           ))}
           {!activePageIsPrimary && (
-            <button type="button" className="theme-toggle" onClick={() => onSelectPage("workspace-context")}>
-              <ArrowLeft size={16} />
-              返回核查任务台账
-            </button>
+            <div className="opening-secondary-route-card">
+              <span>二级执行页</span>
+              <strong>{activeNavLabel}</strong>
+              <p>当前页面从任务台账进入，用于完成选中 run 的具体操作。</p>
+              <button type="button" className="theme-toggle" onClick={() => onSelectPage("workspace-context")}>
+                <ArrowLeft size={16} />
+                返回核查任务台账
+              </button>
+            </div>
           )}
         </nav>
 
@@ -4174,13 +4383,13 @@ function OpeningConditionReportDeliveryWorkbench({
     selectedHistoryTaskId,
     hiddenRunIds,
   });
+  const blockingReviewCount = Number(runSnapshot.blockingReviewCount ?? 0);
   const historyTasks = runSnapshot.historyTasks;
   const selectedTask = runSnapshot.selectedTask;
   const reportAsset = selectedTask?.reportAsset;
   const packageDiagnostics = reportAsset?.packageDiagnostics;
   const runRoundMap = runSnapshot.runRoundMap;
   const currentRound = runSnapshot.currentRound;
-  const selectedOpenReviewCount = runSnapshot.blockingReviewCount;
   const findings = buildReportFindings(selectedTask);
   const findingGroups = buildReportFindingGroups(findings);
   const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
@@ -4204,13 +4413,13 @@ function OpeningConditionReportDeliveryWorkbench({
     buildOpeningConditionReportDeliveryPackage({
       task: selectedTask,
       rows: rectificationDeliveryRows,
-      blockingCount: selectedOpenReviewCount,
+      blockingCount: blockingReviewCount,
       pendingHumanReviewCount: findingSummary.pendingHuman,
       adapterStatus: exportHandoff?.status,
       generatedAt: packageDiagnostics?.generatedAt,
     });
   const canGenerateReport = Boolean(
-    pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && selectedOpenReviewCount === 0 && !reportAsset,
+    pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && blockingReviewCount === 0 && !reportAsset,
   );
   const canStartRectificationRerun = Boolean(onStartRectificationRerun && runSnapshot.canStartRectificationRerun);
 
@@ -4349,7 +4558,7 @@ function OpeningConditionReportDeliveryWorkbench({
             </div>
             <div className="opening-action-summary-item">
               <strong>人工复核队列</strong>
-              <small>{selectedOpenReviewCount} 项仍待处理或延期。</small>
+              <small>{blockingReviewCount} 项仍待处理或延期。</small>
             </div>
             <div className="opening-action-summary-item">
               <strong>下一动作</strong>
@@ -4736,7 +4945,7 @@ function OpeningConditionReportDeliveryWorkbench({
         </div>
       )}
 
-      {selectedTask && selectedOpenReviewCount > 0 && <small>仍有 {selectedOpenReviewCount} 项人工复核阻塞，处理后才能生成报告。</small>}
+      {selectedTask && blockingReviewCount > 0 && <small>仍有 {blockingReviewCount} 项人工复核阻塞，处理后才能生成报告。</small>}
     </section>
   );
 }
