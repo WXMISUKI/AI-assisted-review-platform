@@ -393,3 +393,54 @@ The opening-condition report page SHALL keep report-finding routing as transient
 - **WHEN** the selected report run is not the current mutable run
 - **THEN** report finding actions remain read-only navigation aids
 - **AND** the portal does not mutate the historical run or archive state
+
+### Requirement: Focused detail return routing
+The opening-condition portal SHALL let operators return from a focused checklist or human-review destination to the page that initiated the focused navigation.
+
+#### Scenario: Operator returns from focused checklist detail
+- **WHEN** the operator opens a checklist item from the task ledger or report page
+- **AND** the focused checklist banner is shown
+- **THEN** the banner provides a return action to the originating page
+- **AND** returning clears the focused checklist context
+
+#### Scenario: Operator returns from focused human-review detail
+- **WHEN** the operator opens a human-review item from the task ledger or report page
+- **AND** the focused human-review banner is shown
+- **THEN** the banner provides a return action to the originating page
+- **AND** returning clears the focused human-review context
+
+### Requirement: Focus origin remains transient
+The opening-condition portal SHALL treat focus origin as local navigation context rather than business state.
+
+#### Scenario: Operator uses generic navigation
+- **WHEN** the operator navigates through the sidebar or another generic route action
+- **THEN** the focused id and focused origin are cleared
+- **AND** no task, report, review decision, or archive state is changed
+
+### Requirement: Selected task issue closure summary
+The opening-condition task ledger SHALL show a compact issue-closure summary for the selected task using current run facts.
+
+#### Scenario: Selected task has open issue work
+- **WHEN** the selected task has failed, rejected, blocked, or unresolved human-review items
+- **THEN** the selected-task handoff shows the open issue count, pending human-review count, rectification delivery count, and next action
+- **AND** the summary does not mutate task, review, report, or archive state
+
+#### Scenario: Selected task issue work is closed
+- **WHEN** the selected task has no failed, rejected, blocked, or unresolved human-review items
+- **THEN** the selected-task handoff indicates that issue closure is ready for report or archive handoff
+
+### Requirement: Report page issue closure summary
+The opening-condition report delivery workbench SHALL show the selected run's issue-closure summary near the report handoff context.
+
+#### Scenario: Operator reviews report handoff
+- **WHEN** the report delivery workbench renders a selected run
+- **THEN** it shows whether issue handling is blocked, waiting for human judgement, ready for delivery, archived, or ready for rerun
+- **AND** it shows the next action derived from the selected run's existing findings and human-review queue
+
+### Requirement: Issue closure summary remains derived and read-only
+The opening-condition portal SHALL treat issue-closure summaries as derived UI handoff data.
+
+#### Scenario: Summary is displayed
+- **WHEN** the issue-closure summary is displayed in the task ledger or report page
+- **THEN** it is derived from report findings, human-review queue items, and rectification delivery rows
+- **AND** it does not create new backend facts, provider calls, human-review decisions, or archive events

@@ -85,6 +85,10 @@ export function runRuleEngine(paragraphs) {
   const findings = [];
 
   for (const paragraph of paragraphs) {
+    if (paragraph?.reviewEligible === false) {
+      continue;
+    }
+
     for (const rule of riskRules) {
       const keywordMatch = rule.keywords.some((kw) => paragraph.text.includes(kw));
       const patternMatch = rule.pattern ? rule.pattern.test(paragraph.text) : false;

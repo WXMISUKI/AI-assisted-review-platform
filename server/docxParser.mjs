@@ -3,6 +3,8 @@ import yauzl from "yauzl";
 const HEADING_STYLES = new Set(["1", "2", "3", "4"]);
 const POINT_STYLE = "5";
 const HEADING_PATTERN = /^(第[一二三四五六七八九十百]+章|[0-9]+(\.[0-9]+)*\s*[一-龥]|附录\s*[A-Z])/;
+const TOC_STYLE_PATTERN = /^TOC/i;
+const TOC_HEADING_TITLES = new Set(["目录", "目 录"]);
 
 function isHeadingStyle(styleId) {
   return HEADING_STYLES.has(styleId);
@@ -30,6 +32,10 @@ function extractTextFromParagraph(xml) {
 function extractStyleFromParagraph(xml) {
   const styleMatch = xml.match(/<w:pStyle w:val="([^"]*)"/);
   return styleMatch ? styleMatch[1] : "Normal";
+}
+
+function isTocStyle(styleId) {
+  return TOC_STYLE_PATTERN.test(styleId);
 }
 
 function extractImageDescriptions(xml) {
@@ -75,6 +81,7 @@ function parseTableRows(xml) {
       rows.push({
         style: "Normal",
         text: `表格：行${rowIndex} ${cellTexts.join(" | ")}`,
+        blockType: "table_row",
       });
     }
   }
@@ -86,12 +93,29 @@ function stripTrailingPageNumber(text) {
   return text.replace(/[0-9]+$/, "").trim();
 }
 
+function isTocHeading(text) {
+  return TOC_HEADING_TITLES.has(text.trim());
+}
+
+function looksLikeTocEntry(text) {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 160) {
+    return false;
+  }
+
+  const hasTrailingPageNumber = /\d{1,4}\s*$/.test(trimmed);
+  const hasStructuredPrefix = /^(第[一二三四五六七八九十百]+章|[0-9]+(\.[0-9]+)*|附录\s*[A-Z])/i.test(trimmed);
+  return hasTrailingPageNumber && hasStructuredPrefix;
+}
+
 function buildStructureFromParagraphs(rawParagraphs) {
   const sections = [];
   const paragraphs = [];
   let currentSection = "正文";
   let currentSectionParagraphIds = [];
   let paragraphIndex = 0;
+  let inToc = false;
+  let seenBodyHeading = false;
 
   function flushSection() {
     if (currentSectionParagraphIds.length > 0) {
@@ -107,21 +131,45 @@ function buildStructureFromParagraphs(rawParagraphs) {
   for (const raw of rawParagraphs) {
     const isHeading = isHeadingStyle(raw.style) || isPointHeading(raw.style, raw.text);
     const cleanText = stripTrailingPageNumber(raw.text);
+    const tocHeadingLine = isTocHeading(cleanText);
 
-    if (isHeading && cleanText.length <= 80 && cleanText.length > 0) {
+    if (tocHeadingLine && cleanText.length > 0) {
+      inToc = true;
+    }
+
+    if (!tocHeadingLine && isHeading && cleanText.length <= 80 && cleanText.length > 0) {
       flushSection();
       currentSection = cleanText;
+      seenBodyHeading = true;
+      inToc = false;
       continue;
     }
+
+    const isCoverParagraph = !seenBodyHeading && !inToc;
+    const isTocParagraph = tocHeadingLine || isTocStyle(raw.style) || (inToc && looksLikeTocEntry(raw.text));
+    const blockType = isTocParagraph
+      ? "toc"
+      : isCoverParagraph
+        ? "cover"
+        : raw.blockType === "table_row"
+          ? "table_row"
+          : "body_paragraph";
+    const reviewEligible = blockType === "body_paragraph" || blockType === "table_row";
 
     paragraphIndex++;
     const paragraphId = `docx-p-${String(paragraphIndex).padStart(4, "0")}`;
     paragraphs.push({
       id: paragraphId,
-      section: currentSection,
+      section: isTocParagraph ? "目录" : isCoverParagraph ? "封面" : currentSection,
       text: raw.text,
+      blockType,
+      reviewEligible,
+      styleId: raw.style,
     });
-    currentSectionParagraphIds.push(paragraphId);
+
+    if (reviewEligible) {
+      currentSectionParagraphIds.push(paragraphId);
+    }
   }
 
   flushSection();
@@ -182,7 +230,7 @@ export async function parseDocxFile(filePath) {
   });
 }
 
-function parseDocumentXmlToStructure(xml) {
+export function parseDocumentXmlToStructure(xml) {
   const rawParagraphs = [];
 
   const tablePattern = /<w:tbl[ >][\s\S]*?<\/w:tbl>/g;
@@ -217,7 +265,7 @@ function parseDocumentXmlToStructure(xml) {
     }
 
     if (fullText.trim()) {
-      rawParagraphs.push({ style, text: fullText.trim() });
+      rawParagraphs.push({ style, text: fullText.trim(), blockType: "body_paragraph" });
     }
   }
 

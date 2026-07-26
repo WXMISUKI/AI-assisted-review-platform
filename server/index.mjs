@@ -208,6 +208,28 @@ function buildKnowledgeBaseProviderRefFromReadiness(readiness) {
   };
 }
 
+function getDocxObjectFetchMode() {
+  return typeof globalThis.fetch === "function" ? "global-fetch" : "unavailable";
+}
+
+function getRuntimeDiagnostics() {
+  return {
+    nodeVersion: process.version,
+    hasGlobalFetch: typeof globalThis.fetch === "function",
+    docxObjectDownloadFetchMode: getDocxObjectFetchMode(),
+  };
+}
+
+function resolveDocxObjectFetch() {
+  if (typeof globalThis.fetch === "function") {
+    return globalThis.fetch.bind(globalThis);
+  }
+
+  throw new Error(
+    `DOCX object download requires global fetch in the active Node runtime. Current Node: ${process.version}. Please restart the backend with the current source on Node 18+ / 20+ / 24+.`,
+  );
+}
+
 export function createBackendServer(options = {}) {
   const openingConditionStoreOptions = options.openingConditionStorePath
     ? { ...(options.openingConditionStoreOptions ?? {}), storePath: options.openingConditionStorePath }
@@ -299,6 +321,7 @@ export function createBackendServer(options = {}) {
         ok: true,
         service: "ai-assisted-review-backend",
         timestamp: new Date().toISOString(),
+        runtime: getRuntimeDiagnostics(),
         providers: getSafeProviderStatus(),
         knowledgeBaseProvider: await getKnowledgeBaseProviderReadiness(),
         agentService: await getAgentServiceReadiness(),
@@ -418,11 +441,7 @@ export function createBackendServer(options = {}) {
         try {
           const { tmpdir } = await import("node:os");
           const { join } = await import("node:path");
-          const fetchImpl = globalThis.fetch;
-
-          if (typeof fetchImpl !== "function") {
-            throw new Error("Global fetch is unavailable in the current Node runtime.");
-          }
+          const fetchImpl = resolveDocxObjectFetch();
 
           const response2 = await fetchImpl(presigned.url);
           if (!response2.ok) {

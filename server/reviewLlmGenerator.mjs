@@ -90,6 +90,16 @@ function parseLlmResponse(responseText) {
 }
 
 export async function generateReviewIssuesForChapter(sectionTitle, paragraphs, ruleFindings) {
+  const reviewEligibleParagraphs = paragraphs.filter((paragraph) => paragraph?.reviewEligible !== false);
+  if (reviewEligibleParagraphs.length === 0) {
+    return {
+      ok: false,
+      source: "no-reviewable-content",
+      issues: [],
+      diagnostics: { status: "no_reviewable_content", message: `Section "${sectionTitle}" has no review-eligible paragraphs.` },
+    };
+  }
+
   const openai = createOpenAIClient();
   if (!openai) {
     return {
@@ -100,7 +110,7 @@ export async function generateReviewIssuesForChapter(sectionTitle, paragraphs, r
     };
   }
 
-  const chapterText = paragraphs.map((p) => p.text).join("\n");
+  const chapterText = reviewEligibleParagraphs.map((p) => p.text).join("\n");
   const prompt = buildReviewPrompt(sectionTitle, chapterText, ruleFindings);
 
   try {
@@ -113,7 +123,7 @@ export async function generateReviewIssuesForChapter(sectionTitle, paragraphs, r
 
     const content = response.choices[0]?.message?.content ?? "";
     const rawIssues = parseLlmResponse(content);
-    const firstParagraphId = paragraphs[0]?.id ?? "unknown";
+    const firstParagraphId = reviewEligibleParagraphs[0]?.id ?? "unknown";
 
     const issues = rawIssues
       .slice(0, MAX_ISSUES_PER_CHAPTER)

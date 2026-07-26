@@ -119,10 +119,42 @@ test("UI smoke routes report findings to focused checklist and unresolved human-
   const source = await readFile(workspacePagesSourcePath, "utf8");
 
   assert.match(source, /OpeningConditionReportDeliveryWorkbench/);
-  assert.match(source, /onFocusCheckItem=\{focusOpeningChecklistItem\}/);
-  assert.match(source, /onFocusHumanReview=\{focusOpeningHumanReviewItem\}/);
+  assert.match(source, /onFocusCheckItem=\{\(checkItemId\) => focusOpeningChecklistItem\(checkItemId, "reports"\)\}/);
+  assert.match(source, /onFocusHumanReview=\{\(reviewId\) => focusOpeningHumanReviewItem\(reviewId, "reports"\)\}/);
   assert.match(source, /unresolvedReviewByTargetId/);
   assert.match(source, /\.filter\(\(item\) => item\.status === "open" \|\| item\.status === "deferred"\)/);
   assert.match(source, /onFocusCheckItem\(finding\.id\)/);
   assert.match(source, /onFocusHumanReview\(unresolvedReview\.id\)/);
+});
+
+test("UI smoke lets focused detail routes return to their originating MVP page", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /focusedRouteOrigin/);
+  assert.match(source, /setFocusedRouteOrigin\(null\)/);
+  assert.match(source, /function returnToFocusedRouteOrigin/);
+  assert.match(source, /const returnPage = focusedRouteOrigin \?\? "workspace-context";/);
+  assert.match(source, /focusOpeningChecklistItem\(checkItemId, "workspace-context"\)/);
+  assert.match(source, /focusOpeningHumanReviewItem\(reviewId, "workspace-context"\)/);
+  assert.match(source, /focusOpeningChecklistItem\(checkItemId, "reports"\)/);
+  assert.match(source, /focusOpeningHumanReviewItem\(reviewId, "reports"\)/);
+  assert.match(source, /focusedReturnLabel/);
+  assert.match(source, /onReturnToFocusedOrigin/);
+  assert.match(source, /返回\{focusedReturnLabel\}/);
+});
+
+test("UI smoke exposes issue closure summaries on task and report handoffs", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /type OpeningConditionIssueClosureSummary/);
+  assert.match(source, /function buildOpeningConditionIssueClosureSummary/);
+  assert.match(source, /issueClosure: OpeningConditionIssueClosureSummary/);
+  assert.match(source, /const issueClosure = buildOpeningConditionIssueClosureSummary/);
+  assert.match(source, /const issueClosureSummary = buildOpeningConditionIssueClosureSummary/);
+  assert.match(source, /问题闭环/);
+  assert.match(source, /未闭合问题/);
+  assert.match(source, /整改清单/);
+  assert.match(source, /待人工闭环/);
+  assert.match(source, /待整改交付/);
+  assert.match(source, /可进入报告/);
 });

@@ -327,6 +327,17 @@ type ReportRectificationDeliveryRow = OpeningConditionPilotReportDeliveryPackage
   notes: string[];
 };
 
+type OpeningConditionIssueClosureSummary = {
+  statusLabel: string;
+  statusTone: ReportFinding["dispositionTone"];
+  trackedIssueCount: number;
+  openIssueCount: number;
+  pendingHumanReviewCount: number;
+  resolvedHumanReviewCount: number;
+  rectificationDeliveryCount: number;
+  nextAction: string;
+};
+
 const reportDeliveryDispositions = new Set(["blocked", "fail", "reject", "needs_human_review", "warning"]);
 
 function buildReportRectificationDeliveryRows(findings: ReportFinding[]): ReportRectificationDeliveryRow[] {
@@ -346,6 +357,88 @@ function buildReportRectificationDeliveryRows(findings: ReportFinding[]): Report
       rectification: finding.rectification || "补齐对应资料后重新提交复审。",
       notes: [...finding.evidence, ...finding.humanReview].slice(0, 4),
     }));
+}
+
+function buildOpeningConditionIssueClosureSummary(input: {
+  findings: ReportFinding[];
+  humanReviewQueue?: OpeningConditionPilotHumanReviewItem[];
+  rectificationDeliveryRows: ReportRectificationDeliveryRow[];
+  taskState?: OpeningConditionPilotTask["state"];
+  reportReady?: boolean;
+}): OpeningConditionIssueClosureSummary {
+  const openBlockingIssueCount = input.findings.filter((finding) =>
+    finding.disposition === "blocked" || finding.disposition === "fail" || finding.disposition === "reject"
+  ).length;
+  const pendingHumanReviewCount = (input.humanReviewQueue ?? []).filter(
+    (item) => item.status === "open" || item.status === "deferred",
+  ).length;
+  const resolvedHumanReviewCount = (input.humanReviewQueue ?? []).filter(
+    (item) => item.status !== "open" && item.status !== "deferred",
+  ).length;
+  const openIssueCount = openBlockingIssueCount + pendingHumanReviewCount;
+
+  if (input.taskState === "archived") {
+    return {
+      statusLabel: "已归档留痕",
+      statusTone: "success",
+      trackedIssueCount: input.findings.length,
+      openIssueCount,
+      pendingHumanReviewCount,
+      resolvedHumanReviewCount,
+      rectificationDeliveryCount: input.rectificationDeliveryRows.length,
+      nextAction: "本轮已归档，可用于历史复盘或发起下一轮整改复审。",
+    };
+  }
+
+  if (pendingHumanReviewCount > 0) {
+    return {
+      statusLabel: "待人工闭环",
+      statusTone: "warning",
+      trackedIssueCount: input.findings.length,
+      openIssueCount,
+      pendingHumanReviewCount,
+      resolvedHumanReviewCount,
+      rectificationDeliveryCount: input.rectificationDeliveryRows.length,
+      nextAction: "先关闭 open/deferred 人工复核项，再进入报告生成或整改交付。",
+    };
+  }
+
+  if (openBlockingIssueCount > 0) {
+    return {
+      statusLabel: "待整改交付",
+      statusTone: "danger",
+      trackedIssueCount: input.findings.length,
+      openIssueCount,
+      pendingHumanReviewCount,
+      resolvedHumanReviewCount,
+      rectificationDeliveryCount: input.rectificationDeliveryRows.length,
+      nextAction: "将不通过和阻塞项纳入整改交付清单，生成报告后提交补件复审。",
+    };
+  }
+
+  if (input.reportReady) {
+    return {
+      statusLabel: "报告已就绪",
+      statusTone: "success",
+      trackedIssueCount: input.findings.length,
+      openIssueCount,
+      pendingHumanReviewCount,
+      resolvedHumanReviewCount,
+      rectificationDeliveryCount: input.rectificationDeliveryRows.length,
+      nextAction: "报告资产已形成，可归档留痕或导出交付。",
+    };
+  }
+
+  return {
+    statusLabel: "可进入报告",
+    statusTone: "info",
+    trackedIssueCount: input.findings.length,
+    openIssueCount,
+    pendingHumanReviewCount,
+    resolvedHumanReviewCount,
+    rectificationDeliveryCount: input.rectificationDeliveryRows.length,
+    nextAction: "当前无阻塞人工复核，可生成报告或继续核对整改清单。",
+  };
 }
 
 function buildOpeningConditionReportDeliveryPackage(input: {
@@ -629,6 +722,7 @@ type OpeningConditionTaskWorkbenchRow = {
     deliveryRowCount: number;
     evidenceCount: number;
     reportStatus: string;
+    issueClosure: OpeningConditionIssueClosureSummary;
   };
 };
 
@@ -867,6 +961,13 @@ function deriveOpeningConditionTaskWorkbenchRows({
     const issuePreviewRows = buildOpeningConditionTaskIssuePreviewRows(findings);
     const pendingReviewRows = buildOpeningConditionTaskPendingReviewRows(task);
     const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
+    const issueClosure = buildOpeningConditionIssueClosureSummary({
+      findings,
+      humanReviewQueue: task.humanReviewQueue,
+      rectificationDeliveryRows,
+      taskState: task.state,
+      reportReady: task.reportAsset?.status === "ready",
+    });
     const matchingComplete = task.checkItems.length > 0;
     const reportActionAvailable =
       task.state === "report_ready" || task.state === "archived" || task.reportAsset?.status === "ready";
@@ -903,6 +1004,7 @@ function deriveOpeningConditionTaskWorkbenchRows({
         deliveryRowCount: rectificationDeliveryRows.length,
         evidenceCount: task.evidence.length,
         reportStatus: reportStatus.label,
+        issueClosure,
       },
     };
   });
@@ -1077,6 +1179,29 @@ function OpeningConditionReviewTaskWorkbench({
               <div>
                 <strong>任务编号</strong>
                 <small>{selectedRow.taskId}</small>
+              </div>
+            </div>
+
+            <div className="opening-report-summary-grid">
+              <div className={`opening-report-summary-card tone-${selectedRow.deliverySummary.issueClosure.statusTone}`}>
+                <strong>问题闭环</strong>
+                <span>{selectedRow.deliverySummary.issueClosure.statusLabel}</span>
+                <p>{selectedRow.deliverySummary.issueClosure.nextAction}</p>
+              </div>
+              <div className="opening-report-summary-card tone-warning">
+                <strong>未闭合问题</strong>
+                <span>{selectedRow.deliverySummary.issueClosure.openIssueCount} 项</span>
+                <p>包含不通过、阻塞和未关闭人工复核。</p>
+              </div>
+              <div className="opening-report-summary-card tone-info">
+                <strong>人工处理</strong>
+                <span>{selectedRow.deliverySummary.issueClosure.pendingHumanReviewCount} / {selectedRow.deliverySummary.issueClosure.resolvedHumanReviewCount}</span>
+                <p>待处理 / 已留痕。</p>
+              </div>
+              <div className="opening-report-summary-card tone-muted">
+                <strong>整改清单</strong>
+                <span>{selectedRow.deliverySummary.issueClosure.rectificationDeliveryCount} 项</span>
+                <p>可进入报告交付的整改条目。</p>
               </div>
             </div>
 
@@ -1694,10 +1819,13 @@ export function OpeningConditionWorkspaceShell({
   const activePageIsPrimary = openingPrimaryNavPageIds.has(activePage);
   const [focusedCheckItemId, setFocusedCheckItemId] = useState<string | null>(null);
   const [focusedHumanReviewId, setFocusedHumanReviewId] = useState<string | null>(null);
+  const [focusedRouteOrigin, setFocusedRouteOrigin] = useState<OpeningConditionPortalPage | null>(null);
+  const focusedRouteOriginLabel = focusedRouteOrigin ? openingWorkspacePageLabels[focusedRouteOrigin] : null;
 
   function clearOpeningFocus() {
     setFocusedCheckItemId(null);
     setFocusedHumanReviewId(null);
+    setFocusedRouteOrigin(null);
   }
 
   function goToOpeningPage(page: OpeningConditionPortalPage) {
@@ -1705,16 +1833,30 @@ export function OpeningConditionWorkspaceShell({
     onSelectPage(page);
   }
 
-  function focusOpeningChecklistItem(checkItemId: string) {
+  function focusOpeningChecklistItem(
+    checkItemId: string,
+    originPage: OpeningConditionPortalPage = "workspace-context",
+  ) {
     setFocusedCheckItemId(checkItemId);
     setFocusedHumanReviewId(null);
+    setFocusedRouteOrigin(originPage);
     onSelectPage("check-tasks");
   }
 
-  function focusOpeningHumanReviewItem(reviewId: string) {
+  function focusOpeningHumanReviewItem(
+    reviewId: string,
+    originPage: OpeningConditionPortalPage = "workspace-context",
+  ) {
     setFocusedHumanReviewId(reviewId);
     setFocusedCheckItemId(null);
+    setFocusedRouteOrigin(originPage);
     onSelectPage("human-review");
+  }
+
+  function returnToFocusedRouteOrigin() {
+    const returnPage = focusedRouteOrigin ?? "workspace-context";
+    clearOpeningFocus();
+    onSelectPage(returnPage);
   }
 
   return (
@@ -1799,8 +1941,8 @@ export function OpeningConditionWorkspaceShell({
               onSelectWorkspace={onSelectWorkspace}
               onGoToIntake={() => goToOpeningPage("material-intake")}
               onGoToPage={goToOpeningPage}
-              onFocusCheckItem={focusOpeningChecklistItem}
-              onFocusHumanReview={focusOpeningHumanReviewItem}
+              onFocusCheckItem={(checkItemId) => focusOpeningChecklistItem(checkItemId, "workspace-context")}
+              onFocusHumanReview={(reviewId) => focusOpeningHumanReviewItem(reviewId, "workspace-context")}
             />
           )}
           {activePage === "material-intake" && (
@@ -1852,6 +1994,8 @@ export function OpeningConditionWorkspaceShell({
               pilotTask={pilotTask}
               focusedCheckItemId={focusedCheckItemId}
               onClearFocusedCheckItem={clearOpeningFocus}
+              focusedReturnLabel={focusedRouteOriginLabel}
+              onReturnToFocusedOrigin={focusedRouteOrigin ? returnToFocusedRouteOrigin : undefined}
             />
           )}
           {activePage === "human-review" && (
@@ -1863,6 +2007,8 @@ export function OpeningConditionWorkspaceShell({
               onGoToPage={goToOpeningPage}
               focusedHumanReviewId={focusedHumanReviewId}
               onClearFocusedHumanReview={clearOpeningFocus}
+              focusedReturnLabel={focusedRouteOriginLabel}
+              onReturnToFocusedOrigin={focusedRouteOrigin ? returnToFocusedRouteOrigin : undefined}
             />
           )}
           {activePage === "reports" && (
@@ -1877,8 +2023,8 @@ export function OpeningConditionWorkspaceShell({
               onExportReport={onExportReport}
               onArchive={onArchivePilotTask}
               onStartRectificationRerun={onStartRectificationRerun}
-              onFocusCheckItem={focusOpeningChecklistItem}
-              onFocusHumanReview={focusOpeningHumanReviewItem}
+              onFocusCheckItem={(checkItemId) => focusOpeningChecklistItem(checkItemId, "reports")}
+              onFocusHumanReview={(reviewId) => focusOpeningHumanReviewItem(reviewId, "reports")}
             />
           )}
         </div>
@@ -3800,11 +3946,15 @@ function OpeningConditionCheckTasksPage({
   pilotTask,
   focusedCheckItemId,
   onClearFocusedCheckItem,
+  focusedReturnLabel,
+  onReturnToFocusedOrigin,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
   focusedCheckItemId?: string | null;
   onClearFocusedCheckItem?: () => void;
+  focusedReturnLabel?: string | null;
+  onReturnToFocusedOrigin?: () => void;
 }) {
   const rows = buildChecklistRows(packet, pilotTask);
   const focusedRow = focusedCheckItemId ? rows.find((row) => row.id === focusedCheckItemId) ?? null : null;
@@ -3824,11 +3974,18 @@ function OpeningConditionCheckTasksPage({
             <strong>{focusedRow ? `当前聚焦核查项：${focusedRow.title}` : "当前聚焦核查项未在本轮找到"}</strong>
             <span>{focusedRow ? `${focusedRow.category} | ${focusedRow.id}` : focusedCheckItemId}</span>
           </div>
-          {onClearFocusedCheckItem && (
-            <button type="button" className="secondary" onClick={onClearFocusedCheckItem}>
-              取消聚焦
-            </button>
-          )}
+          <div className="dialog-actions compact">
+            {onReturnToFocusedOrigin && focusedReturnLabel && (
+              <button type="button" className="secondary" onClick={onReturnToFocusedOrigin}>
+                返回{focusedReturnLabel}
+              </button>
+            )}
+            {onClearFocusedCheckItem && (
+              <button type="button" className="secondary" onClick={onClearFocusedCheckItem}>
+                取消聚焦
+              </button>
+            )}
+          </div>
         </div>
       )}
       <div className="opening-record-list">
@@ -3857,6 +4014,8 @@ function OpeningConditionHumanReviewQueuePage({
   onGoToPage,
   focusedHumanReviewId,
   onClearFocusedHumanReview,
+  focusedReturnLabel,
+  onReturnToFocusedOrigin,
 }: {
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
@@ -3865,6 +4024,8 @@ function OpeningConditionHumanReviewQueuePage({
   onGoToPage?: (page: OpeningConditionPortalPage) => void;
   focusedHumanReviewId?: string | null;
   onClearFocusedHumanReview?: () => void;
+  focusedReturnLabel?: string | null;
+  onReturnToFocusedOrigin?: () => void;
 }) {
   const queue = pilotTask?.humanReviewQueue ?? [];
   const evidenceById = new Map((pilotTask?.evidence ?? []).map((item) => [item.id, item]));
@@ -3967,11 +4128,18 @@ function OpeningConditionHumanReviewQueuePage({
             </strong>
             <span>{focusedReviewItem ? `${focusedReviewItem.category ?? "未分类"} | ${focusedReviewItem.id}` : focusedHumanReviewId}</span>
           </div>
-          {onClearFocusedHumanReview && (
-            <button type="button" className="secondary" onClick={onClearFocusedHumanReview}>
-              取消聚焦
-            </button>
-          )}
+          <div className="dialog-actions compact">
+            {onReturnToFocusedOrigin && focusedReturnLabel && (
+              <button type="button" className="secondary" onClick={onReturnToFocusedOrigin}>
+                返回{focusedReturnLabel}
+              </button>
+            )}
+            {onClearFocusedHumanReview && (
+              <button type="button" className="secondary" onClick={onClearFocusedHumanReview}>
+                取消聚焦
+              </button>
+            )}
+          </div>
         </div>
       )}
       <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />
@@ -4510,6 +4678,13 @@ function OpeningConditionReportDeliveryWorkbench({
       .map((item) => [item.targetId, item]),
   );
   const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
+  const issueClosureSummary = buildOpeningConditionIssueClosureSummary({
+    findings,
+    humanReviewQueue: selectedTask?.humanReviewQueue,
+    rectificationDeliveryRows,
+    taskState: selectedTask?.state,
+    reportReady: reportAsset?.status === "ready",
+  });
   const closureDiff = runSnapshot.closureDiff;
   const previousRun = runSnapshot.previousRun;
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
@@ -4645,6 +4820,11 @@ function OpeningConditionReportDeliveryWorkbench({
           )}
 
           <div className="opening-report-summary-grid">
+            <div className={`opening-report-summary-card tone-${issueClosureSummary.statusTone}`}>
+              <strong>问题闭环</strong>
+              <span>{issueClosureSummary.statusLabel}</span>
+              <p>{issueClosureSummary.nextAction}</p>
+            </div>
             <div className="opening-report-summary-card tone-danger">
               <strong>阻塞项</strong>
               <span>{findingSummary.blocked}</span>
@@ -4661,9 +4841,9 @@ function OpeningConditionReportDeliveryWorkbench({
               <p>需要监理继续人工判断。</p>
             </div>
             <div className="opening-report-summary-card tone-muted">
-              <strong>提示关注</strong>
-              <span>{findingSummary.warning}</span>
-              <p>非阻塞提示，但建议跟踪。</p>
+              <strong>整改清单</strong>
+              <span>{issueClosureSummary.rectificationDeliveryCount}</span>
+              <p>可进入报告交付的整改条目。</p>
             </div>
           </div>
 

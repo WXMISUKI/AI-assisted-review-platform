@@ -62,10 +62,19 @@ export type BasisReferenceType =
 
 export type BasisPriority = "primary" | "supporting" | "project-overrides";
 
+export type DocumentParagraphBlockType =
+  | "cover"
+  | "toc"
+  | "body_paragraph"
+  | "table_row";
+
 export interface DocumentParagraph {
   id: string;
   section: string;
   text: string;
+  blockType?: DocumentParagraphBlockType;
+  reviewEligible?: boolean;
+  styleId?: string;
 }
 
 export interface RecoveredDocumentSection {

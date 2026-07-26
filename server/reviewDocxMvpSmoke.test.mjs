@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 
-import { parseDocxFile } from "./docxParser.mjs";
+import { parseDocxFile, parseDocumentXmlToStructure } from "./docxParser.mjs";
 import {
   convertRuleFindingsToIssues,
   mergeReviewIssues,
@@ -73,4 +73,49 @@ test("construction-plan DOCX smoke stays isolated from opening-condition modules
     fromPaths.some((path) => path.includes("openingCondition") || path.includes("productWorkspacePages")),
     false,
   );
+});
+
+test("construction-plan DOCX smoke gates cover and TOC paragraphs before review", async () => {
+  const structure = parseDocumentXmlToStructure(`
+    <w:document>
+      <w:body>
+        <w:p>
+          <w:pPr><w:pStyle w:val="Title"/></w:pPr>
+          <w:r><w:t>G15-10标承（桥）台施工方案</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr>
+          <w:r><w:t>目录</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:pPr><w:pStyle w:val="TOC1"/></w:pPr>
+          <w:r><w:t>4.3.1 基坑开挖技术措施 43</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:pPr><w:pStyle w:val="1"/></w:pPr>
+          <w:r><w:t>4.3 基坑工程</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:r><w:t>基坑开挖深度 5m，需补充围护、监测和应急措施。</w:t></w:r>
+        </w:p>
+      </w:body>
+    </w:document>
+  `);
+
+  const coverParagraph = structure.paragraphs.find((paragraph) => paragraph.section === "封面");
+  const tocParagraph = structure.paragraphs.find((paragraph) => paragraph.section === "目录");
+  const bodyParagraph = structure.paragraphs.find((paragraph) => paragraph.reviewEligible !== false);
+
+  assert.equal(coverParagraph?.reviewEligible, false);
+  assert.equal(coverParagraph?.blockType, "cover");
+  assert.equal(tocParagraph?.reviewEligible, false);
+  assert.equal(tocParagraph?.blockType, "toc");
+  assert.equal(bodyParagraph?.blockType, "body_paragraph");
+  assert.equal(structure.sections.length, 1);
+  assert.equal(structure.sections[0].title, "4.3 基坑工程");
+
+  const findings = runRuleEngine(structure.paragraphs);
+  assert.ok(findings.length >= 1);
+  assert.equal(findings.some((finding) => /技术措施 43/.test(finding.matchedText)), false);
+  assert.equal(findings.some((finding) => /基坑开挖深度/.test(finding.matchedText)), true);
 });
