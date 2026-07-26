@@ -61,6 +61,8 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
   assert.match(source, /const isRectificationRerun = portalState\.rerunUploadEnabled;/);
   assert.match(source, /opening-report-detail-card/);
   assert.match(source, /当前归档轮次默认只读/);
+  assert.doesNotMatch(source, /function summarizePreviousRun\(/);
+  assert.doesNotMatch(source, /function buildRectificationClosureDiff\(/);
   assert.match(appSource, /setOpeningPilotIntakeMode\("rectification_rerun"\);/);
   assert.match(appSource, /setOpeningPilotStatus\(".*整改复审.*"\);/);
 });
@@ -88,6 +90,10 @@ test("UI smoke keeps the task ledger as primary opening-condition MVP routing su
   assert.match(source, /executionRouteLabel/);
   assert.match(source, /acceptanceSnapshot/);
   assert.match(source, /acceptanceLabel/);
+  assert.match(source, /const taskRunSnapshot = deriveOpeningConditionRunSnapshot\(/);
+  assert.match(source, /const closureDiff = taskRunSnapshot\.closureDiff;/);
+  assert.doesNotMatch(source, /function summarizePreviousRun\(/);
+  assert.doesNotMatch(source, /function buildRectificationClosureDiff\(/);
 });
 
 test("UI smoke exposes selected-task issue and human-review summaries", async () => {

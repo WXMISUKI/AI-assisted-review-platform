@@ -222,6 +222,10 @@ The opening-condition MVP SHALL be considered minimally runnable when one run ca
 ### Requirement: Review task workbench
 The opening-condition portal SHALL provide a task-list workbench as the primary MVP entry for pilot runs.
 
+#### Scenario: Task row rectification summary is shown
+- **WHEN** the task ledger renders rectification closure summary for a task row
+- **THEN** the counts come from the shared run snapshot kernel rather than page-local duplicated closure logic
+
 #### Scenario: Operator opens workspace overview
 - **WHEN** a workspace has current or historical opening-condition pilot runs
 - **THEN** the overview shows each run as a review task row with run id, review target, state, current owner, next action, issue counts, report status, updated time, and recommended action
@@ -282,6 +286,11 @@ The opening-condition task workbench SHALL show a selected-task detail handoff f
 
 ### Requirement: Selected task rectification rerun summary
 The opening-condition selected-task detail handoff SHALL show the same compact rectification rerun summary when comparison data exists.
+
+#### Scenario: Selected task and report page stay aligned
+- **WHEN** the selected task has comparison data and the report page can render the same run
+- **THEN** both views use the same shared previous-run and closure comparison facts
+- **AND** the portal does not maintain a second page-local implementation of those rules
 
 #### Scenario: Selected task has comparison data
 - **WHEN** the selected task has a previous archived run available for comparison
@@ -488,4 +497,3 @@ The opening-condition selected-task handoff area SHALL show the selected task's 
 #### Scenario: Selected task has no closure comparison
 - **WHEN** the selected task has no previous archived run comparison
 - **THEN** the handoff area omits the closure summary and keeps the normal task next-action guidance visible
-

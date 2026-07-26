@@ -71,9 +71,12 @@ import {
 } from "./openingConditionRerunAssetReuse";
 import {
   buildHumanReviewMap as buildRunSnapshotHumanReviewMap,
+  buildLatestHumanReviewMap,
+  buildRunRoundMap,
+  compareTaskByUpdatedAtDesc,
   deriveOpeningConditionRunSnapshot,
   getCheckItemDisposition as getRunSnapshotCheckItemDisposition,
-  type FinalReviewDisposition,
+  isProblemCheckItem,
   type RectificationClosureCategory,
   type RectificationClosureDiff,
 } from "./openingConditionRunSnapshot";
@@ -969,7 +972,11 @@ function deriveOpeningConditionTaskWorkbenchRows({
     const issuePreviewRows = buildOpeningConditionTaskIssuePreviewRows(findings);
     const pendingReviewRows = buildOpeningConditionTaskPendingReviewRows(task);
     const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
-    const closureDiff = buildRectificationClosureDiff(task, tasks);
+    const taskRunSnapshot = deriveOpeningConditionRunSnapshot({
+      workspaceTasks: tasks,
+      pilotTask: task,
+    });
+    const closureDiff = taskRunSnapshot.closureDiff;
     const issueClosure = buildOpeningConditionIssueClosureSummary({
       findings,
       humanReviewQueue: task.humanReviewQueue,
@@ -4351,202 +4358,6 @@ function buildReportFindingGroups(findings: ReportFinding[]): ReportFindingGroup
     },
   ];
   return groups.filter((group) => group.findings.length > 0);
-}
-
-function compareTaskByUpdatedAtDesc(left: OpeningConditionPilotTask, right: OpeningConditionPilotTask) {
-  return Date.parse(right.updatedAt || right.createdAt || "") - Date.parse(left.updatedAt || left.createdAt || "");
-}
-
-function buildRunRoundMap(tasks: OpeningConditionPilotTask[]) {
-  const ordered = [...tasks].sort((left, right) => Date.parse(left.createdAt || "") - Date.parse(right.createdAt || ""));
-  return new Map(ordered.map((task, index) => [task.id, index + 1]));
-}
-
-function summarizePreviousRun(currentTask: OpeningConditionPilotTask | null | undefined, tasks: OpeningConditionPilotTask[]) {
-  if (!currentTask || tasks.length < 2) {
-    return null;
-  }
-  const sorted = [...tasks].sort(compareTaskByUpdatedAtDesc);
-  const index = sorted.findIndex((task) => task.id === currentTask.id);
-  if (index < 0) {
-    return null;
-  }
-  const previous = sorted.slice(index + 1).find((task) => task.state === "archived") ?? sorted[index + 1];
-  if (!previous) {
-    return null;
-  }
-  const countProblemItems = (task: OpeningConditionPilotTask) => {
-    const latestReviewByTargetId = buildLatestHumanReviewMap(task.humanReviewQueue);
-    return task.checkItems.filter((item) => isProblemCheckItem(item, latestReviewByTargetId.get(item.id))).length;
-  };
-  const currentLatestReviewByTargetId = buildLatestHumanReviewMap(currentTask.humanReviewQueue);
-  const previousLatestReviewByTargetId = buildLatestHumanReviewMap(previous.humanReviewQueue);
-  const currentSet = new Set(
-    currentTask.checkItems
-      .filter((item) => isProblemCheckItem(item, currentLatestReviewByTargetId.get(item.id)))
-      .map((item) => item.id),
-  );
-  const previousSet = new Set(
-    previous.checkItems
-      .filter((item) => isProblemCheckItem(item, previousLatestReviewByTargetId.get(item.id)))
-      .map((item) => item.id),
-  );
-  return {
-    previousFailed: countProblemItems(previous),
-    currentFailed: countProblemItems(currentTask),
-    carried: [...currentSet].filter((id) => previousSet.has(id)).length,
-  };
-}
-
-type PilotCheckItem = OpeningConditionPilotTask["checkItems"][number];
-
-const problemVerdicts = new Set<FinalReviewDisposition>(["fail", "warning", "needs_human_review", "blocked", "reject"]);
-
-function buildHumanReviewMap(queue: OpeningConditionPilotHumanReviewItem[]) {
-  const reviewByTargetId = new Map<string, OpeningConditionPilotHumanReviewItem[]>();
-  queue.forEach((item) => {
-    const current = reviewByTargetId.get(item.targetId) ?? [];
-    current.push(item);
-    reviewByTargetId.set(item.targetId, current);
-  });
-  return reviewByTargetId;
-}
-
-function buildLatestHumanReviewMap(queue: OpeningConditionPilotHumanReviewItem[]) {
-  const latestByTargetId = new Map<string, OpeningConditionPilotHumanReviewItem>();
-  queue.forEach((item) => {
-    const current = latestByTargetId.get(item.targetId);
-    const currentTime = Date.parse(current?.decidedAt || "");
-    const nextTime = Date.parse(item.decidedAt || "");
-    const currentRank = Number.isNaN(currentTime) ? -1 : currentTime;
-    const nextRank = Number.isNaN(nextTime) ? -1 : nextTime;
-    if (!current || nextRank >= currentRank) {
-      latestByTargetId.set(item.targetId, item);
-    }
-  });
-  return latestByTargetId;
-}
-
-function getCheckItemDisposition(
-  item?: PilotCheckItem | null,
-  latestReview?: OpeningConditionPilotHumanReviewItem | null,
-): FinalReviewDisposition {
-  if (!item) {
-    return "missing_in_current_run";
-  }
-
-  switch (latestReview?.status) {
-    case "confirmed":
-      return "confirm";
-    case "corrected":
-      return "correct";
-    case "rejected":
-      return "reject";
-    case "open":
-    case "deferred":
-      return "needs_human_review";
-    default:
-      return (item.finalDisposition ?? item.verdict) as FinalReviewDisposition;
-  }
-}
-
-function isProblemCheckItem(
-  item?: PilotCheckItem | null,
-  latestReview?: OpeningConditionPilotHumanReviewItem | null,
-) {
-  if (!item) {
-    return false;
-  }
-  return problemVerdicts.has(getCheckItemDisposition(item, latestReview));
-}
-
-function getCheckItemCategory(item: PilotCheckItem) {
-  return item.subCategory ? `${item.category} / ${item.subCategory}` : item.category;
-}
-
-function getPreviousArchivedRun(selectedTask: OpeningConditionPilotTask | null | undefined, tasks: OpeningConditionPilotTask[]) {
-  if (!selectedTask) {
-    return null;
-  }
-  const selectedCreatedAt = Date.parse(selectedTask.createdAt || selectedTask.updatedAt || "");
-  return [...tasks]
-    .filter((task) => task.id !== selectedTask.id && task.state === "archived")
-    .filter((task) => Date.parse(task.createdAt || task.updatedAt || "") < selectedCreatedAt)
-    .sort(compareTaskByUpdatedAtDesc)[0] ?? null;
-}
-
-function getRectificationNextAction(category: RectificationClosureCategory) {
-  switch (category) {
-    case "rectified":
-      return "本项可作为已补齐记录进入本轮报告留痕。";
-    case "carried_over":
-      return "继续列入整改清单，要求补齐资料后进入下一轮复审。";
-    case "newly_added":
-      return "作为本轮新增问题补充整改要求，避免只处理上一轮遗留项。";
-    case "pending_human_review":
-      return "先由监理人工判断是否接受说明、修正或驳回。";
-  }
-}
-
-function buildRectificationClosureDiff(
-  selectedTask: OpeningConditionPilotTask | null | undefined,
-  tasks: OpeningConditionPilotTask[],
-): RectificationClosureDiff | null {
-  const previousTask = getPreviousArchivedRun(selectedTask, tasks);
-  if (!selectedTask || !previousTask) {
-    return null;
-  }
-
-  const previousById = new Map(previousTask.checkItems.map((item) => [item.id, item]));
-  const currentById = new Map(selectedTask.checkItems.map((item) => [item.id, item]));
-  const previousLatestReviewByTargetId = buildLatestHumanReviewMap(previousTask.humanReviewQueue);
-  const currentLatestReviewByTargetId = buildLatestHumanReviewMap(selectedTask.humanReviewQueue);
-  const allProblemIds = new Set<string>();
-  previousTask.checkItems
-    .filter((item) => isProblemCheckItem(item, previousLatestReviewByTargetId.get(item.id)))
-    .forEach((item) => allProblemIds.add(item.id));
-  selectedTask.checkItems
-    .filter((item) => isProblemCheckItem(item, currentLatestReviewByTargetId.get(item.id)))
-    .forEach((item) => allProblemIds.add(item.id));
-
-  const items = [...allProblemIds].map((id) => {
-    const previousItem = previousById.get(id);
-    const currentItem = currentById.get(id);
-    const previousProblem = isProblemCheckItem(previousItem, previousLatestReviewByTargetId.get(id));
-    const currentProblem = isProblemCheckItem(currentItem, currentLatestReviewByTargetId.get(id));
-    const currentDisposition = getCheckItemDisposition(currentItem, currentLatestReviewByTargetId.get(id));
-    const closureCategory: RectificationClosureCategory =
-      currentDisposition === "needs_human_review"
-        ? "pending_human_review"
-        : previousProblem && !currentProblem
-          ? "rectified"
-          : previousProblem && currentProblem
-            ? "carried_over"
-            : "newly_added";
-    const displayItem = currentItem ?? previousItem;
-
-    return {
-      id,
-      title: displayItem?.name ?? id,
-      category: displayItem ? getCheckItemCategory(displayItem) : "未分类",
-      closureCategory,
-      previousStatus: getFindingDispositionLabel(getCheckItemDisposition(previousItem, previousLatestReviewByTargetId.get(id))),
-      currentStatus: currentItem ? getFindingDispositionLabel(currentDisposition) : "本轮未再列为问题",
-      nextAction: getRectificationNextAction(closureCategory),
-    };
-  });
-
-  return {
-    previousTask,
-    selectedTask,
-    items,
-    summary: {
-      rectified: items.filter((item) => item.closureCategory === "rectified").length,
-      carried_over: items.filter((item) => item.closureCategory === "carried_over").length,
-      newly_added: items.filter((item) => item.closureCategory === "newly_added").length,
-      pending_human_review: items.filter((item) => item.closureCategory === "pending_human_review").length,
-    },
-  };
 }
 
 function getClosureCategoryLabel(category: RectificationClosureCategory) {

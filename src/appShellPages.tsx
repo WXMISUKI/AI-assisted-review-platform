@@ -829,10 +829,17 @@ export function ResultPreviewPage({
   const [exportStatus, setExportStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportDownloadUrl, setExportDownloadUrl] = useState<string | null>(null);
+  /*
   const exportDocxLabel = asset?.type === "revised-plan-snapshot" ? "导出 DOCX 快照" : "导出 DOCX 报告";
   const fallbackHtmlLabel = asset?.type === "revised-plan-snapshot" ? "下载 HTML 快照" : "下载 HTML 版";
   const fallbackHtmlFilenamePrefix =
     asset?.type === "revised-plan-snapshot" ? "施工方案整改快照" : "施工方案审查报告";
+
+  */
+  const exportDocxLabel = asset?.type === "revised-plan-snapshot" ? "DOCX snapshot" : "DOCX report";
+  const fallbackHtmlLabel = asset?.type === "revised-plan-snapshot" ? "HTML snapshot" : "HTML fallback";
+  const fallbackHtmlFilenamePrefix =
+    asset?.type === "revised-plan-snapshot" ? "construction-plan-revised-snapshot" : "construction-plan-review-report";
 
   async function handleExportDocx() {
     if (!asset) {
