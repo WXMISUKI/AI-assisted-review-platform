@@ -428,6 +428,13 @@ export interface ReviewTasksBulkSyncResult {
   message?: string;
 }
 
+export interface ReviewTaskUpsertResult {
+  ok: boolean;
+  schemaVersion?: number;
+  task?: ReviewTask;
+  message?: string;
+}
+
 export interface ReviewTaskMutationResult {
   ok: boolean;
   status?: string;
@@ -662,6 +669,17 @@ export async function syncPersistedReviewTasks(tasks: ReviewTask[]) {
     body: JSON.stringify({ tasks }),
   });
   return readJson<ReviewTasksBulkSyncResult>(response);
+}
+
+export async function upsertPersistedReviewTask(task: ReviewTask) {
+  const response = await fetch(`/api/review-tasks/${encodeURIComponent(task.id)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ task }),
+  });
+  return readJson<ReviewTaskUpsertResult>(response);
 }
 
 export async function resolvePersistedReviewTaskIssue(input: {

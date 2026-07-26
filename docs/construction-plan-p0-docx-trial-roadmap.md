@@ -84,6 +84,14 @@ pnpm smoke:review:docx
 1. 开工条件 MaxKB 本机联调（P1，另一窗口）
 2. 施工方案审查报告 DOCX 导出（P2）
 3. 知识库 grounding 增强审查依据（P3）
+
+## 下一阶段收口建议（2026-07-26）
+
+- 优先将施工方案审查任务持久化收口到“后端主导、前端机会型缓存”：
+  - 创建任务走单任务 `PUT /api/review-tasks/:taskId`
+  - reviewer action 继续走已有精确后端接口
+  - 删除任务暂以显式 `bulk` 兼容，后续再补 task DELETE API
+- 在这一步完成前，不建议继续把大量时间投入到 viewer 细节或提示词微调，否则刷新一致性与运行稳定性会继续成为验收瓶颈
 ## P2 Closure (2026-07-26)
 
 - Construction-plan `supervisor-report` now has a report-delivery loop:

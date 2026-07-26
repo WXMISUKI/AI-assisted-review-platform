@@ -88,6 +88,8 @@ test("UI smoke exposes selected-task issue and human-review summaries", async ()
 
   assert.match(source, /buildOpeningConditionTaskIssuePreviewRows/);
   assert.match(source, /buildOpeningConditionTaskPendingReviewRows/);
+  assert.match(source, /rectificationClosureSummary/);
+  assert.match(source, /rectificationClosureReferenceLabel/);
   assert.match(source, /issuePreviewRows/);
   assert.match(source, /pendingReviewRows/);
   assert.match(source, /deliverySummary/);
@@ -95,6 +97,8 @@ test("UI smoke exposes selected-task issue and human-review summaries", async ()
   assert.match(source, /待人工判断/);
   assert.match(source, /证据命中/);
   assert.match(source, /进入报告归档/);
+  assert.match(source, /formatRectificationClosureSummary/);
+  assert.match(source, /opening-task-workbench-closure-summary/);
   assert.match(source, /opening-task-detail-summary-grid/);
 });
 

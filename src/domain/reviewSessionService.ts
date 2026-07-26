@@ -178,8 +178,12 @@ function updateTask(
   tasks: ReviewTask[],
   taskId: string,
   updater: (task: ReviewTask) => ReviewTask,
+  saveOptions?: Parameters<typeof saveReviewTasks>[1],
 ): ReviewTask[] {
-  return saveReviewTasks(tasks.map((task) => (task.id === taskId ? updater(task) : task)));
+  return saveReviewTasks(
+    tasks.map((task) => (task.id === taskId ? updater(task) : task)),
+    saveOptions,
+  );
 }
 
 function createGenerationRunId(taskId: string) {
@@ -567,7 +571,10 @@ export function createDocumentTask(
       : undefined,
   };
 
-  return saveReviewTasks([newTask, ...tasks]);
+  return saveReviewTasks([newTask, ...tasks], {
+    backendSync: "upsert-changed",
+    changedTaskIds: [newTask.id],
+  });
 }
 
 export function updateDocumentTaskUploadResult(
@@ -769,7 +776,9 @@ export function startReviewTask(tasks: ReviewTask[], taskId: string): ReviewTask
 }
 
 export function deleteDocumentTask(tasks: ReviewTask[], taskId: string): ReviewTask[] {
-  return saveReviewTasks(tasks.filter((task) => task.id !== taskId));
+  return saveReviewTasks(tasks.filter((task) => task.id !== taskId), {
+    backendSync: "bulk-replace",
+  });
 }
 
 export function updateReviewTaskStreamStage(

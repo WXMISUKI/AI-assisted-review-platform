@@ -1,4 +1,5 @@
 import { createSeedReviewTasks } from "./mockReviewTaskSeeds";
+import { syncPersistedReviewTasks, upsertPersistedReviewTask } from "./backendConnectivity";
 import { mergeRecoveredStructureIssues } from "./reviewIssueDrafts";
 import { deriveReviewPipelineSnapshot } from "./reviewPipelineSnapshot";
 import type { ReviewStorageSnapshot, ReviewTask } from "./reviewTypes";
@@ -11,6 +12,11 @@ const LOCAL_STORAGE_TASK_LIMIT = 20;
 const LOCAL_STORAGE_PARAGRAPH_LIMIT = 80;
 const LOCAL_STORAGE_ISSUE_LIMIT = 120;
 const LOCAL_STORAGE_TEXT_LIMIT = 800;
+
+export interface SaveReviewTasksOptions {
+  backendSync?: "none" | "upsert-changed" | "bulk-replace";
+  changedTaskIds?: string[];
+}
 
 function canUseStorage() {
   return typeof window !== "undefined" && Boolean(window.localStorage);
@@ -176,19 +182,35 @@ function cacheBackendReviewTasks(tasks: ReviewTask[]) {
   persistReviewTasksToLocalStorage(`${STORAGE_KEY}.backend-cache`, tasks);
 }
 
-function syncBackendReviewTasks(tasks: ReviewTask[]) {
-  if (typeof window === "undefined" || typeof window.fetch !== "function") {
+function canSyncBackend() {
+  return typeof window !== "undefined" && typeof window.fetch === "function";
+}
+
+function syncBackendReviewTasksBulk(tasks: ReviewTask[]) {
+  if (!canSyncBackend()) {
     return;
   }
 
-  window.fetch(BACKEND_TASKS_BULK_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ tasks }),
-  }).catch(() => {
+  syncPersistedReviewTasks(tasks).catch(() => {
     // Keep local state as fallback when the backend is unavailable.
+  });
+}
+
+function syncChangedReviewTasks(tasks: ReviewTask[], changedTaskIds: string[]) {
+  if (!canSyncBackend() || changedTaskIds.length === 0) {
+    return;
+  }
+
+  const taskMap = new Map(tasks.map((task) => [task.id, task]));
+  changedTaskIds.forEach((taskId) => {
+    const task = taskMap.get(taskId);
+    if (!task) {
+      return;
+    }
+
+    upsertPersistedReviewTask(task).catch(() => {
+      // Keep local state as fallback when the backend is unavailable.
+    });
   });
 }
 
@@ -211,7 +233,7 @@ export function loadReviewTasks(): ReviewTask[] {
  * Updates both localStorage and backend cache when successful.
  */
 export async function hydrateReviewTasksFromBackend(): Promise<ReviewTask[] | null> {
-  if (typeof window === "undefined" || typeof window.fetch !== "function") {
+  if (!canSyncBackend()) {
     return null;
   }
 
@@ -228,6 +250,10 @@ export async function hydrateReviewTasksFromBackend(): Promise<ReviewTask[] | nu
 
     const tasks = (payload as ReviewStorageSnapshot).tasks.map(normalizeLoadedTask);
 
+    if (tasks.length === 0 && loadLocalReviewTasks().length > 0) {
+      return null;
+    }
+
     cacheBackendReviewTasks(tasks);
     persistReviewTasksToLocalStorage(STORAGE_KEY, tasks);
 
@@ -237,10 +263,18 @@ export async function hydrateReviewTasksFromBackend(): Promise<ReviewTask[] | nu
   }
 }
 
-export function saveReviewTasks(tasks: ReviewTask[]): ReviewTask[] {
+export function saveReviewTasks(
+  tasks: ReviewTask[],
+  options: SaveReviewTasksOptions = {},
+): ReviewTask[] {
   persistReviewTasksToLocalStorage(STORAGE_KEY, tasks);
 
-  syncBackendReviewTasks(tasks);
+  const backendSync = options.backendSync ?? "none";
+  if (backendSync === "bulk-replace") {
+    syncBackendReviewTasksBulk(tasks);
+  } else if (backendSync === "upsert-changed") {
+    syncChangedReviewTasks(tasks, options.changedTaskIds ?? []);
+  }
 
   return tasks;
 }

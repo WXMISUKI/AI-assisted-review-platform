@@ -338,6 +338,8 @@ type OpeningConditionIssueClosureSummary = {
   nextAction: string;
 };
 
+type RectificationClosureSummary = RectificationClosureDiff["summary"];
+
 const reportDeliveryDispositions = new Set(["blocked", "fail", "reject", "needs_human_review", "warning"]);
 
 function buildReportRectificationDeliveryRows(findings: ReportFinding[]): ReportRectificationDeliveryRow[] {
@@ -439,6 +441,10 @@ function buildOpeningConditionIssueClosureSummary(input: {
     rectificationDeliveryCount: input.rectificationDeliveryRows.length,
     nextAction: "当前无阻塞人工复核，可生成报告或继续核对整改清单。",
   };
+}
+
+function formatRectificationClosureSummary(summary: RectificationClosureSummary) {
+  return `已整改 ${summary.rectified} / 仍未整改 ${summary.carried_over} / 本轮新增 ${summary.newly_added} / 待人工判断 ${summary.pending_human_review}`;
 }
 
 function buildOpeningConditionReportDeliveryPackage(input: {
@@ -709,6 +715,8 @@ type OpeningConditionTaskWorkbenchRow = {
   reportTone: "danger" | "warning" | "success" | "info" | "muted";
   updatedAt: string;
   readOnly: boolean;
+  rectificationClosureSummary?: RectificationClosureSummary | null;
+  rectificationClosureReferenceLabel?: string;
   recommendedPage: OpeningConditionPortalPage;
   actionLabel: string;
   executionRouteLabel: string;
@@ -961,6 +969,7 @@ function deriveOpeningConditionTaskWorkbenchRows({
     const issuePreviewRows = buildOpeningConditionTaskIssuePreviewRows(findings);
     const pendingReviewRows = buildOpeningConditionTaskPendingReviewRows(task);
     const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
+    const closureDiff = buildRectificationClosureDiff(task, tasks);
     const issueClosure = buildOpeningConditionIssueClosureSummary({
       findings,
       humanReviewQueue: task.humanReviewQueue,
@@ -968,6 +977,10 @@ function deriveOpeningConditionTaskWorkbenchRows({
       taskState: task.state,
       reportReady: task.reportAsset?.status === "ready",
     });
+    const rectificationClosureSummary = closureDiff?.summary ?? null;
+    const rectificationClosureReferenceLabel = closureDiff
+      ? `对比上一归档轮次 ${roundMap.get(closureDiff.previousTask.id) ?? "-"} 与当前查看轮次 ${roundMap.get(task.id) ?? "-"}`
+      : undefined;
     const matchingComplete = task.checkItems.length > 0;
     const reportActionAvailable =
       task.state === "report_ready" || task.state === "archived" || task.reportAsset?.status === "ready";
@@ -991,6 +1004,8 @@ function deriveOpeningConditionTaskWorkbenchRows({
       reportTone: reportStatus.tone,
       updatedAt: task.updatedAt,
       readOnly: ownership?.readOnly ?? task.state === "archived",
+      rectificationClosureSummary,
+      rectificationClosureReferenceLabel,
       recommendedPage,
       actionLabel: ownership?.primaryActionLabel ?? getOpeningConditionFallbackActionLabel(recommendedPage),
       executionRouteLabel: getOpeningConditionExecutionRouteLabel(recommendedPage),
@@ -1084,6 +1099,11 @@ function OpeningConditionReviewTaskWorkbench({
                   <span className={`opening-report-chip tone-${row.reportTone}`}>{row.reportLabel}</span>
                 </div>
                 <p>{row.nextAction}</p>
+                {row.rectificationClosureSummary && (
+                  <small className="opening-task-workbench-closure-summary">
+                    {formatRectificationClosureSummary(row.rectificationClosureSummary)}
+                  </small>
+                )}
                 <small className="opening-task-workbench-id">
                   {row.taskId} · 下一入口：{row.executionRouteLabel}
                 </small>
@@ -1162,6 +1182,31 @@ function OpeningConditionReviewTaskWorkbench({
                 </div>
               ))}
             </div>
+
+            {selectedRow.rectificationClosureSummary && (
+              <div className="opening-report-summary-grid">
+                <div className="opening-report-summary-card tone-success">
+                  <strong>已整改</strong>
+                  <span>{selectedRow.rectificationClosureSummary.rectified}</span>
+                  <p>{selectedRow.rectificationClosureReferenceLabel ?? "基于上一归档轮次对比"}</p>
+                </div>
+                <div className="opening-report-summary-card tone-danger">
+                  <strong>仍未整改</strong>
+                  <span>{selectedRow.rectificationClosureSummary.carried_over}</span>
+                  <p>上一轮问题延续到当前轮次。</p>
+                </div>
+                <div className="opening-report-summary-card tone-warning">
+                  <strong>本轮新增</strong>
+                  <span>{selectedRow.rectificationClosureSummary.newly_added}</span>
+                  <p>当前轮次暴露的新问题。</p>
+                </div>
+                <div className="opening-report-summary-card tone-info">
+                  <strong>待人工判断</strong>
+                  <span>{selectedRow.rectificationClosureSummary.pending_human_review}</span>
+                  <p>需要监理确认处理结论。</p>
+                </div>
+              </div>
+            )}
 
             <div className="opening-task-handoff-summary-grid">
               <div>
