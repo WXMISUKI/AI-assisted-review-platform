@@ -309,6 +309,88 @@ type ReportFindingGroup = {
   findings: ReportFinding[];
 };
 
+type ReportRectificationDeliveryRow = {
+  sequence: number;
+  id: string;
+  checkItem: string;
+  category: string;
+  issueDescription: string;
+  riskLabel: string;
+  riskTone: ReportFinding["severityTone"];
+  dispositionLabel: string;
+  dispositionTone: ReportFinding["dispositionTone"];
+  basis: string;
+  rectification: string;
+  notes: string[];
+};
+
+const reportDeliveryDispositions = new Set(["blocked", "fail", "reject", "needs_human_review", "warning"]);
+
+function buildReportRectificationDeliveryRows(findings: ReportFinding[]): ReportRectificationDeliveryRow[] {
+  return findings
+    .filter((finding) => reportDeliveryDispositions.has(finding.disposition))
+    .map((finding, index) => ({
+      sequence: index + 1,
+      id: finding.id,
+      checkItem: finding.title,
+      category: finding.category,
+      issueDescription: finding.description || finding.dispositionLabel,
+      riskLabel: finding.severityLabel,
+      riskTone: finding.severityTone,
+      dispositionLabel: finding.dispositionLabel,
+      dispositionTone: finding.dispositionTone,
+      basis: finding.basis || "未记录明确依据",
+      rectification: finding.rectification || "补齐对应资料后重新提交复审。",
+      notes: [...finding.evidence, ...finding.humanReview].slice(0, 4),
+    }));
+}
+
+function OpeningConditionReportRectificationDeliveryList({ rows }: { rows: ReportRectificationDeliveryRow[] }) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="opening-report-rectification-list">
+      <div className="opening-report-rectification-header">
+        <div>
+          <span className="eyebrow">Rectification Delivery List</span>
+          <h3>整改交付清单</h3>
+          <p>按报告交付口径列出本轮不符合、阻塞、待人工判断和提示关注项，后续 DOCX/原表回填也应复用这些字段。</p>
+        </div>
+        <span className="opening-report-chip tone-warning">{rows.length} 项</span>
+      </div>
+      <div className="opening-report-rectification-table" role="table" aria-label="整改交付清单">
+        <div className="opening-report-rectification-table-head" role="row">
+          <span>序号</span>
+          <span>核查项目</span>
+          <span>问题描述</span>
+          <span>风险</span>
+          <span>依据</span>
+          <span>整改要求</span>
+        </div>
+        {rows.map((row) => (
+          <div key={row.id} className="opening-report-rectification-row" role="row">
+            <span className="opening-report-rectification-sequence">{row.sequence}</span>
+            <div>
+              <strong>{row.checkItem}</strong>
+              <small>{row.category}</small>
+              <span className={`opening-report-chip tone-${row.dispositionTone}`}>{row.dispositionLabel}</span>
+            </div>
+            <p>{row.issueDescription}</p>
+            <span className={`opening-report-chip tone-${row.riskTone}`}>{row.riskLabel}</span>
+            <small>{row.basis}</small>
+            <div>
+              <p>{row.rectification}</p>
+              {row.notes.length > 0 && <small>证据/复核：{row.notes.join(" / ")}</small>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type OpeningConditionTaskWorkbenchRow = {
   taskId: string;
   roundLabel: string;
@@ -3894,6 +3976,7 @@ function OpeningConditionReportDeliveryWorkbench({
   const currentRound = runSnapshot.currentRound;
   const findings = buildReportFindings(selectedTask);
   const findingGroups = buildReportFindingGroups(findings);
+  const rectificationDeliveryRows = buildReportRectificationDeliveryRows(findings);
   const closureDiff = runSnapshot.closureDiff;
   const previousRun = runSnapshot.previousRun;
   const decisionLedger = packageDiagnostics?.decisionLedger ?? [];
@@ -4238,6 +4321,8 @@ function OpeningConditionReportDeliveryWorkbench({
           )}
         </div>
       )}
+
+      <OpeningConditionReportRectificationDeliveryList rows={rectificationDeliveryRows} />
 
       {findings.length > 0 && (
         <div className="opening-record-list">

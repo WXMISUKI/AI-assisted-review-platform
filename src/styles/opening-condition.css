@@ -194,6 +194,96 @@
   background: color-mix(in srgb, var(--primary-soft) 38%, var(--surface));
 }
 
+.opening-report-rectification-list {
+  display: grid;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 26%, var(--border));
+  border-radius: 8px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--warning-soft) 34%, var(--surface));
+}
+
+.opening-report-rectification-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.opening-report-rectification-header h3,
+.opening-report-rectification-header p {
+  margin: 0;
+}
+
+.opening-report-rectification-header h3 {
+  color: var(--text-primary);
+}
+
+.opening-report-rectification-header p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.opening-report-rectification-table {
+  display: grid;
+  gap: 8px;
+}
+
+.opening-report-rectification-table-head,
+.opening-report-rectification-row {
+  display: grid;
+  grid-template-columns: 52px minmax(160px, 1.05fr) minmax(180px, 1.25fr) minmax(86px, 0.42fr) minmax(150px, 0.95fr) minmax(190px, 1.25fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.opening-report-rectification-table-head {
+  border-bottom: 1px solid var(--border-soft);
+  padding: 0 8px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.opening-report-rectification-row {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 8px;
+  background: var(--surface);
+}
+
+.opening-report-rectification-row strong,
+.opening-report-rectification-row small,
+.opening-report-rectification-row p,
+.opening-report-rectification-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opening-report-rectification-row p,
+.opening-report-rectification-row small {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.opening-report-rectification-row > div {
+  display: grid;
+  gap: 6px;
+}
+
+.opening-report-rectification-sequence {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: var(--surface-muted);
+  font-weight: 800;
+}
+
 .opening-report-workbench-header,
 .opening-finding-group-header {
   display: flex;
@@ -1466,6 +1556,7 @@
 @media (max-width: 960px) {
   .opening-action-summary-header,
   .opening-report-workbench-header,
+  .opening-report-rectification-header,
   .opening-finding-group-header,
   .opening-report-finding-header,
   .opening-history-item-header {
@@ -1494,6 +1585,14 @@
   .opening-task-handoff-stage-list,
   .opening-task-handoff-summary-grid,
   .opening-object-participant-list {
+    grid-template-columns: 1fr;
+  }
+
+  .opening-report-rectification-table-head {
+    display: none;
+  }
+
+  .opening-report-rectification-row {
     grid-template-columns: 1fr;
   }
 

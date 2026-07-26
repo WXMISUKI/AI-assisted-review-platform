@@ -56,6 +56,23 @@ The task ledger should not behave only as a list of jump buttons. When a task ro
 
 This selected-task layer is the near-term bridge between a simple register and a future evidence-preview workbench. It should stay compact and avoid expanding every row at once.
 
+## Report Rectification Delivery List
+
+The report page should expose a scan-friendly rectification delivery list before lower-level grouped issue cards.
+
+Each delivery row should carry the fields needed by supervisors and by later DOCX/original-table export:
+
+- Sequence number.
+- Check item and category.
+- Issue description.
+- Risk level.
+- Review disposition.
+- Basis.
+- Rectification requirement.
+- Evidence or human-review notes when available.
+
+This list is the platform-owned handoff layer. Future `docxToHtml` / `htmlToDocx`, original-table backfill, legal-rectification agents, or issue-review agents should consume this structured handoff rather than scraping UI copy.
+
 ## Future Evidence Preview Direction
 
 The next substantial interaction upgrade should be issue-centered evidence preview:
