@@ -540,6 +540,10 @@ export interface OpeningConditionPilotMasterDataRecord {
   label: string;
   normalizedFields?: Record<string, unknown>;
   status: "provisional" | "confirmed" | "published" | "human_approved" | "rejected" | "expired";
+  evidenceRefs?: Array<{
+    fileName?: string;
+    summary?: string;
+  }>;
   validity?: string;
   confidence?: "high" | "medium" | "low";
   preview?: {
@@ -587,6 +591,54 @@ export interface OpeningConditionPilotKnowledgeBaseResult {
   task?: OpeningConditionPilotTask;
   preflightReadiness?: OpeningConditionPilotPreflightReadiness;
   status?: string;
+  message?: string;
+}
+
+export interface OpeningConditionWorkspaceAssetRegistrySummary {
+  workspaceId: string;
+  basis: {
+    total: number;
+    published: number;
+    provisional: number;
+    status: "ready" | "attention";
+  };
+  masterData: {
+    total: number;
+    published: number;
+    currentRunConfirmed: number;
+    provisional: number;
+    reviewNeeded: number;
+    rejected: number;
+    status: "ready" | "attention";
+  };
+  knowledgeBase: {
+    present: boolean;
+    status: "ready" | "missing" | "provisional" | "blocked" | "stale" | "unreachable";
+    providerSyncStatus?: string;
+    label: string;
+  };
+  runHistory: {
+    total: number;
+    active: number;
+    archived: number;
+    latestTaskId?: string;
+    latestTaskState?: OpeningConditionPilotTask["state"];
+    latestUpdatedAt?: string;
+    hasHistory: boolean;
+  };
+  currentRunBinding: {
+    status: "ready" | "provisional" | "blocked" | "archived_only" | "no_run";
+    summary: string;
+    latestTaskId?: string;
+    basisVersionId?: string;
+    knowledgeBaseId?: string;
+  };
+}
+
+export interface OpeningConditionWorkspaceAssetRegistryResult {
+  ok: boolean;
+  workspaceIds?: string[];
+  summaries: OpeningConditionWorkspaceAssetRegistrySummary[];
   message?: string;
 }
 
@@ -839,6 +891,20 @@ export async function upsertOpeningConditionPilotTask(taskId: string, task: Part
 export async function fetchOpeningConditionPilotTasks() {
   const response = await fetch("/api/opening-condition/pilot-tasks");
   return readJson<OpeningConditionPilotTasksResult>(response);
+}
+
+export async function fetchOpeningConditionWorkspaceAssetRegistry(workspaceIds: string[]) {
+  const searchParams = new URLSearchParams();
+  workspaceIds.forEach((workspaceId) => {
+    if (workspaceId) {
+      searchParams.append("workspaceId", workspaceId);
+    }
+  });
+  const query = searchParams.toString();
+  const response = await fetch(
+    `/api/opening-condition/workspace-asset-registry${query ? `?${query}` : ""}`,
+  );
+  return readJson<OpeningConditionWorkspaceAssetRegistryResult>(response);
 }
 
 export async function fetchOpeningConditionPilotTask(taskId: string) {

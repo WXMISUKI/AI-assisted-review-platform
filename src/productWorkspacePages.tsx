@@ -21,12 +21,11 @@ import {
   type OpeningConditionPilotIntakeInitResult,
   type OpeningConditionPilotMasterDataRecord,
   type OpeningConditionPilotReadinessResult,
+  type OpeningConditionWorkspaceAssetRegistrySummary,
 } from "./domain/backendConnectivity";
 import type { ProductLauncherEntry, ProductPortalId } from "./domain/productPortal";
 import {
   buildOpeningConditionWorkspaceCatalog,
-  buildOpeningConditionWorkspaceAssetRegistry,
-  findOpeningConditionWorkspaceAssetRegistryRecord,
   getOpeningConditionBasisPublicationStatusMeta,
   getOpeningConditionMasterDataPublicationStatusMeta,
   getOpeningConditionRiskSummary,
@@ -38,7 +37,6 @@ import {
   openingConditionVerdictLabels,
   type OpeningConditionReviewPacket,
   type OpeningConditionReviewObjectType,
-  type OpeningConditionWorkspaceAssetRegistryRecord,
   type OpeningConditionWorkspace,
   type OpeningConditionWorkspaceProjectCatalog,
 } from "./domain/openingConditionReview";
@@ -726,6 +724,17 @@ type OpeningConditionTaskWorkbenchRow = {
   acceptanceSnapshot?: OpeningConditionPilotMvpAcceptanceSnapshot;
   acceptanceLabel: string;
   acceptanceTone: "danger" | "warning" | "success" | "info" | "muted";
+  trialHandoff: {
+    statusLabel: string;
+    statusTone: "danger" | "warning" | "success" | "info" | "muted";
+    currentOwner: string;
+    nextAction: string;
+    recommendedEntry: string;
+    blockingSummary: string;
+    inputSummary: string;
+    executionSummary: string;
+    historySummary: string;
+  } | null;
   issuePreviewRows: OpeningConditionTaskIssuePreviewRow[];
   pendingReviewRows: OpeningConditionTaskPendingReviewRow[];
   deliverySummary: {
@@ -888,6 +897,44 @@ function getOpeningConditionExecutionRouteLabel(page: OpeningConditionPortalPage
   return openingPrimaryNavPageIds.has(page) ? label : `${label}（二级执行页）`;
 }
 
+function buildOpeningConditionTaskTrialHandoffSummary(args: {
+  task: OpeningConditionPilotTask;
+  ownership?: OpeningConditionRunActionOwnership | null;
+  recommendedPage: OpeningConditionPortalPage;
+  readOnly: boolean;
+}): OpeningConditionTaskWorkbenchRow["trialHandoff"] {
+  const trialPackage = args.task.trialPackage;
+  if (!trialPackage) {
+    return null;
+  }
+
+  const deliveryHandoff = args.task.reportAsset?.packageDiagnostics?.deliveryHandoff;
+  const blockingSummary =
+    trialPackage.blockingReasons.length > 0
+      ? trialPackage.blockingReasons.join(" / ")
+      : trialPackage.providerReadiness?.summary ?? "No additional trial blockers recorded.";
+  const inputSummary = `${trialPackage.inputObjects.basisFileName ?? "No basis file"} / ${trialPackage.inputObjects.checklistFileName ?? "No checklist file"}`;
+  const executionSummary = `Sources ${trialPackage.inputObjects.sourceCount} / Manifest ${trialPackage.diagnostics.inventoryEntryCount} / Evidence ${trialPackage.matching.evidenceCount} / Pending review ${trialPackage.humanReview.blockingCount}`;
+  const historySummary = args.readOnly
+    ? "This run is historical read-only. Continue rectification from the current archived context."
+    : "This run is still actionable. Clear blockers first, then continue from the recommended entry.";
+
+  return {
+    statusLabel: deliveryHandoff?.statusLabel ?? (args.readOnly ? "Historical delivery snapshot" : "Current trial delivery"),
+    statusTone: args.readOnly ? "muted" : trialPackage.blockingReasons.length > 0 ? "warning" : "success",
+    currentOwner: deliveryHandoff?.currentOwner ?? args.ownership?.currentOwner ?? "Material intake owner",
+    nextAction:
+      deliveryHandoff?.nextAction ??
+      args.ownership?.nextAction ??
+      "Review current blockers and continue from the recommended execution entry.",
+    recommendedEntry: getOpeningConditionExecutionRouteLabel(args.recommendedPage),
+    blockingSummary,
+    inputSummary,
+    executionSummary,
+    historySummary,
+  };
+}
+
 function buildOpeningConditionTaskIssuePreviewRows(findings: ReportFinding[]): OpeningConditionTaskIssuePreviewRow[] {
   const priority: Record<string, number> = {
     blocked: 0,
@@ -991,6 +1038,13 @@ function deriveOpeningConditionTaskWorkbenchRows({
     const matchingComplete = task.checkItems.length > 0;
     const reportActionAvailable =
       task.state === "report_ready" || task.state === "archived" || task.reportAsset?.status === "ready";
+    const readOnly = ownership?.readOnly ?? task.state === "archived";
+    const trialHandoff = buildOpeningConditionTaskTrialHandoffSummary({
+      task,
+      ownership,
+      recommendedPage,
+      readOnly,
+    });
 
     return {
       taskId: task.id,
@@ -1010,7 +1064,7 @@ function deriveOpeningConditionTaskWorkbenchRows({
       reportLabel: reportStatus.label,
       reportTone: reportStatus.tone,
       updatedAt: task.updatedAt,
-      readOnly: ownership?.readOnly ?? task.state === "archived",
+      readOnly,
       rectificationClosureSummary,
       rectificationClosureReferenceLabel,
       recommendedPage,
@@ -1019,6 +1073,7 @@ function deriveOpeningConditionTaskWorkbenchRows({
       acceptanceSnapshot,
       acceptanceLabel: acceptanceSnapshot?.statusLabel ?? "尚未形成 MVP 验收快照",
       acceptanceTone: acceptanceSnapshot ? getOpeningConditionMvpAcceptanceTone(acceptanceSnapshot.status) : "muted",
+      trialHandoff,
       issuePreviewRows,
       pendingReviewRows,
       deliverySummary: {
@@ -1179,6 +1234,50 @@ function OpeningConditionReviewTaskWorkbench({
                 <small>{selectedRow.readOnly ? "该轮次只读，用于留痕和复盘。" : "该轮次仍是当前可推进任务。"}</small>
               </div>
             </div>
+
+            {selectedRow.trialHandoff && (
+              <div className="opening-report-delivery-handoff">
+                <div className="opening-report-finding-header">
+                  <div>
+                    <span className="eyebrow">Trial Handoff</span>
+                    <strong>{selectedRow.trialHandoff.statusLabel}</strong>
+                  </div>
+                  <div className="opening-report-chip-row">
+                    <span className={`opening-report-chip tone-${selectedRow.trialHandoff.statusTone}`}>
+                      {selectedRow.trialHandoff.statusLabel}
+                    </span>
+                    <span className="opening-report-chip tone-info">{selectedRow.trialHandoff.currentOwner}</span>
+                    {selectedRow.readOnly && <span className="opening-report-chip tone-muted">Historical read-only</span>}
+                  </div>
+                </div>
+                <div className="opening-report-context-grid">
+                  <div className="opening-action-summary-item">
+                    <strong>Next action</strong>
+                    <small>{selectedRow.trialHandoff.nextAction}</small>
+                  </div>
+                  <div className="opening-action-summary-item">
+                    <strong>Recommended entry</strong>
+                    <small>{selectedRow.trialHandoff.recommendedEntry}</small>
+                  </div>
+                  <div className="opening-action-summary-item">
+                    <strong>Blocking summary</strong>
+                    <small>{selectedRow.trialHandoff.blockingSummary}</small>
+                  </div>
+                </div>
+                <div className="opening-record-list opening-record-list-compact">
+                  <div>
+                    <strong>Input package</strong>
+                    <span>{selectedRow.trialHandoff.inputSummary}</span>
+                    <p>{selectedRow.trialHandoff.executionSummary}</p>
+                  </div>
+                  <div>
+                    <strong>Run semantics</strong>
+                    <span>{selectedRow.reportLabel}</span>
+                    <p>{selectedRow.trialHandoff.historySummary}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="opening-task-handoff-stage-list">
               {selectedSteps.map((step) => (
@@ -1632,16 +1731,23 @@ function findWorkspaceProjectCatalog(
   return catalog.find((project) => project.workspaces.some((workspace) => workspace.id === workspaceId)) ?? null;
 }
 
-function formatWorkspaceAssetCompactSummary(record: OpeningConditionWorkspaceAssetRegistryRecord) {
+function findWorkspaceAssetRegistrySummary(
+  registry: OpeningConditionWorkspaceAssetRegistrySummary[],
+  workspaceId: string,
+) {
+  return registry.find((record) => record.workspaceId === workspaceId) ?? null;
+}
+
+function formatWorkspaceAssetCompactSummary(record: OpeningConditionWorkspaceAssetRegistrySummary) {
   return [
     `Basis ${record.basis.published}/${record.basis.total}`,
-    `Master data ${record.masterData.published}/${record.masterData.total}`,
+    `Master data ${record.masterData.published + record.masterData.currentRunConfirmed}/${record.masterData.total}`,
     `KB ${readinessLabels[record.knowledgeBase.status] ?? record.knowledgeBase.status}`,
     record.runHistory.hasHistory ? `History ${record.runHistory.total}` : "No history",
   ].join(" / ");
 }
 
-function formatWorkspaceLatestRun(record: OpeningConditionWorkspaceAssetRegistryRecord) {
+function formatWorkspaceLatestRun(record: OpeningConditionWorkspaceAssetRegistrySummary) {
   if (!record.runHistory.hasHistory) {
     return "No run history recorded for this workspace yet.";
   }
@@ -1793,6 +1899,7 @@ export function OpeningConditionWorkspaceShell({
   pilotTask,
   pilotWorkspaceTasks,
   allPilotTasks,
+  workspaceAssetRegistry,
   pilotBasisRecords,
   pilotMasterDataRecords,
   pilotKnowledgeBases,
@@ -1834,6 +1941,7 @@ export function OpeningConditionWorkspaceShell({
   pilotTask?: OpeningConditionPilotTask | null;
   pilotWorkspaceTasks?: OpeningConditionPilotTask[];
   allPilotTasks?: OpeningConditionPilotTask[];
+  workspaceAssetRegistry?: OpeningConditionWorkspaceAssetRegistrySummary[];
   pilotBasisRecords?: OpeningConditionPilotBasisRecord[];
   pilotMasterDataRecords?: OpeningConditionPilotMasterDataRecord[];
   pilotKnowledgeBases?: OpeningConditionPilotKnowledgeBaseRef[];
@@ -1991,6 +2099,7 @@ export function OpeningConditionWorkspaceShell({
               selectedWorkspaceId={selectedWorkspaceId}
               pilotTask={pilotTask}
               allPilotTasks={allPilotTasks}
+              workspaceAssetRegistry={workspaceAssetRegistry}
               pilotReadiness={pilotReadiness}
               onSelectWorkspace={onSelectWorkspace}
               onGoToIntake={() => goToOpeningPage("material-intake")}
@@ -2200,6 +2309,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   selectedWorkspaceId,
   pilotTask,
   allPilotTasks,
+  workspaceAssetRegistry,
   pilotReadiness,
   onSelectWorkspace,
   onGoToIntake,
@@ -2212,6 +2322,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   selectedWorkspaceId: string;
   pilotTask?: OpeningConditionPilotTask | null;
   allPilotTasks?: OpeningConditionPilotTask[];
+  workspaceAssetRegistry?: OpeningConditionWorkspaceAssetRegistrySummary[];
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
   onSelectWorkspace: (workspaceId: string) => void;
   onGoToIntake: () => void;
@@ -2223,18 +2334,11 @@ function OpeningConditionObjectOverviewProductizedPage({
   const riskSummary = getOpeningConditionRiskSummary(packet);
   const readiness = pilotReadiness?.preflightReadiness ?? packet.preflightReadiness;
   const workspaceCatalog = useMemo(() => buildOpeningConditionWorkspaceCatalog(workspaces), [workspaces]);
-  const workspaceAssetRegistry = useMemo(
-    () => buildOpeningConditionWorkspaceAssetRegistry(workspaces, allPilotTasks ?? []),
-    [allPilotTasks, workspaces],
-  );
   const currentWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? packet.workspaceContext;
   const selectedProject = findWorkspaceProjectCatalog(workspaceCatalog, selectedWorkspaceId);
   const selectedReviewObject =
     selectedProject?.reviewObjects.find((item) => item.reviewObjectId === currentWorkspace.reviewObjectId) ?? null;
-  const selectedWorkspaceRegistry = findOpeningConditionWorkspaceAssetRegistryRecord(
-    workspaceAssetRegistry,
-    selectedWorkspaceId,
-  );
+  const selectedWorkspaceRegistry = findWorkspaceAssetRegistrySummary(workspaceAssetRegistry ?? [], selectedWorkspaceId);
   const actionOwnership = deriveOpeningConditionRunActionOwnership({
     pilotTask,
     readiness: pilotReadiness,
@@ -2386,16 +2490,16 @@ function OpeningConditionObjectOverviewProductizedPage({
                               <strong>{participant.participantEntityName}</strong>
                               <span>{participant.organizationRole}</span>
                               <small>{workspace.contractPackage}</small>
-                              {findOpeningConditionWorkspaceAssetRegistryRecord(workspaceAssetRegistry, workspace.id) && (
+                              {findWorkspaceAssetRegistrySummary(workspaceAssetRegistry ?? [], workspace.id) && (
                                 <>
                                   <small>
                                     {formatWorkspaceAssetCompactSummary(
-                                      findOpeningConditionWorkspaceAssetRegistryRecord(workspaceAssetRegistry, workspace.id)!,
+                                      findWorkspaceAssetRegistrySummary(workspaceAssetRegistry ?? [], workspace.id)!,
                                     )}
                                   </small>
                                   <small className="opening-workspace-switch-latest-run">
                                     {formatWorkspaceLatestRun(
-                                      findOpeningConditionWorkspaceAssetRegistryRecord(workspaceAssetRegistry, workspace.id)!,
+                                      findWorkspaceAssetRegistrySummary(workspaceAssetRegistry ?? [], workspace.id)!,
                                     )}
                                   </small>
                                 </>
@@ -2482,6 +2586,11 @@ function OpeningConditionObjectOverviewProductizedPage({
                     {selectedWorkspaceRegistry.runHistory.total} rounds / {selectedWorkspaceRegistry.runHistory.archived} archived
                   </span>
                   <small>{formatWorkspaceLatestRun(selectedWorkspaceRegistry)}</small>
+                </div>
+                <div className="opening-overview-asset-card">
+                  <strong>Current run binding</strong>
+                  <span>{selectedWorkspaceRegistry.currentRunBinding.status}</span>
+                  <small>{selectedWorkspaceRegistry.currentRunBinding.summary}</small>
                 </div>
               </div>
             </article>
@@ -2688,6 +2797,7 @@ function OpeningConditionMaterialIntakePage({
   onPublishPilotBasisDecision,
   onRefreshPilotBasisPreview,
   onIngestPilotBasisProviderPreview,
+  onIngestPilotMasterDataProviderPreview,
   onConfirmPilotMasterData,
   onDecidePilotMasterDataCandidate,
   onRunPilotMatch,
@@ -2713,6 +2823,7 @@ function OpeningConditionMaterialIntakePage({
   onPublishPilotBasisDecision?: (basisId: string, safeNote?: string) => void;
   onRefreshPilotBasisPreview?: (basisId: string) => void;
   onIngestPilotBasisProviderPreview?: (basisId: string) => void;
+  onIngestPilotMasterDataProviderPreview?: (recordId: string) => void;
   onConfirmPilotMasterData?: () => void;
   onDecidePilotMasterDataCandidate?: (
     recordId: string,
@@ -3506,6 +3617,7 @@ function OpeningConditionPublicationGovernancePage({
   pilotBusy,
   onRefreshBasisPreview,
   onIngestProviderPreview,
+  onIngestMasterDataProviderPreview,
   onGoToPage,
 }: {
   packet: OpeningConditionReviewPacket;

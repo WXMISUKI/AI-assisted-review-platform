@@ -60,6 +60,7 @@ import {
   listOpeningConditionPilotKnowledgeBases,
   listOpeningConditionPilotMasterData,
   listOpeningConditionPilotTasks,
+  listOpeningConditionWorkspaceAssetRegistrySummaries,
   publishOpeningConditionPilotBasisVersion,
   recordOpeningConditionPilotReportDocumentExport,
   refreshOpeningConditionPilotBasisPreview,
@@ -278,6 +279,7 @@ export function createBackendServer(options = {}) {
           "POST /api/opening-condition/pilot-tasks/:taskId/transition",
           "GET /api/opening-condition/pilot-tasks/:taskId/readiness",
           "POST /api/opening-condition/pilot-tasks/:taskId/knowledge-base/:knowledgeBaseId/bind",
+          "GET /api/opening-condition/workspace-asset-registry",
           "GET /api/opening-condition/workspaces/:workspaceId/basis",
           "PUT /api/opening-condition/workspaces/:workspaceId/basis/:basisId",
           "POST /api/opening-condition/workspaces/:workspaceId/basis/:basisId/extract",
@@ -376,6 +378,16 @@ export function createBackendServer(options = {}) {
         ...(await listOpeningConditionPilotTasks(openingConditionStoreOptions)),
         store: getOpeningConditionPilotStoreInfo(),
       });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/opening-condition/workspace-asset-registry") {
+      const workspaceIds = url.searchParams.getAll("workspaceId");
+      sendJson(
+        response,
+        200,
+        await listOpeningConditionWorkspaceAssetRegistrySummaries(workspaceIds, openingConditionStoreOptions),
+      );
       return;
     }
 

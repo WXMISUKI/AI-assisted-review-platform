@@ -3248,6 +3248,181 @@ export async function listOpeningConditionPilotTasks(options = {}) {
   return readSnapshot(options.storePath);
 }
 
+function compareTaskByUpdatedAtDesc(left, right) {
+  return String(right.updatedAt ?? right.createdAt ?? "").localeCompare(String(left.updatedAt ?? left.createdAt ?? ""));
+}
+
+function summarizeWorkspaceBasisRecords(records = []) {
+  const published = records.filter((item) => item.status === "published").length;
+  return {
+    total: records.length,
+    published,
+    provisional: records.filter((item) => item.status !== "published").length,
+    status: published > 0 ? "ready" : "attention",
+  };
+}
+
+function summarizeWorkspaceMasterDataRecords(records = []) {
+  const published = records.filter((item) => item.status === "published").length;
+  const currentRunConfirmed = records.filter((item) => item.status === "human_approved").length;
+  return {
+    total: records.length,
+    published,
+    currentRunConfirmed,
+    provisional: records.filter((item) => item.status === "provisional" || item.status === "confirmed").length,
+    reviewNeeded: records.filter((item) => item.status === "pending-human-review").length,
+    rejected: records.filter((item) => item.status === "rejected").length,
+    status: published + currentRunConfirmed > 0 ? "ready" : "attention",
+  };
+}
+
+function summarizeWorkspaceKnowledgeBaseRecord(record) {
+  if (!record) {
+    return {
+      present: false,
+      status: "missing",
+      label: "No knowledge base bound",
+    };
+  }
+
+  const providerSyncStatus = normalizeString(record.providerSyncStatus, "", 40);
+  let status = "provisional";
+  if (providerSyncStatus === "ready" || record.status === "ready") {
+    status = "ready";
+  } else if (providerSyncStatus === "stale") {
+    status = "stale";
+  } else if (providerSyncStatus === "unreachable") {
+    status = "unreachable";
+  } else if (providerSyncStatus === "disabled") {
+    status = "blocked";
+  }
+
+  return {
+    present: true,
+    status,
+    providerSyncStatus: providerSyncStatus || undefined,
+    label:
+      normalizeString(record.label, "", 240) ||
+      normalizeString(record.organizationName, "", 240) ||
+      normalizeString(record.subcontractTeamName, "", 240) ||
+      "Workspace knowledge base",
+  };
+}
+
+function summarizeWorkspaceRunHistory(tasks = []) {
+  const sorted = [...tasks].sort(compareTaskByUpdatedAtDesc);
+  const latestTask = sorted[0];
+  return {
+    total: sorted.length,
+    active: sorted.filter((task) => task.state !== "archived").length,
+    archived: sorted.filter((task) => task.state === "archived").length,
+    latestTaskId: latestTask?.id,
+    latestTaskState: latestTask?.state,
+    latestUpdatedAt: latestTask?.updatedAt,
+    hasHistory: sorted.length > 0,
+  };
+}
+
+function deriveWorkspaceCurrentRunBinding({ latestRunnableTask, runHistory, basisSummary, masterDataSummary, knowledgeBaseSummary }) {
+  if (!latestRunnableTask) {
+    if (runHistory.archived > 0) {
+      return {
+        status: "archived_only",
+        summary: "Only archived runs are present. Start a new rectification run before mutating current workspace facts.",
+        latestTaskId: runHistory.latestTaskId,
+      };
+    }
+
+    return {
+      status: "no_run",
+      summary: "No runnable pilot run has been initialized for this workspace yet.",
+    };
+  }
+
+  const readiness = latestRunnableTask.preflightReadiness ?? deriveOpeningConditionPilotPreflightReadiness(latestRunnableTask);
+  const basisReady = basisSummary.published > 0;
+  const masterDataReady = masterDataSummary.published + masterDataSummary.currentRunConfirmed > 0;
+  const knowledgeBaseReady = knowledgeBaseSummary.status === "ready";
+  const blockingReasons = Array.isArray(readiness?.blockingReasons) ? readiness.blockingReasons : [];
+
+  if (readiness?.status === "ready" && basisReady && masterDataReady && knowledgeBaseReady) {
+    return {
+      status: "ready",
+      summary: `Current run ${latestRunnableTask.id} is bound to published basis, approved master data, and a ready knowledge base.`,
+      latestTaskId: latestRunnableTask.id,
+      basisVersionId: latestRunnableTask.basisVersion?.id,
+      knowledgeBaseId: latestRunnableTask.knowledgeBaseRef?.id,
+    };
+  }
+
+  return {
+    status: blockingReasons.length > 0 ? "blocked" : "provisional",
+    summary:
+      blockingReasons.length > 0
+        ? `Current run ${latestRunnableTask.id} is still blocked by ${blockingReasons.join(", ")}.`
+        : `Current run ${latestRunnableTask.id} has been initialized but its basis, master data, or knowledge base binding is still provisional.`,
+    latestTaskId: latestRunnableTask.id,
+    basisVersionId: latestRunnableTask.basisVersion?.id,
+    knowledgeBaseId: latestRunnableTask.knowledgeBaseRef?.id,
+  };
+}
+
+export async function listOpeningConditionWorkspaceAssetRegistrySummaries(workspaceIds = [], options = {}) {
+  const snapshot = await readSnapshot(options.storePath);
+  const requestedWorkspaceIds =
+    Array.isArray(workspaceIds) && workspaceIds.length > 0
+      ? Array.from(new Set(workspaceIds.map((item) => normalizeString(item, "", 160)).filter(Boolean)))
+      : Array.from(
+          new Set([
+            ...snapshot.tasks.map((item) => item.context.workspaceId),
+            ...snapshot.basisVersions.map((item) => item.workspaceId),
+            ...snapshot.masterDataRecords.map((item) => item.workspaceId),
+            ...snapshot.knowledgeBases.map((item) => item.workspaceId),
+          ].filter(Boolean)),
+        );
+
+  const summaries = requestedWorkspaceIds.map((workspaceId) => {
+    const workspaceTasks = snapshot.tasks
+      .filter((item) => item.context.workspaceId === workspaceId)
+      .sort(compareTaskByUpdatedAtDesc);
+    const latestRunnableTask = workspaceTasks.find((item) => item.state !== "archived") ?? null;
+    const basisSummary = summarizeWorkspaceBasisRecords(
+      snapshot.basisVersions.filter((item) => item.workspaceId === workspaceId),
+    );
+    const masterDataSummary = summarizeWorkspaceMasterDataRecords(
+      snapshot.masterDataRecords.filter((item) => item.workspaceId === workspaceId),
+    );
+    const knowledgeBaseRecord =
+      snapshot.knowledgeBases
+        .filter((item) => item.workspaceId === workspaceId)
+        .sort((left, right) => String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")))[0] ?? null;
+    const knowledgeBaseSummary = summarizeWorkspaceKnowledgeBaseRecord(knowledgeBaseRecord);
+    const runHistory = summarizeWorkspaceRunHistory(workspaceTasks);
+    const currentRunBinding = deriveWorkspaceCurrentRunBinding({
+      latestRunnableTask,
+      runHistory,
+      basisSummary,
+      masterDataSummary,
+      knowledgeBaseSummary,
+    });
+
+    return sanitizeOpeningConditionPilotValue({
+      workspaceId,
+      basis: basisSummary,
+      masterData: masterDataSummary,
+      knowledgeBase: knowledgeBaseSummary,
+      runHistory,
+      currentRunBinding,
+    });
+  });
+
+  return {
+    ok: true,
+    workspaceIds: requestedWorkspaceIds,
+    summaries,
+  };
+}
+
 export async function listOpeningConditionPilotBasisVersions(workspaceId, options = {}) {
   const snapshot = await readSnapshot(options.storePath);
   return {

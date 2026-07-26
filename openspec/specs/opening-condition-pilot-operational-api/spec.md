@@ -44,6 +44,14 @@ The system SHALL provide typed frontend client functions and a concise operation
 - **WHEN** a pilot operational API call fails or returns an error payload
 - **THEN** the frontend displays a bounded operational error and keeps the rest of the portal usable
 
+#### Scenario: Backend workspace asset registry is displayed
+- **WHEN** the opening-condition portal overview is rendered
+- **THEN** the frontend can fetch backend-derived workspace asset registry summaries and display them without deriving the whole summary only from page-local mock packet data
+
+#### Scenario: Workspace asset registry API fails
+- **WHEN** the workspace asset registry API fails or returns a safe error payload
+- **THEN** the frontend displays a bounded operational fallback and keeps the rest of the opening-condition portal usable
+
 ### Requirement: Operational intake/init contract
 The system SHALL expose typed backend and frontend contracts for opening-condition pilot intake/init orchestration.
 
@@ -161,6 +169,10 @@ The pilot operational API SHALL allow the frontend to discover the current runna
 #### Scenario: Multiple runs exist in a workspace
 - **WHEN** the frontend requests the pilot task list for a workspace
 - **THEN** the response includes task state, workspace context, timestamps, and report availability sufficient to select the latest runnable run and render archived history
+
+#### Scenario: Overview resolves current workspace run
+- **WHEN** the frontend renders a selected workspace asset summary
+- **THEN** the contract includes latest task id, latest task state, archived count, active count, and current-run binding explanation sufficient for operator-facing overview rendering
 
 #### Scenario: Archived task rejects formal matching
 - **WHEN** a formal-match request targets an archived task

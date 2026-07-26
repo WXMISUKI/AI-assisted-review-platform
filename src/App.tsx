@@ -17,6 +17,7 @@ import {
   fetchOpeningConditionPilotKnowledgeBases,
   fetchOpeningConditionPilotMasterData,
   fetchOpeningConditionPilotTasks,
+  fetchOpeningConditionWorkspaceAssetRegistry,
   fetchOpeningConditionPilotTask,
   fetchOpeningConditionPilotTaskReadiness,
   generateOpeningConditionPilotReport,
@@ -32,6 +33,7 @@ import {
   type OpeningConditionPilotIntakeInitResult,
   type OpeningConditionPilotMasterDataRecord,
   type OpeningConditionPilotReadinessResult,
+  type OpeningConditionWorkspaceAssetRegistrySummary,
 } from "./domain/backendConnectivity";
 import type { OpeningConditionPilotKnowledgeBaseRef, OpeningConditionPilotTask } from "./domain/openingConditionPilot";
 import { getAccessibleProductPortals, type ProductPortalId } from "./domain/productPortal";
@@ -180,6 +182,9 @@ export function App() {
   const [openingPilotBasisRecords, setOpeningPilotBasisRecords] = useState<OpeningConditionPilotBasisRecord[]>([]);
   const [openingPilotMasterDataRecords, setOpeningPilotMasterDataRecords] = useState<OpeningConditionPilotMasterDataRecord[]>([]);
   const [openingPilotKnowledgeBases, setOpeningPilotKnowledgeBases] = useState<OpeningConditionPilotKnowledgeBaseRef[]>([]);
+  const [openingPilotWorkspaceAssetRegistry, setOpeningPilotWorkspaceAssetRegistry] = useState<
+    OpeningConditionWorkspaceAssetRegistrySummary[]
+  >([]);
   const [openingPilotStatus, setOpeningPilotStatus] = useState("璇曠偣浠诲姟灏氭湭鍒濆鍖栵紝鍙厛杩涘叆璧勬枡鎺ュ叆椤靛垱寤轰换鍔°€?");
   const [openingPilotReportExportStatus, setOpeningPilotReportExportStatus] = useState("");
   const [openingPilotReportDownloadUrl, setOpeningPilotReportDownloadUrl] = useState("");
@@ -228,8 +233,15 @@ export function App() {
     setOpeningPilotBasisRecords([]);
     setOpeningPilotMasterDataRecords([]);
     setOpeningPilotKnowledgeBases([]);
+    setOpeningPilotWorkspaceAssetRegistry([]);
     setOpeningPilotStatus("宸插垏鎹㈠伐浣滃尯锛岃杩涘叆璧勬枡鎺ュ叆椤靛悓姝ユ垨鍒濆鍖栬宸ヤ綔鍖虹殑璇曠偣浠诲姟銆?");
     setOpeningPilotIntakeMode("default");
+  }
+
+  async function refreshOpeningWorkspaceAssetRegistry() {
+    const workspaceIds = openingConditionWorkspaces.map((workspace) => workspace.id);
+    const registryResult = await fetchOpeningConditionWorkspaceAssetRegistry(workspaceIds).catch(() => null);
+    setOpeningPilotWorkspaceAssetRegistry(registryResult?.ok ? registryResult.summaries : []);
   }
 
   async function refreshOpeningWorkspaceFacts(workspaceId = openingPacket.workspaceId) {
@@ -287,6 +299,7 @@ export function App() {
     try {
       await refreshOpeningWorkspaceFacts(openingPacket.workspaceId);
       await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
+      await refreshOpeningWorkspaceAssetRegistry();
       const taskResult = await fetchOpeningConditionPilotTask(resolvedTaskId).catch(() => null);
       if (!taskResult?.ok || !taskResult.task) {
         setOpeningPilotTask(null);
@@ -787,7 +800,9 @@ export function App() {
           sourceEvidence:
             record.preview?.sourceEvidence?.length && record.preview.sourceEvidence.length > 0
               ? record.preview.sourceEvidence
-              : record.evidenceRefs?.map((item) => item.fileName).filter(Boolean),
+              : record.evidenceRefs
+                  ?.map((item) => item.fileName)
+                  .filter((item): item is string => Boolean(item)),
           missingFields: record.preview?.missingFields ?? [],
           safeNote: "Operator imported provider structured preview into master-data candidate governance.",
         },
@@ -1024,6 +1039,7 @@ export function App() {
       onSelectPage={setOpeningPage}
       onSelectWorkspace={selectOpeningWorkspace}
       onRefreshPilotTask={() => void refreshOpeningPilotTask()}
+      workspaceAssetRegistry={openingPilotWorkspaceAssetRegistry}
       onInitializePilotTask={() => void initializeOpeningPilotTask()}
       onPublishPilotBasis={() => void publishOpeningPilotBasisRecord()}
       onPublishPilotBasisDecision={(basisId, safeNote) => void publishOpeningPilotBasisRecord({ basisId, safeNote })}

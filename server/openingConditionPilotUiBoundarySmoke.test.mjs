@@ -4,7 +4,6 @@ import test from "node:test";
 
 const portalStateSourcePath = new URL("../src/openingConditionPortalState.ts", import.meta.url);
 const workspacePagesSourcePath = new URL("../src/productWorkspacePages.tsx", import.meta.url);
-const reviewDomainSourcePath = new URL("../src/domain/openingConditionReview.ts", import.meta.url);
 const runSnapshotSourcePath = new URL("../src/openingConditionRunSnapshot.ts", import.meta.url);
 const appSourcePath = new URL("../src/App.tsx", import.meta.url);
 
@@ -69,14 +68,18 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
 
 test("UI smoke exposes workspace asset registry summaries on the overview", async () => {
   const workspaceSource = await readFile(workspacePagesSourcePath, "utf8");
-  const reviewSource = await readFile(reviewDomainSourcePath, "utf8");
+  const appSource = await readFile(appSourcePath, "utf8");
 
-  assert.match(reviewSource, /buildOpeningConditionWorkspaceAssetRegistry/);
-  assert.match(reviewSource, /findOpeningConditionWorkspaceAssetRegistryRecord/);
+  assert.match(appSource, /fetchOpeningConditionWorkspaceAssetRegistry/);
+  assert.match(appSource, /workspaceAssetRegistry=\{openingPilotWorkspaceAssetRegistry\}/);
   assert.match(workspaceSource, /Asset Registry/);
   assert.match(workspaceSource, /Current workspace assets/);
+  assert.match(workspaceSource, /findWorkspaceAssetRegistrySummary/);
+  assert.match(workspaceSource, /currentRunBinding/);
   assert.match(workspaceSource, /formatWorkspaceAssetCompactSummary/);
   assert.match(workspaceSource, /formatWorkspaceLatestRun/);
+  assert.doesNotMatch(workspaceSource, /buildOpeningConditionWorkspaceAssetRegistry/);
+  assert.doesNotMatch(workspaceSource, /findOpeningConditionWorkspaceAssetRegistryRecord/);
 });
 
 test("UI smoke keeps the task ledger as primary opening-condition MVP routing surface", async () => {
@@ -99,6 +102,11 @@ test("UI smoke keeps the task ledger as primary opening-condition MVP routing su
 test("UI smoke exposes selected-task issue and human-review summaries", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
 
+  assert.match(source, /buildOpeningConditionTaskTrialHandoffSummary/);
+  assert.match(source, /trialHandoff/);
+  assert.match(source, /Trial Handoff/);
+  assert.match(source, /Blocking summary/);
+  assert.match(source, /Recommended entry/);
   assert.match(source, /buildOpeningConditionTaskIssuePreviewRows/);
   assert.match(source, /buildOpeningConditionTaskPendingReviewRows/);
   assert.match(source, /rectificationClosureSummary/);
