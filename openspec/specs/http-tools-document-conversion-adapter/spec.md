@@ -25,10 +25,14 @@ The system SHALL call the external `html2docx` capability through a backend adap
 - **WHEN** the external tool returns an error or times out
 - **THEN** the adapter returns a safe failure summary without exposing raw prompts, raw OCR text, credentials, private headers, or stack traces
 
+#### Scenario: Opening-condition export endpoint reports adapter failure
+- **WHEN** the opening-condition DOCX export API cannot reach a configured adapter or the adapter is not configured
+- **THEN** the backend returns a bounded `export_failed` response with adapter-specific status, safe diagnostics, and an HTML fallback hint
+- **AND** it does not expose raw HTML, private URLs, request headers, credentials, or stack traces
+
 ### Requirement: DOCX-to-HTML capability reservation
 The system SHALL reserve `docx2html` configuration for future original-form backfill without requiring full backfill execution in this change.
 
 #### Scenario: Adapter status is inspected
 - **WHEN** backend provider status is returned
 - **THEN** the HTTP tools summary can indicate whether `docx2html` and `html2docx` paths are configured
-

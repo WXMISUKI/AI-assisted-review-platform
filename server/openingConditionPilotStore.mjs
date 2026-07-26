@@ -2556,10 +2556,10 @@ function buildReportExportRowsFromDeliveryPackage(deliveryPackage) {
     category: row.category,
     checkItem: row.checkItem,
     issueDescription: row.issueDescription,
-    riskLevel: row.riskLevel,
+    riskLevel: row.riskLabel,
     dispositionLabel: row.dispositionLabel,
     basis: row.basis,
-    rectificationRequirement: row.rectificationRequirement,
+    rectificationRequirement: row.rectification,
   }));
 }
 

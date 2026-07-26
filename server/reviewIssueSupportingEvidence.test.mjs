@@ -94,6 +94,7 @@ async function seedReviewTask() {
 
 test("review task issue supporting evidence returns safe normalized hits", async () => {
   const originalFetch = globalThis.fetch;
+  let searchCallCount = 0;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     if (url.includes("/api/knowledge-base/provider/status")) {
@@ -113,6 +114,22 @@ test("review task issue supporting evidence returns safe normalized hits", async
       );
     }
     if (url.includes("/api/knowledge/") && url.includes("/search")) {
+      searchCallCount += 1;
+      const body = init?.body ? JSON.parse(init.body) : {};
+      const query = String(body.query ?? "");
+      if (searchCallCount === 1 || query.includes("Foundation pit support code")) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              records: [],
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
       return new Response(
         JSON.stringify({
           data: {
@@ -156,9 +173,11 @@ test("review task issue supporting evidence returns safe normalized hits", async
     assert.equal(response.payload.issueId, "issue-1");
     assert.equal(response.payload.ok, true);
     assert.equal(response.payload.readiness.status, "ready");
+    assert.equal(response.payload.strategy, "anchor-led");
+    assert.equal(response.payload.attempts.length, 2);
     assert.deepEqual(response.payload.queryParts.slice(0, 2), [
-      "Deep excavation safety measures need review",
-      "Foundation pit support code",
+      "Deep excavation",
+      "4.3.1 Excavation measures",
     ]);
     assert.equal(response.payload.hits.length, 1);
     assert.equal(response.payload.hits[0].provider, "maxkb");
@@ -211,6 +230,7 @@ test("review task issue supporting evidence classifies provider unavailability s
     assert.equal(response.payload.ok, false);
     assert.equal(response.payload.status, "provider_unavailable");
     assert.equal(response.payload.canRetry, false);
+    assert.deepEqual(response.payload.attempts, []);
   } finally {
     globalThis.fetch = originalFetch;
     await close(server);

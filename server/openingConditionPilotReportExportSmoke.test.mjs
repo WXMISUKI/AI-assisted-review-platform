@@ -96,7 +96,7 @@ async function createReportReadyTask(baseUrl, taskId) {
       {
         objectId: `source-${taskId}`,
         kind: "source_archive",
-        fileName: "approval-form.pdf",
+        fileName: "unrelated-material.pdf",
       },
     ],
     checklistItems: [
@@ -274,7 +274,17 @@ async function withBackend(tempDir, envOverrides = {}) {
   const backendModule = await import(
     `${new URL("./index.mjs", import.meta.url).href}?opening-condition-export-smoke=${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
+  const configModule = await import(new URL("./config.mjs", import.meta.url).href);
   const { createBackendServer } = backendModule;
+  const config = configModule.config;
+  const previousConfigBaseUrl = config.httpTools.baseURL;
+  const previousConfigTimeout = config.httpTools.timeoutMs;
+  if ("HTTP_TOOLS_BASE_URL" in envOverrides) {
+    config.httpTools.baseURL = envOverrides.HTTP_TOOLS_BASE_URL;
+  }
+  if ("HTTP_TOOLS_TIMEOUT_MS" in envOverrides) {
+    config.httpTools.timeoutMs = Number(envOverrides.HTTP_TOOLS_TIMEOUT_MS);
+  }
   const server = createBackendServer({
     openingConditionStorePath: storePath,
   });
@@ -293,6 +303,8 @@ async function withBackend(tempDir, envOverrides = {}) {
       } else {
         process.env.HTTP_TOOLS_TIMEOUT_MS = previousTimeout;
       }
+      config.httpTools.baseURL = previousConfigBaseUrl;
+      config.httpTools.timeoutMs = previousConfigTimeout;
     },
   };
 }

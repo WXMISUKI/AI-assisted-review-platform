@@ -112,6 +112,12 @@ interface SupportingEvidenceState {
     summary?: string;
   };
   canRetry?: boolean;
+  strategy?: string;
+  attempts?: Array<{
+    strategy: string;
+    querySummary: string;
+    hitCount: number;
+  }>;
   queryParts?: string[];
   query?: string;
   message?: string;
@@ -647,6 +653,8 @@ export function ReviewWorkbenchPage({
           provider: result.provider,
           readiness: result.readiness,
           canRetry: result.canRetry,
+          strategy: result.strategy,
+          attempts: result.attempts,
           queryParts: result.queryParts,
           query: result.query,
           message: result.message,
@@ -1729,6 +1737,31 @@ function IssueCard({
               <div className="traceability-block">
                 <strong>检索片段</strong>
                 <p>{supportingEvidence.queryParts.join(" / ")}</p>
+              </div>
+            ) : null}
+            {supportingEvidence?.strategy ? (
+              <div className="traceability-block">
+                <strong>命中策略</strong>
+                <p>{supportingEvidence.strategy}</p>
+              </div>
+            ) : null}
+            {supportingEvidence?.attempts && supportingEvidence.attempts.length > 0 ? (
+              <div className="traceability-block">
+                <strong>尝试摘要</strong>
+                <div className="reference-list">
+                  {supportingEvidence.attempts.map((attempt, index) => (
+                    <article
+                      key={`${issue.id}-supporting-attempt-${index}`}
+                      className="reference-item"
+                    >
+                      <div>
+                        <span className="reference-priority">{attempt.strategy}</span>
+                        <strong>{attempt.hitCount > 0 ? `命中 ${attempt.hitCount} 条` : "未命中"}</strong>
+                      </div>
+                      <small>{attempt.querySummary}</small>
+                    </article>
+                  ))}
+                </div>
               </div>
             ) : null}
             {supportingEvidence?.query && (

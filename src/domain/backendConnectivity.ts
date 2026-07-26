@@ -469,6 +469,12 @@ export interface ReviewTaskSupportingEvidenceResult {
   provider?: string;
   readiness?: Pick<ExternalProviderReadinessSummary, "provider" | "configured" | "ready" | "status" | "summary">;
   canRetry?: boolean;
+  strategy?: string;
+  attempts?: Array<{
+    strategy: string;
+    querySummary: string;
+    hitCount: number;
+  }>;
   queryParts?: string[];
   query?: string;
   hits?: ReviewSupportingEvidenceHit[];
