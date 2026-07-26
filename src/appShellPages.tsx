@@ -740,6 +740,28 @@ function renderResultAsset(asset: ReviewResultAsset) {
   );
 }
 
+function escapeResultHtml(value: string | null | undefined) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildSupervisorReportFallbackHtml(asset: Extract<ReviewResultAsset, { type: "supervisor-report" }>) {
+  const stats = asset.issueStats;
+  const issueRows = Array.isArray(asset.issueOpinions)
+    ? asset.issueOpinions
+        .map(
+          (opinion, index) =>
+            `<tr><td>${index + 1}</td><td>${escapeResultHtml(opinion.title)}</td><td>${escapeResultHtml(opinion.severity)}</td><td>${opinion.decision === "accepted" ? "采纳" : "拒绝"}</td><td>${escapeResultHtml(opinion.opinion)}</td></tr>`,
+        )
+        .join("")
+    : "";
+
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><title>施工方案审查报告</title><style>body{font-family:SimSun,serif;margin:32pt;color:#20242a}table{border-collapse:collapse;width:100%}th,td{border:1px solid #8c949e;padding:5pt}h1{text-align:center}</style></head><body><h1>施工方案审查报告</h1><p><strong>文档：</strong>${escapeResultHtml(asset.documentName)}</p><p><strong>项目：</strong>${escapeResultHtml(asset.projectName)}</p><p><strong>生成时间：</strong>${escapeResultHtml(asset.createdAt)}</p><h2>审查整体情况</h2><p>${escapeResultHtml(asset.summary)}</p><p>总计：${stats?.total ?? 0}，采纳：${stats?.accepted ?? 0}，拒绝：${stats?.rejected ?? 0}</p><h2>审查意见明细</h2><table><tr><th>序号</th><th>问题标题</th><th>风险</th><th>处理</th><th>意见</th></tr>${issueRows || "<tr><td colspan=5>暂无审查意见。</td></tr>"}</table><h2>审查结论</h2><p>${escapeResultHtml(asset.conclusion)}</p></body></html>`;
+}
+
 export function ResultPreviewPage({
   document,
   sessionSnapshot,
@@ -793,6 +815,16 @@ export function ResultPreviewPage({
     if (!asset || asset.type !== "supervisor-report") {
       return;
     }
+    const fallbackHtml = buildSupervisorReportFallbackHtml(asset);
+    const fallbackBlob = new Blob([fallbackHtml], { type: "text/html;charset=utf-8" });
+    const fallbackUrl = URL.createObjectURL(fallbackBlob);
+    const fallbackLink = window.document.createElement("a");
+    fallbackLink.href = fallbackUrl;
+    fallbackLink.download = `施工方案审查报告-${asset.documentName || document.id}.html`;
+    fallbackLink.click();
+    URL.revokeObjectURL(fallbackUrl);
+    return;
+    /*
     const stats = asset.issueStats;
     const issueRows = Array.isArray(asset.issueOpinions)
       ? asset.issueOpinions
@@ -810,6 +842,7 @@ export function ResultPreviewPage({
     link.download = `施工方案审查报告-${asset.documentName || document.id}.html`;
     link.click();
     URL.revokeObjectURL(url);
+    */
   }
 
   return (

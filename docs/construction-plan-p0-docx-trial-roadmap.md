@@ -84,3 +84,17 @@ pnpm smoke:review:docx
 1. 开工条件 MaxKB 本机联调（P1，另一窗口）
 2. 施工方案审查报告 DOCX 导出（P2）
 3. 知识库 grounding 增强审查依据（P3）
+## P2 Closure (2026-07-26)
+
+- Construction-plan `supervisor-report` now has a report-delivery loop:
+  - backend `buildReviewReportHtml(asset)` builds bounded HTML
+  - `POST /api/review-tasks/:taskId/report/export-docx` returns a safe DOCX export result
+  - result preview keeps a DOCX export action and an HTML fallback download
+- New verification command: `pnpm smoke:review:report-export`
+- Covered boundaries:
+  - escaped report HTML content
+  - `missing_report`
+  - `export_failed` with `fallback=html` when `http_tools` is not configured
+- Follow-up export work should focus on:
+  - `revised-plan-snapshot` export
+  - stronger shared report HTML builder parity between backend export and frontend fallback

@@ -13,6 +13,7 @@
     "smoke:opening-condition:ui": "node --test server/openingConditionPilotUiBoundarySmoke.test.mjs",
     "smoke:product-boundaries": "node --test server/productBoundarySmoke.test.mjs",
     "smoke:review": "node --test server/reviewMvpSmoke.test.mjs",
+    "smoke:review:report-export": "node --test server/reviewReportExportSmoke.test.mjs",
     "smoke:review:docx": "node --test server/reviewDocxMvpSmoke.test.mjs",
     "governance:check": "node scripts/verify-governance.mjs",
     "typecheck": "tsc --noEmit",
