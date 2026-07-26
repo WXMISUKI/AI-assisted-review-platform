@@ -94,6 +94,7 @@ pnpm smoke:review:docx
   - 上传/OCR 终态/准备包/问题生成完成等关键 checkpoint 走单任务 upsert
   - stream stage、view context 等高频 UI 状态仍保留本地缓存
 - 在这一步完成前，不建议继续把大量时间投入到 viewer 细节或提示词微调，否则刷新一致性与运行稳定性会继续成为验收瓶颈
+- 依据 grounding 的下一阶段应优先走“知识库召回 + 规范化依据绑定”，而不是继续在 rule/LLM 输出后面堆更多字符串解析规则
 ## P2 Closure (2026-07-26)
 
 - Construction-plan `supervisor-report` now has a report-delivery loop:

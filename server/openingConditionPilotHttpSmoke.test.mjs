@@ -332,6 +332,9 @@ test("HTTP smoke protects the opening-condition pilot delivery chain", async () 
     const newRun = listed.payload.tasks.find((task) => task.id === "task-http-run-2");
     assert.equal(oldRun.state, "archived");
     assert.equal(oldRun.events.length, archivedEventCount);
+    assert.equal(oldRun.reportAsset.status, "archived");
+    assert.equal(oldRun.reportAsset.packageDiagnostics.deliveryHandoff.readOnly, true);
+    assert.equal(oldRun.reportAsset.packageDiagnostics.mvpAcceptance.readOnly, true);
     assert.equal(newRun.state, "packet_uploaded");
   } finally {
     await close(server);

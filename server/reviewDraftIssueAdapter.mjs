@@ -1,5 +1,6 @@
 import { config } from "./config.mjs";
 import { createOpenAIClient } from "./llmClient.mjs";
+import { normalizeBasisReferences } from "./reviewBasisReferenceNormalizer.mjs";
 
 const allowedSeverities = new Set(["critical", "high", "medium", "low"]);
 
@@ -91,14 +92,13 @@ function createIssueFromMatch(rule, paragraph, keyword, sourceTag = "fallback") 
       complianceCategory: rule.severity === "critical" ? "mandatory-clause" : "general-norm",
       basisPriority: "supporting",
       schemaVersion: "review-kernel-draft-1.0",
-      basisReferences: [
-        {
-          type: "normative-standard",
-          sourceTitle: "施工方案审查通用规则",
-          summary: rule.basis,
-          priority: "supporting",
-        },
-      ],
+      basisReferences: normalizeBasisReferences({
+        basisText: rule.basis,
+        reason: rule.reason,
+        priority: "supporting",
+        fallbackType: "normative-standard",
+        fallbackTitle: "施工方案审查通用规则",
+      }),
     },
   };
 }
@@ -212,14 +212,16 @@ function normalizeCandidateIssue(candidate, paragraphsById, index) {
       complianceCategory: severity === "critical" ? "mandatory-clause" : "general-norm",
       basisPriority: "supporting",
       schemaVersion: "review-kernel-llm-candidate-1.0",
-      basisReferences: [
-        {
-          type: "normative-standard",
-          sourceTitle: "LLM semantic review candidate",
-          summary: typeof candidate.basis === "string" ? candidate.basis : "Model-proposed basis requires review.",
-          priority: "supporting",
-        },
-      ],
+      basisReferences: normalizeBasisReferences({
+        basisText:
+          typeof candidate.basis === "string" && candidate.basis.trim()
+            ? candidate.basis
+            : "Model-proposed basis requires review.",
+        reason: typeof candidate.reason === "string" ? candidate.reason : "",
+        priority: "supporting",
+        fallbackType: "normative-standard",
+        fallbackTitle: "LLM semantic review candidate",
+      }),
     },
   };
 }

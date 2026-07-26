@@ -1,3 +1,5 @@
+import { normalizeBasisReferences } from "./reviewBasisReferenceNormalizer.mjs";
+
 const riskRules = [
   {
     id: "scaffold-hazard",
@@ -191,14 +193,13 @@ export function convertRuleFindingsToIssues(findings, options = {}) {
         basisPriority: finding.severity === "critical" ? "primary" : "supporting",
         schemaVersion: "review-kernel-rule-1.0",
         basisReferences: finding.basis
-          ? [
-              {
-                type: "normative-standard",
-                sourceTitle: String(finding.basis).slice(0, 200),
-                summary: String(finding.reason ?? "").slice(0, 200),
-                priority: finding.severity === "critical" ? "primary" : "supporting",
-              },
-            ]
+          ? normalizeBasisReferences({
+              basisText: String(finding.basis),
+              reason: String(finding.reason ?? ""),
+              priority: finding.severity === "critical" ? "primary" : "supporting",
+              fallbackType: "normative-standard",
+              fallbackTitle: "施工方案审查规范依据",
+            })
           : [],
       },
     });

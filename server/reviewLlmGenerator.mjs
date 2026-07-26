@@ -1,5 +1,6 @@
 import { config } from "./config.mjs";
 import { createOpenAIClient } from "./llmClient.mjs";
+import { normalizeBasisReferences } from "./reviewBasisReferenceNormalizer.mjs";
 
 const MAX_CHAPTER_TEXT_LENGTH = 4000;
 const MAX_ISSUES_PER_CHAPTER = 3;
@@ -67,12 +68,15 @@ function normalizeLlmIssue(raw, paragraphId, section) {
       complianceCategory: severity === "critical" ? "mandatory-clause" : "general-norm",
       basisPriority: severity === "critical" ? "primary" : "supporting",
       schemaVersion: "review-kernel-llm-1.0",
-      basisReferences: raw.basis ? [{
-        type: "normative-standard",
-        sourceTitle: raw.basis.slice(0, 200),
-        summary: raw.reason?.slice(0, 200) ?? "",
-        priority: severity === "critical" ? "primary" : "supporting",
-      }] : [],
+      basisReferences: raw.basis
+        ? normalizeBasisReferences({
+            basisText: raw.basis,
+            reason: raw.reason,
+            priority: severity === "critical" ? "primary" : "supporting",
+            fallbackType: "normative-standard",
+            fallbackTitle: "LLM 审查依据",
+          })
+        : [],
     },
   };
 }

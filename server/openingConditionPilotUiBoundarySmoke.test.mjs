@@ -6,6 +6,7 @@ const portalStateSourcePath = new URL("../src/openingConditionPortalState.ts", i
 const workspacePagesSourcePath = new URL("../src/productWorkspacePages.tsx", import.meta.url);
 const reviewDomainSourcePath = new URL("../src/domain/openingConditionReview.ts", import.meta.url);
 const runSnapshotSourcePath = new URL("../src/openingConditionRunSnapshot.ts", import.meta.url);
+const appSourcePath = new URL("../src/App.tsx", import.meta.url);
 
 test("UI smoke keeps archived opening-condition runs read-only in the shared portal state", async () => {
   const source = await readFile(portalStateSourcePath, "utf8");
@@ -38,6 +39,7 @@ test("UI smoke keeps report and history actions scoped to current mutable runs",
 test("UI smoke preserves report handoff semantics without pixel-level assertions", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
   const snapshotSource = await readFile(runSnapshotSourcePath, "utf8");
+  const appSource = await readFile(appSourcePath, "utf8");
 
   assert.match(source, /function buildReportFindings/);
   assert.match(source, /function buildReportFindingGroups/);
@@ -56,6 +58,11 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
   assert.match(source, /Extraction/);
   assert.match(source, /summarizeBasisPreviewProvenance/);
   assert.match(source, /onRefreshBasisPreview/);
+  assert.match(source, /const isRectificationRerun = portalState\.rerunUploadEnabled;/);
+  assert.match(source, /opening-report-detail-card/);
+  assert.match(source, /当前归档轮次默认只读/);
+  assert.match(appSource, /setOpeningPilotIntakeMode\("rectification_rerun"\);/);
+  assert.match(appSource, /setOpeningPilotStatus\(".*整改复审.*"\);/);
 });
 
 test("UI smoke exposes workspace asset registry summaries on the overview", async () => {
