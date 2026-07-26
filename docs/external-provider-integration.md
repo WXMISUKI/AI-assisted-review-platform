@@ -57,7 +57,7 @@ MaxKB 默认也是可选 provider。当前前置平台联调推荐显式选择 M
 ```env
 KNOWLEDGE_PROVIDER=maxkb
 MAXKB_ENABLED=true
-MAXKB_BASE_URL=http://192.168.0.235:8091
+MAXKB_BASE_URL=http://192.168.0.219:8091
 MAXKB_API_KEY=your-platform-to-proxy-bearer-token
 MAXKB_DEFAULT_KNOWLEDGE_ID=019f787c-644e-7162-bfe5-f4ee02a91539
 MAXKB_TIMEOUT_MS=5000

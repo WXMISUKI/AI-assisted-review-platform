@@ -128,3 +128,104 @@ export function summarizeRuleFindings(findings) {
     titles: [...new Set(items.map((item) => item.title))],
   }));
 }
+
+const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+
+function severityRank(severity) {
+  return SEVERITY_ORDER[severity] ?? 3;
+}
+
+export function convertRuleFindingsToIssues(findings, options = {}) {
+  const limit = Number.isFinite(options.limit) ? Math.max(1, options.limit) : 20;
+  const sorted = [...findings].sort((left, right) => {
+    const severityDiff = severityRank(left.severity) - severityRank(right.severity);
+    if (severityDiff !== 0) {
+      return severityDiff;
+    }
+    return String(left.paragraphId).localeCompare(String(right.paragraphId));
+  });
+
+  const seen = new Set();
+  const issues = [];
+
+  for (const finding of sorted) {
+    const dedupeKey = `${finding.ruleId}:${finding.paragraphId}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+
+    const matchedText = String(finding.matchedText ?? "").slice(0, 200);
+    issues.push({
+      id: `rule-${finding.ruleId}-${finding.paragraphId}-${issues.length + 1}`,
+      source: "ai",
+      status: "pending",
+      severity: finding.severity,
+      anchor: {
+        paragraphId: finding.paragraphId,
+        startOffset: 0,
+        endOffset: Math.min(matchedText.length || 20, 200),
+        text: matchedText || finding.title,
+      },
+      finding: {
+        title: finding.title,
+        reason: finding.reason,
+        basis: finding.basis,
+        suggestion: finding.suggestion,
+      },
+      resolution: {
+        action: null,
+        editedText: null,
+        resolvedAt: null,
+      },
+      kernel: {
+        engineSource: "rule",
+        checkDomain: "professional-technical",
+        checkItem: finding.section?.slice(0, 100) ?? "施工方案审查",
+        outputScenario: "supervisor-formal-review",
+        complianceCategory: finding.severity === "critical" ? "mandatory-clause" : "general-norm",
+        basisPriority: finding.severity === "critical" ? "primary" : "supporting",
+        schemaVersion: "review-kernel-rule-1.0",
+        basisReferences: finding.basis
+          ? [
+              {
+                type: "normative-standard",
+                sourceTitle: String(finding.basis).slice(0, 200),
+                summary: String(finding.reason ?? "").slice(0, 200),
+                priority: finding.severity === "critical" ? "primary" : "supporting",
+              },
+            ]
+          : [],
+      },
+    });
+
+    if (issues.length >= limit) {
+      break;
+    }
+  }
+
+  return issues;
+}
+
+export function mergeReviewIssues(primaryIssues = [], fallbackIssues = [], options = {}) {
+  const limit = Number.isFinite(options.limit) ? Math.max(1, options.limit) : 20;
+  const merged = [];
+  const seen = new Set();
+
+  for (const issue of [...primaryIssues, ...fallbackIssues]) {
+    if (!issue || typeof issue !== "object") {
+      continue;
+    }
+    const key = `${issue.finding?.title ?? ""}:${issue.anchor?.paragraphId ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(issue);
+    if (merged.length >= limit) {
+      break;
+    }
+  }
+
+  return merged;
+}

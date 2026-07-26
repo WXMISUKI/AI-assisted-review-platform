@@ -184,7 +184,9 @@ export interface OcrJobStatusResult {
   result?: {
     recoveredStructure?: import("./reviewTypes").RecoveredDocumentStructure;
     ruleFindings?: Array<{ paragraphId: string; section: string; riskCount: number; highestSeverity: string; titles: string[] }>;
+    ruleIssues?: import("./reviewTypes").ReviewIssue[];
     llmIssues?: import("./reviewTypes").ReviewIssue[];
+    issues?: import("./reviewTypes").ReviewIssue[];
   };
   errorMsg?: string | null;
   message?: string;
@@ -223,12 +225,26 @@ export interface StoredObjectOcrSubmitResult {
   configured?: boolean;
   jobId?: string;
   status?: string;
+  state?: "submitted" | "pending" | "running" | "done" | "failed";
   message?: string;
   statusCode?: number;
   sourceObject?: {
     bucket: string;
     key: string;
     expiresIn: number;
+  };
+  result?: {
+    recoveredStructure?: import("./reviewTypes").RecoveredDocumentStructure;
+    ruleFindings?: Array<{
+      paragraphId: string;
+      section: string;
+      riskCount: number;
+      highestSeverity: string;
+      titles: string[];
+    }>;
+    ruleIssues?: import("./reviewTypes").ReviewIssue[];
+    llmIssues?: import("./reviewTypes").ReviewIssue[];
+    issues?: import("./reviewTypes").ReviewIssue[];
   };
 }
 

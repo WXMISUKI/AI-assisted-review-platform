@@ -13,7 +13,12 @@ import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
 import { getKnowledgeBaseProviderReadiness } from "./knowledgeBaseProvider.mjs";
 import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { parseDocxFile } from "./docxParser.mjs";
-import { runRuleEngine, summarizeRuleFindings } from "./reviewRuleEngine.mjs";
+import {
+  convertRuleFindingsToIssues,
+  mergeReviewIssues,
+  runRuleEngine,
+  summarizeRuleFindings,
+} from "./reviewRuleEngine.mjs";
 import { generateReviewIssuesForDocument } from "./reviewLlmGenerator.mjs";
 import { writeReviewAgentStream } from "./reviewAgentStream.mjs";
 import { getAgentServiceReadiness } from "./reviewAgentServiceAdapter.mjs";
@@ -423,6 +428,7 @@ export function createBackendServer(options = {}) {
           const recoveredStructure = await parseDocxFile(tmpFile);
           const ruleFindings = runRuleEngine(recoveredStructure.paragraphs);
           const ruleSummaries = summarizeRuleFindings(ruleFindings);
+          const ruleIssues = convertRuleFindingsToIssues(ruleFindings, { limit: 20 });
 
           let llmResult = { ok: false, issues: [] };
           try {
@@ -435,12 +441,15 @@ export function createBackendServer(options = {}) {
             // LLM is optional; rule-based issues are the fallback
           }
 
+          const llmIssues = Array.isArray(llmResult.issues) ? llmResult.issues : [];
+          const issues = mergeReviewIssues(llmIssues, ruleIssues, { limit: 20 });
           const jobId = `docx-${Date.now().toString(36)}`;
           sendJson(response, 200, {
             ok: true,
             jobId,
             status: "done",
-            message: `DOCX parsed: ${recoveredStructure.paragraphs.length} paragraphs, ${recoveredStructure.sections.length} sections. ${ruleFindings.length} rule findings, ${llmResult.issues?.length ?? 0} LLM issues.`,
+            state: "done",
+            message: `DOCX parsed: ${recoveredStructure.paragraphs.length} paragraphs, ${recoveredStructure.sections.length} sections. ${ruleFindings.length} rule findings, ${issues.length} review issues.`,
             sourceObject: {
               bucket: presigned.bucket,
               key: presigned.key,
@@ -449,7 +458,9 @@ export function createBackendServer(options = {}) {
             result: {
               recoveredStructure,
               ruleFindings: ruleSummaries,
-              llmIssues: llmResult.issues ?? [],
+              ruleIssues,
+              llmIssues,
+              issues,
             },
           });
 

@@ -514,4 +514,5 @@ export interface CreateReviewTaskInput {
   failure?: ReviewTaskFailure;
   recoveredStructure?: RecoveredDocumentStructure;
   previousTaskId?: string;
+  issues?: ReviewIssue[];
 }

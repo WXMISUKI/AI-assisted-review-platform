@@ -429,9 +429,12 @@ export function createDocumentTask(
     (input.status === "uploaded" || input.status === "parsing"
       ? createIdleRecoveredStructure()
       : recoverStructureFromParagraphs(cloneParagraphs(documentParagraphs)));
-  const issues = recoveredStructure
-    ? resolveRecoveredStructureIssues(cloneIssues(), recoveredStructure)
-    : cloneIssues();
+  const providedIssues = Array.isArray(input.issues) ? input.issues : null;
+  const issues = providedIssues
+    ? providedIssues.map((issue) => structuredClone(issue))
+    : recoveredStructure
+      ? resolveRecoveredStructureIssues(cloneIssues(), recoveredStructure)
+      : cloneIssues();
   const newTask: ReviewTask = {
     id: `doc-${Date.now()}`,
     name: input.name,

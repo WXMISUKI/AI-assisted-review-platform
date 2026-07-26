@@ -771,14 +771,29 @@ export function ConstructionPlanReviewApp({
 
       const ocrResult = await submitStoredObjectOcrJob(uploadResult.object.key);
       const ocrSubmittedAt = new Date().toISOString();
+      const isDocxReady =
+        ocrResult.ok &&
+        (ocrResult.status === "done" || ocrResult.state === "done") &&
+        Boolean(ocrResult.result?.recoveredStructure);
+      const reviewIssues =
+        ocrResult.result?.issues ??
+        ocrResult.result?.llmIssues ??
+        ocrResult.result?.ruleIssues ??
+        [];
       const ocrJob = {
         jobId: ocrResult.jobId ?? null,
-        state: ocrResult.ok && ocrResult.jobId ? "submitted" : "failed",
+        state: isDocxReady
+          ? "done"
+          : ocrResult.ok && ocrResult.jobId
+            ? "submitted"
+            : "failed",
         submittedAt: ocrSubmittedAt,
         sourceObjectKey: uploadResult.object.key,
-        message: ocrResult.ok
-          ? ocrResult.status || "OCR 任务已提交。"
-          : ocrResult.message || ocrResult.status || "OCR 任务提交失败。",
+        message: isDocxReady
+          ? ocrResult.message || "DOCX 已解析完成，可进入审查。"
+          : ocrResult.ok
+            ? ocrResult.status || "OCR 任务已提交。"
+            : ocrResult.message || ocrResult.status || "OCR 任务提交失败。",
       } as const;
 
       createUploadedTask({
@@ -786,9 +801,11 @@ export function ConstructionPlanReviewApp({
         project: taskProject,
         uploader: session?.username ?? "当前用户",
         mode: session?.role === "contractor" ? "revise" : "review",
-        status: ocrResult.ok && ocrResult.jobId ? "parsing" : "failed",
+        status: isDocxReady ? "ready" : ocrResult.ok && ocrResult.jobId ? "parsing" : "failed",
         sourceObject: uploadResult.object,
         ocrJob,
+        recoveredStructure: isDocxReady ? ocrResult.result?.recoveredStructure : undefined,
+        issues: isDocxReady ? reviewIssues : undefined,
         failure: ocrJob.state === "failed"
           ? { message: ocrJob.message || "OCR 任务提交失败。", failedAt: new Date().toISOString() }
           : undefined,
