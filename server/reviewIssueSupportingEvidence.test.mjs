@@ -28,10 +28,90 @@ async function requestJson(baseUrl, path) {
   };
 }
 
+async function seedReviewTask() {
+  await upsertReviewTask("task-evidence-1", {
+    id: "task-evidence-1",
+    name: "plan.docx",
+    project: "Test project",
+    uploader: "tester",
+    updatedAt: new Date().toISOString(),
+    status: "ready",
+    issueCount: 1,
+    mode: "review",
+    paragraphs: [
+      {
+        id: "p-1",
+        section: "4.3.1 Excavation measures",
+        text: "Deep excavation requires enclosure, dewatering, monitoring and emergency plan.",
+      },
+    ],
+    issues: [
+      {
+        id: "issue-1",
+        source: "ai",
+        status: "pending",
+        severity: "high",
+        anchor: {
+          paragraphId: "p-1",
+          startOffset: 0,
+          endOffset: 16,
+          text: "Deep excavation",
+        },
+        finding: {
+          title: "Deep excavation safety measures need review",
+          reason: "Deep excavation requires enclosure, dewatering, monitoring and emergency plan.",
+          basis: "Foundation pit support code JGJ120",
+          suggestion: "Add enclosure, dewatering, monitoring and emergency measures.",
+        },
+        resolution: {
+          action: null,
+          editedText: null,
+          resolvedAt: null,
+        },
+        kernel: {
+          engineSource: "hybrid",
+          checkDomain: "professional-technical",
+          checkItem: "Deep excavation plan",
+          outputScenario: "supervisor-formal-review",
+          complianceCategory: "general-norm",
+          basisPriority: "primary",
+          schemaVersion: "v1",
+          basisReferences: [
+            {
+              type: "normative-standard",
+              sourceTitle: "Foundation pit support code",
+              version: "JGJ120",
+              summary: "Deep excavation requires enclosure, dewatering, monitoring and emergency plan.",
+              priority: "primary",
+            },
+          ],
+        },
+      },
+    ],
+    streamStageIndex: 0,
+  });
+}
+
 test("review task issue supporting evidence returns safe normalized hits", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes("/api/knowledge-base/provider/status")) {
+      return new Response(
+        JSON.stringify({
+          providers: {
+            maxkb: {
+              provider: "maxkb",
+              configured: true,
+              ready: true,
+              status: "ready",
+              summary: "MaxKB provider is ready.",
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
     if (url.includes("/api/knowledge/") && url.includes("/search")) {
       return new Response(
         JSON.stringify({
@@ -64,68 +144,7 @@ test("review task issue supporting evidence returns safe normalized hits", async
   const server = createBackendServer();
 
   try {
-    await upsertReviewTask("task-evidence-1", {
-      id: "task-evidence-1",
-      name: "plan.docx",
-      project: "Test project",
-      uploader: "tester",
-      updatedAt: new Date().toISOString(),
-      status: "ready",
-      issueCount: 1,
-      mode: "review",
-      paragraphs: [
-        {
-          id: "p-1",
-          section: "4.3.1 Excavation measures",
-          text: "Deep excavation requires enclosure, dewatering, monitoring and emergency plan.",
-        },
-      ],
-      issues: [
-        {
-          id: "issue-1",
-          source: "ai",
-          status: "pending",
-          severity: "high",
-          anchor: {
-            paragraphId: "p-1",
-            startOffset: 0,
-            endOffset: 16,
-            text: "Deep excavation",
-          },
-          finding: {
-            title: "Deep excavation safety measures need review",
-            reason: "Deep excavation requires enclosure, dewatering, monitoring and emergency plan.",
-            basis: "Foundation pit support code JGJ120",
-            suggestion: "Add enclosure, dewatering, monitoring and emergency measures.",
-          },
-          resolution: {
-            action: null,
-            editedText: null,
-            resolvedAt: null,
-          },
-          kernel: {
-            engineSource: "hybrid",
-            checkDomain: "professional-technical",
-            checkItem: "Deep excavation plan",
-            outputScenario: "supervisor-formal-review",
-            complianceCategory: "general-norm",
-            basisPriority: "primary",
-            schemaVersion: "v1",
-            basisReferences: [
-              {
-                type: "normative-standard",
-                sourceTitle: "Foundation pit support code",
-                version: "JGJ120",
-                summary: "Deep excavation requires enclosure, dewatering, monitoring and emergency plan.",
-                priority: "primary",
-              },
-            ],
-          },
-        },
-      ],
-      streamStageIndex: 0,
-    });
-
+    await seedReviewTask();
     const baseUrl = await listen(server);
     const response = await requestJson(
       baseUrl,
@@ -136,6 +155,11 @@ test("review task issue supporting evidence returns safe normalized hits", async
     assert.equal(response.payload.taskId, "task-evidence-1");
     assert.equal(response.payload.issueId, "issue-1");
     assert.equal(response.payload.ok, true);
+    assert.equal(response.payload.readiness.status, "ready");
+    assert.deepEqual(response.payload.queryParts.slice(0, 2), [
+      "Deep excavation safety measures need review",
+      "Foundation pit support code",
+    ]);
     assert.equal(response.payload.hits.length, 1);
     assert.equal(response.payload.hits[0].provider, "maxkb");
     assert.equal(response.payload.hits[0].title, "Monitoring requirements");
@@ -145,6 +169,48 @@ test("review task issue supporting evidence returns safe normalized hits", async
     );
     assert.equal("content" in response.payload.hits[0], false);
     assert.equal("authorization" in response.payload.hits[0], false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await close(server);
+  }
+});
+
+test("review task issue supporting evidence classifies provider unavailability safely", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes("/api/knowledge-base/provider/status")) {
+      return new Response(
+        JSON.stringify({
+          providers: {
+            maxkb: {
+              provider: "maxkb",
+              configured: false,
+              ready: false,
+              status: "disabled",
+              summary: "MaxKB provider is disabled.",
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return originalFetch(input, init);
+  };
+
+  const server = createBackendServer();
+
+  try {
+    await seedReviewTask();
+    const baseUrl = await listen(server);
+    const response = await requestJson(
+      baseUrl,
+      "/api/review-tasks/task-evidence-1/issues/issue-1/supporting-evidence",
+    );
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.payload.ok, false);
+    assert.equal(response.payload.status, "provider_unavailable");
+    assert.equal(response.payload.canRetry, false);
   } finally {
     globalThis.fetch = originalFetch;
     await close(server);

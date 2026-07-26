@@ -104,6 +104,15 @@ interface ManualAnnotationForm {
 interface SupportingEvidenceState {
   status: "idle" | "loading" | "ready" | "empty" | "error";
   provider?: string;
+  readiness?: {
+    provider?: string;
+    configured?: boolean;
+    ready?: boolean;
+    status?: string;
+    summary?: string;
+  };
+  canRetry?: boolean;
+  queryParts?: string[];
   query?: string;
   message?: string;
   hits: ReviewSupportingEvidenceHit[];
@@ -636,6 +645,9 @@ export function ReviewWorkbenchPage({
         [issueId]: {
           status: result.ok ? (hits.length > 0 ? "ready" : "empty") : "error",
           provider: result.provider,
+          readiness: result.readiness,
+          canRetry: result.canRetry,
+          queryParts: result.queryParts,
           query: result.query,
           message: result.message,
           hits,
@@ -1702,6 +1714,23 @@ function IssueCard({
                 <p>{supportingEvidence.provider}</p>
               </div>
             )}
+            {supportingEvidence?.readiness && (
+              <div className="traceability-block">
+                <strong>Provider 状态</strong>
+                <p>
+                  {(supportingEvidence.readiness.status ?? "unknown").toUpperCase()}
+                  {supportingEvidence.readiness.summary
+                    ? ` · ${supportingEvidence.readiness.summary}`
+                    : ""}
+                </p>
+              </div>
+            )}
+            {supportingEvidence?.queryParts && supportingEvidence.queryParts.length > 0 ? (
+              <div className="traceability-block">
+                <strong>检索片段</strong>
+                <p>{supportingEvidence.queryParts.join(" / ")}</p>
+              </div>
+            ) : null}
             {supportingEvidence?.query && (
               <div className="traceability-block">
                 <strong>检索摘要</strong>
@@ -1730,6 +1759,19 @@ function IssueCard({
               <div className="traceability-block">
                 <strong>状态</strong>
                 <p>{supportingEvidence.message ?? "支持证据暂时不可用。"}</p>
+                {supportingEvidence.canRetry ? (
+                  <button type="button" className="secondary" onClick={onLoadSupportingEvidence}>
+                    重试查询
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {supportingEvidence?.status === "empty" && supportingEvidence.canRetry ? (
+              <div className="traceability-block">
+                <strong>操作</strong>
+                <button type="button" className="secondary" onClick={onLoadSupportingEvidence}>
+                  重试查询
+                </button>
               </div>
             ) : null}
             {supportingEvidence?.status === "ready" ? (

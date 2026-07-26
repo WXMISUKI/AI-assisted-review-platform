@@ -763,6 +763,7 @@ export function createBackendServer(options = {}) {
           ok: false,
           status: "export_failed",
           adapterStatus: exportResult.status,
+          fallback: "html",
           message: exportResult.message,
           safeDiagnostics: exportResult.safeDiagnostics,
         });

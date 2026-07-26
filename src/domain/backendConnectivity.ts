@@ -467,6 +467,9 @@ export interface ReviewTaskSupportingEvidenceResult {
   taskId?: string;
   issueId?: string;
   provider?: string;
+  readiness?: Pick<ExternalProviderReadinessSummary, "provider" | "configured" | "ready" | "status" | "summary">;
+  canRetry?: boolean;
+  queryParts?: string[];
   query?: string;
   hits?: ReviewSupportingEvidenceHit[];
   message?: string;
@@ -621,6 +624,7 @@ export interface OpeningConditionPilotReportExportResult {
     safeDiagnostics?: string[];
   };
   adapterStatus?: string;
+  fallback?: "html";
   safeDiagnostics?: string[];
   message?: string;
 }

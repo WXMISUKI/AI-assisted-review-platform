@@ -757,7 +757,11 @@ export function App() {
     try {
       const result = await exportOpeningConditionPilotReportDocx(taskId);
       if (!result.ok || !result.export?.downloadUrl) {
-        setOpeningPilotReportExportStatus(result.message ?? "DOCX 报告导出失败");
+        const adapterLabel = result.adapterStatus ? `适配器状态：${result.adapterStatus}。` : "";
+        const fallbackLabel = result.fallback === "html" ? "可先使用当前页面/HTML 交付语义继续验收。" : "";
+        setOpeningPilotReportExportStatus(
+          [result.message ?? "DOCX 报告导出失败", adapterLabel, fallbackLabel].filter(Boolean).join(" "),
+        );
         return;
       }
 
