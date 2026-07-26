@@ -18,6 +18,7 @@ import type {
   ReviewMode,
   ReviewPreparationPackage,
   ReviewResultAsset,
+  ReviewSupportingEvidenceHit,
   ReviewStorageSnapshot,
   ReviewTask,
 } from "./reviewTypes";
@@ -460,6 +461,17 @@ export interface ReviewTaskActivitiesResult {
   message?: string;
 }
 
+export interface ReviewTaskSupportingEvidenceResult {
+  ok: boolean;
+  status?: string;
+  taskId?: string;
+  issueId?: string;
+  provider?: string;
+  query?: string;
+  hits?: ReviewSupportingEvidenceHit[];
+  message?: string;
+}
+
 export interface OpeningConditionPilotTaskResult {
   ok: boolean;
   status?: string;
@@ -794,6 +806,13 @@ export async function fetchReviewTaskDecisionActivities(taskId: string, limit = 
     `/api/review-tasks/${encodeURIComponent(taskId)}/activities${queryString ? `?${queryString}` : ""}`,
   );
   return readJson<ReviewTaskActivitiesResult>(response);
+}
+
+export async function fetchReviewTaskSupportingEvidence(taskId: string, issueId: string) {
+  const response = await fetch(
+    `/api/review-tasks/${encodeURIComponent(taskId)}/issues/${encodeURIComponent(issueId)}/supporting-evidence`,
+  );
+  return readJson<ReviewTaskSupportingEvidenceResult>(response);
 }
 
 export async function upsertOpeningConditionPilotTask(taskId: string, task: Partial<OpeningConditionPilotTask>) {

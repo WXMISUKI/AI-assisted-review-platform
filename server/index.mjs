@@ -11,6 +11,7 @@ import {
 import { getOcrJobStatus, getOcrStatus, submitOcrUrlJob } from "./ocrClient.mjs";
 import { hydrateOcrResultStructure } from "./ocrResultRecovery.mjs";
 import { getKnowledgeBaseProviderReadiness } from "./knowledgeBaseProvider.mjs";
+import { getReviewIssueSupportingEvidence } from "./reviewIssueSupportingEvidence.mjs";
 import { generateDraftIssues } from "./reviewDraftIssueAdapter.mjs";
 import { parseDocxFile } from "./docxParser.mjs";
 import {
@@ -293,6 +294,7 @@ export function createBackendServer(options = {}) {
           "POST /api/review-tasks/bulk",
           "POST /api/review-tasks/:taskId/issues/:issueId/resolve",
           "PATCH /api/review-tasks/:taskId/issues/:issueId/draft",
+          "GET /api/review-tasks/:taskId/issues/:issueId/supporting-evidence",
           "POST /api/review-tasks/:taskId/issues/manual",
           "DELETE /api/review-tasks/:taskId/issues/:issueId",
           "POST /api/review-tasks/:taskId/complete",
@@ -1014,6 +1016,41 @@ export function createBackendServer(options = {}) {
         body,
       );
       sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const reviewTaskSupportingEvidenceMatch = url.pathname.match(
+      /^\/api\/review-tasks\/([^/]+)\/issues\/([^/]+)\/supporting-evidence$/,
+    );
+    if (request.method === "GET" && reviewTaskSupportingEvidenceMatch) {
+      const taskId = decodeURIComponent(reviewTaskSupportingEvidenceMatch[1]);
+      const issueId = decodeURIComponent(reviewTaskSupportingEvidenceMatch[2]);
+      const task = await getReviewTask(taskId);
+      if (!task) {
+        sendJson(response, 404, {
+          ok: false,
+          status: "not_found",
+          message: "Review task not found.",
+        });
+        return;
+      }
+
+      const issue = task.issues.find((item) => item.id === issueId);
+      if (!issue) {
+        sendJson(response, 404, {
+          ok: false,
+          status: "issue_not_found",
+          message: "Review issue not found.",
+        });
+        return;
+      }
+
+      const result = await getReviewIssueSupportingEvidence(task, issue);
+      sendJson(response, 200, {
+        ...result,
+        taskId,
+        issueId,
+      });
       return;
     }
 

@@ -187,6 +187,21 @@ export interface ReviewIssue {
   generation?: ReviewIssueGenerationProvenance;
 }
 
+export interface ReviewSupportingEvidenceHit {
+  provider: string;
+  providerDatasetId: string;
+  knowledgeId?: string;
+  providerDocumentId?: string;
+  providerChunkId?: string;
+  score?: number;
+  title: string;
+  safeSnippet: string;
+  locator?: string;
+  sourceObjectId?: string;
+  masterDataIds: string[];
+  evidenceIds: string[];
+}
+
 export interface IssueCounts {
   total: number;
   pending: number;

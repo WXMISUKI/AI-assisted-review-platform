@@ -35,11 +35,15 @@ import type {
   ReviewIssue,
   RecoveredDocumentStructure,
   ReviewSession,
+  ReviewSupportingEvidenceHit,
   StatusFilter,
   ReviewViewContext,
   ReviewTaskSourceObject,
 } from "./domain/reviewTypes";
-import { fetchMinioPresignedDocumentUrl } from "./domain/backendConnectivity";
+import {
+  fetchMinioPresignedDocumentUrl,
+  fetchReviewTaskSupportingEvidence,
+} from "./domain/backendConnectivity";
 import {
   buildProcessedParagraphs,
   getIssueCounts,
@@ -95,6 +99,14 @@ interface ManualAnnotationForm {
   reason: string;
   basis: string;
   suggestion: string;
+}
+
+interface SupportingEvidenceState {
+  status: "idle" | "loading" | "ready" | "empty" | "error";
+  provider?: string;
+  query?: string;
+  message?: string;
+  hits: ReviewSupportingEvidenceHit[];
 }
 
 const statusLabels: Record<StatusFilter, string> = {
@@ -250,6 +262,7 @@ export function ReviewWorkbenchPage({
   const sessionParagraphs = sessionSnapshot?.paragraphs ?? paragraphs;
   const sessionPipelineSnapshot = sessionSnapshot?.pipelineSnapshot;
   const sessionViewContext = sessionSnapshot?.reviewViewContext;
+  const taskId = sessionSnapshot?.task.id ?? "";
   const [issues, setIssues] = useState<ReviewIssue[]>(sessionIssues);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [reviewMode, setReviewMode] = useState<ReviewMode>(() =>
@@ -269,6 +282,7 @@ export function ReviewWorkbenchPage({
   const [draftSuggestions, setDraftSuggestions] = useState<Record<string, string>>(
     Object.fromEntries(sessionIssues.map((issue) => [issue.id, issue.finding.suggestion])),
   );
+  const [supportingEvidence, setSupportingEvidence] = useState<Record<string, SupportingEvidenceState>>({});
   const paragraphRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const documentScrollRef = useRef<HTMLDivElement | null>(null);
@@ -585,6 +599,58 @@ export function ReviewWorkbenchPage({
           : cardRefs.current[issueId];
       element?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
+  }
+
+  async function loadSupportingEvidence(issueId: string) {
+    if (!taskId) {
+      setSupportingEvidence((current) => ({
+        ...current,
+        [issueId]: {
+          status: "error",
+          message: "当前任务缺少后端 taskId，暂时无法查询支持证据。",
+          hits: [],
+        },
+      }));
+      return;
+    }
+
+    setSupportingEvidence((current) => {
+      const existing = current[issueId];
+      if (existing?.status === "loading" || existing?.status === "ready" || existing?.status === "empty") {
+        return current;
+      }
+      return {
+        ...current,
+        [issueId]: {
+          ...(existing ?? { hits: [] }),
+          status: "loading",
+        },
+      };
+    });
+
+    try {
+      const result = await fetchReviewTaskSupportingEvidence(taskId, issueId);
+      const hits = Array.isArray(result.hits) ? result.hits : [];
+      setSupportingEvidence((current) => ({
+        ...current,
+        [issueId]: {
+          status: result.ok ? (hits.length > 0 ? "ready" : "empty") : "error",
+          provider: result.provider,
+          query: result.query,
+          message: result.message,
+          hits,
+        },
+      }));
+    } catch (error) {
+      setSupportingEvidence((current) => ({
+        ...current,
+        [issueId]: {
+          status: "error",
+          message: error instanceof Error ? error.message : "支持证据查询失败。",
+          hits: [],
+        },
+      }));
+    }
   }
 
   function updateIssue(issueId: string, status: "accepted" | "rejected") {
@@ -1067,11 +1133,12 @@ export function ReviewWorkbenchPage({
                 <div className="issue-group-list">
                   {group.issues.map((issue) => (
                   <IssueCard
-                      key={issue.id}
-                      issue={issue}
-                      sectionLabel={group.title}
-                      currentParagraphLabel={
-                        issue.anchor.paragraphId === activeParagraphId
+                    key={issue.id}
+                    issue={issue}
+                    supportingEvidence={supportingEvidence[issue.id]}
+                    sectionLabel={group.title}
+                    currentParagraphLabel={
+                      issue.anchor.paragraphId === activeParagraphId
                           ? activeParagraphLabel
                           : null
                       }
@@ -1080,12 +1147,13 @@ export function ReviewWorkbenchPage({
                       draftSuggestion={draftSuggestions[issue.id] ?? issue.finding.suggestion}
                       onFocus={() => focusIssue(issue.id)}
                       onDraftChange={(value) => updateDraft(issue.id, value)}
-                      onAccept={() => updateIssue(issue.id, "accepted")}
-                      onReject={() => updateIssue(issue.id, "rejected")}
-                      onRequestDelete={() => setDeleteCandidateId(issue.id)}
-                      refSetter={(node) => {
-                        cardRefs.current[issue.id] = node;
-                      }}
+                    onAccept={() => updateIssue(issue.id, "accepted")}
+                    onReject={() => updateIssue(issue.id, "rejected")}
+                    onRequestDelete={() => setDeleteCandidateId(issue.id)}
+                    onLoadSupportingEvidence={() => loadSupportingEvidence(issue.id)}
+                    refSetter={(node) => {
+                      cardRefs.current[issue.id] = node;
+                    }}
                       readonly={readonly}
                     />
                   ))}
@@ -1445,6 +1513,7 @@ function DocumentParagraphBlock({
 
 function IssueCard({
   issue,
+  supportingEvidence,
   sectionLabel,
   currentParagraphLabel,
   isCurrentParagraph,
@@ -1455,10 +1524,12 @@ function IssueCard({
   onAccept,
   onReject,
   onRequestDelete,
+  onLoadSupportingEvidence,
   refSetter,
   readonly,
 }: {
   issue: ReviewIssue;
+  supportingEvidence?: SupportingEvidenceState;
   sectionLabel: string;
   currentParagraphLabel: string | null;
   isCurrentParagraph: boolean;
@@ -1469,6 +1540,7 @@ function IssueCard({
   onAccept: () => void;
   onReject: () => void;
   onRequestDelete: () => void;
+  onLoadSupportingEvidence: () => void;
   refSetter: (node: HTMLDivElement | null) => void;
   readonly?: boolean;
 }) {
@@ -1607,6 +1679,78 @@ function IssueCard({
             </div>
           </details>
         )}
+
+        <details
+          className="traceability-details supporting-evidence-details"
+          onToggle={(event) => {
+            if (
+              event.currentTarget.open &&
+              (!supportingEvidence || supportingEvidence.status === "error")
+            ) {
+              onLoadSupportingEvidence();
+            }
+          }}
+        >
+          <summary>
+            <LocateFixed size={15} />
+            支持证据
+          </summary>
+          <div className="traceability-content">
+            {supportingEvidence?.provider && (
+              <div className="traceability-block">
+                <strong>召回来源</strong>
+                <p>{supportingEvidence.provider}</p>
+              </div>
+            )}
+            {supportingEvidence?.query && (
+              <div className="traceability-block">
+                <strong>检索摘要</strong>
+                <p>{supportingEvidence.query}</p>
+              </div>
+            )}
+            {!supportingEvidence ? (
+              <div className="traceability-block">
+                <strong>状态</strong>
+                <p>展开后按需查询支持证据，不影响当前 issue 决策。</p>
+              </div>
+            ) : null}
+            {supportingEvidence?.status === "loading" ? (
+              <div className="traceability-block">
+                <strong>状态</strong>
+                <p>正在查询支持证据...</p>
+              </div>
+            ) : null}
+            {supportingEvidence?.status === "empty" ? (
+              <div className="traceability-block">
+                <strong>状态</strong>
+                <p>{supportingEvidence.message ?? "当前未召回支持证据。"}</p>
+              </div>
+            ) : null}
+            {supportingEvidence?.status === "error" ? (
+              <div className="traceability-block">
+                <strong>状态</strong>
+                <p>{supportingEvidence.message ?? "支持证据暂时不可用。"}</p>
+              </div>
+            ) : null}
+            {supportingEvidence?.status === "ready" ? (
+              <div className="reference-list">
+                {supportingEvidence.hits.map((hit, index) => (
+                  <article key={`${issue.id}-supporting-hit-${index}`} className="reference-item">
+                    <div>
+                      <span className="reference-priority">支持证据</span>
+                      <strong>{hit.title}</strong>
+                    </div>
+                    <p>
+                      {hit.locator ? `${hit.locator} ` : ""}
+                      {typeof hit.score === "number" ? `相似度 ${hit.score.toFixed(2)}` : ""}
+                    </p>
+                    <small>{hit.safeSnippet}</small>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </details>
 
         <label className="suggestion-editor">
           <span>
