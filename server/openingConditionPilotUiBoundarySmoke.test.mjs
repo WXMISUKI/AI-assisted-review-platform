@@ -82,6 +82,25 @@ test("UI smoke exposes workspace asset registry summaries on the overview", asyn
   assert.doesNotMatch(workspaceSource, /findOpeningConditionWorkspaceAssetRegistryRecord/);
 });
 
+test("UI smoke keeps current-run governance bindings separate from preview and catalog semantics", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /data-governance-snapshot="current-run-binding"/);
+  assert.match(source, /data-governance-semantics="preview-is-not-published"/);
+  assert.match(source, /data-governance-detail="bound-asset-status"/);
+  assert.match(source, /data-governance-asset="basis"/);
+  assert.match(source, /data-governance-asset="master-data"/);
+  assert.match(source, /data-governance-asset="knowledge-base"/);
+  assert.match(source, /const basisSnapshot = basisEntries\.find\(\(entry\) => entry\.isBound\) \?\? null;/);
+  assert.match(source, /const missingBoundBasis = Boolean\(pilotTask\?\.[\s\S]*basisVersion\?\.[\s\S]*id && !basisSnapshot\)/);
+  assert.match(source, /const missingCurrentRunMasterData = \(pilotTask\?\.[\s\S]*requiredMasterData \?\? \[\]\)\.filter/);
+  assert.match(source, /basisSnapshot\?\.meta\.group === "published"/);
+  assert.match(source, /item\.meta\.group === "published" \|\| item\.meta\.group === "current_run_confirmed"/);
+  assert.match(source, /Formal match usability/);
+  assert.match(source, /Missing bound records/);
+  assert.match(source, /Preview 仅表示候选事实；只有人工确认并完成发布\/批准后/);
+});
+
 test("UI smoke keeps the task ledger as primary opening-condition MVP routing surface", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
 
@@ -182,4 +201,25 @@ test("UI smoke exposes issue closure summaries on task and report handoffs", asy
   assert.match(source, /待人工闭环/);
   assert.match(source, /待整改交付/);
   assert.match(source, /可进入报告/);
+});
+
+test("UI smoke exposes the low-noise agent review console and source-bound compliance guardrail", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+  const guidance = await readFile(new URL("../docs/opening-condition-agent-review-console-guidance.md", import.meta.url), "utf8");
+
+  assert.match(source, /开工条件核查智能体/);
+  assert.match(source, /资料完整性（必选）/);
+  assert.match(source, /资料合规性（可选）/);
+  assert.match(source, /上传审核资料/);
+  assert.match(source, /开始解析/);
+  assert.match(source, /opening-agent-progress-ring/);
+  assert.match(source, /opening-agent-file-pane/);
+  assert.match(source, /opening-agent-progress-pane/);
+  assert.match(source, /OpeningConditionRealTrialIntakePanel/);
+  assert.match(source, /bootstrapOpeningConditionPilotTrial/);
+  assert.match(source, /详细问题说明须等待工作流\/平台深审结果/);
+  assert.match(source, /当前仅进行资料完整性核查，报告不得宣称已完成深度合规审查/);
+  assert.match(guidance, /前端不得自行编造审查结论/);
+  assert.match(guidance, /资料完整性.*必选/);
+  assert.match(guidance, /资料合规性.*可选/);
 });

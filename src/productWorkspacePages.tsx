@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -1087,6 +1087,124 @@ function deriveOpeningConditionTaskWorkbenchRows({
   });
 }
 
+function getOpeningConditionAgentTaskTitle(task: OpeningConditionPilotTask) {
+  return (
+    task.packet?.checklistObject.fileName ??
+    task.trialPackage?.inputObjects.checklistFileName ??
+    task.context.reviewObjectId ??
+    `开工条件核查任务 ${task.id}`
+  );
+}
+
+function getOpeningConditionAgentTaskProgress(task?: OpeningConditionPilotTask | null) {
+  if (!task) {
+    return 0;
+  }
+
+  switch (task.state) {
+    case "archived":
+      return 100;
+    case "report_ready":
+      return 90;
+    case "awaiting_human_review":
+      return 78;
+    case "matching":
+      return 62;
+    case "extracting":
+      return 42;
+    case "packet_uploaded":
+      return 28;
+    case "ready_for_packet":
+      return 18;
+    case "failed":
+    case "canceled":
+      return 0;
+    default:
+      return 8;
+  }
+}
+
+function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTask | null) {
+  if (!task) {
+    return [];
+  }
+
+  const files: Array<{
+    id: string;
+    label: string;
+    fileName: string;
+    summary: string;
+    kind: string;
+  }> = [];
+  const basisObject = task.basisVersion?.sourceObject;
+  if (basisObject) {
+    files.push({
+      id: basisObject.objectId,
+      label: "合同/资质依据",
+      fileName: basisObject.fileName,
+      summary: basisObject.summary ?? "平台已绑定的审查依据",
+      kind: basisObject.kind,
+    });
+  }
+  if (task.packet?.checklistObject) {
+    files.push({
+      id: task.packet.checklistObject.objectId,
+      label: "资料核查表",
+      fileName: task.packet.checklistObject.fileName,
+      summary: task.packet.checklistObject.summary ?? "用于整理核查项目",
+      kind: task.packet.checklistObject.kind,
+    });
+  }
+  for (const sourceObject of task.packet?.sourceObjects ?? []) {
+    files.push({
+      id: sourceObject.objectId,
+      label: "核查资料包",
+      fileName: sourceObject.fileName,
+      summary: sourceObject.summary ?? "平台已接入的资料包",
+      kind: sourceObject.kind,
+    });
+  }
+  for (const entry of task.packet?.inventoryEntries ?? []) {
+    files.push({
+      id: entry.id,
+      label: "资料包文件",
+      fileName: entry.fileName,
+      summary: entry.summary ?? "资料包拆分清单文件",
+      kind: "inventory",
+    });
+  }
+  return files;
+}
+
+function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTask | null) {
+  const progress = getOpeningConditionAgentTaskProgress(task);
+  const complianceAvailable = Boolean(
+    task?.checkItems.some((item) => item.contentCompliance && item.contentCompliance !== "not_evaluated"),
+  );
+  return [
+    {
+      label: "整理资料核查项",
+      detail: "根据资料核查表提取并整理核查项目。",
+      done: progress >= 42,
+    },
+    {
+      label: "拆分核查资料包",
+      detail: "建立资料包文件清单，准备逐文件审核。",
+      done: progress >= 42,
+    },
+    {
+      label: "执行资料核查",
+      detail: complianceAvailable ? "已获得平台规范化的内容核查结果。" : "当前以资料完整性核查为主。",
+      done: progress >= 78,
+    },
+    {
+      label: "生成核查报告",
+      detail: task?.reportAsset ? "报告资产已由平台生成。" : "等待核查结果和人工复核完成。",
+      done: progress >= 90,
+    },
+  ];
+}
+
 function OpeningConditionReviewTaskWorkbench({
   rows,
   onGoToIntake,
@@ -2104,6 +2222,8 @@ export function OpeningConditionWorkspaceShell({
               onSelectWorkspace={onSelectWorkspace}
               onGoToIntake={() => goToOpeningPage("material-intake")}
               onGoToPage={goToOpeningPage}
+              onTrialBootstrapComplete={onTrialBootstrapComplete}
+              getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
               onFocusCheckItem={(checkItemId) => focusOpeningChecklistItem(checkItemId, "workspace-context")}
               onFocusHumanReview={(reviewId) => focusOpeningHumanReviewItem(reviewId, "workspace-context")}
             />
@@ -2314,6 +2434,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onSelectWorkspace,
   onGoToIntake,
   onGoToPage,
+  onTrialBootstrapComplete,
+  getNextOpeningPilotRunTaskId,
   onFocusCheckItem,
   onFocusHumanReview,
 }: {
@@ -2327,6 +2449,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onSelectWorkspace: (workspaceId: string) => void;
   onGoToIntake: () => void;
   onGoToPage: (page: OpeningConditionPortalPage) => void;
+  onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  getNextOpeningPilotRunTaskId?: () => string;
   onFocusCheckItem?: (checkItemId: string) => void;
   onFocusHumanReview?: (reviewId: string) => void;
 }) {
@@ -2359,6 +2483,253 @@ function OpeningConditionObjectOverviewProductizedPage({
   const activeHumanReviews =
     pilotTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ??
     verdictSummary.needsHumanReview;
+  const [complianceReviewRequested, setComplianceReviewRequested] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [selectedAgentTaskId, setSelectedAgentTaskId] = useState<string | null>(pilotTask?.id ?? null);
+  const agentTasks = useMemo(
+    () =>
+      [...(allPilotTasks ?? []), ...(pilotTask ? [pilotTask] : [])]
+        .filter((task) => task.context.workspaceId === selectedWorkspaceId)
+        .filter((task, index, tasks) => tasks.findIndex((candidate) => candidate.id === task.id) === index)
+        .sort(compareTaskByUpdatedAtDesc),
+    [allPilotTasks, pilotTask, selectedWorkspaceId],
+  );
+  const selectedAgentTask =
+    agentTasks.find((task) => task.id === selectedAgentTaskId) ?? agentTasks[0] ?? pilotTask ?? null;
+  const agentMaterialFiles = useMemo(
+    () => buildOpeningConditionAgentMaterialFiles(selectedAgentTask),
+    [selectedAgentTask],
+  );
+  const [selectedAgentFileId, setSelectedAgentFileId] = useState<string | null>(agentMaterialFiles[0]?.id ?? null);
+  const selectedAgentFile =
+    agentMaterialFiles.find((file) => file.id === selectedAgentFileId) ?? agentMaterialFiles[0] ?? null;
+
+  useEffect(() => {
+    if (!agentTasks.some((task) => task.id === selectedAgentTaskId)) {
+      setSelectedAgentTaskId(agentTasks[0]?.id ?? null);
+    }
+  }, [agentTasks, selectedAgentTaskId]);
+
+  useEffect(() => {
+    if (!agentMaterialFiles.some((file) => file.id === selectedAgentFileId)) {
+      setSelectedAgentFileId(agentMaterialFiles[0]?.id ?? null);
+    }
+  }, [agentMaterialFiles, selectedAgentFileId]);
+
+  const agentProgress = getOpeningConditionAgentTaskProgress(selectedAgentTask);
+  const agentSteps = buildOpeningConditionAgentProgressSteps(selectedAgentTask);
+  const selectedAgentTaskTitle = selectedAgentTask ? getOpeningConditionAgentTaskTitle(selectedAgentTask) : "尚未创建审核任务";
+
+  return (
+    <div className="opening-condition-page opening-agent-console">
+      <section className="opening-agent-hero">
+        <div>
+          <span className="eyebrow">开工条件核查智能体</span>
+          <h2>把三类资料交给智能体，开始一次开工条件核查</h2>
+          <p>
+            当前项目：{currentWorkspace.projectName}。先完成资料完整性核查；如需深度合规审查，再选择资料合规性。
+          </p>
+          <div className="opening-condition-meta">
+            <span>{currentWorkspace.projectCode}</span>
+            <span>{currentWorkspace.reviewObjectName}</span>
+            <span>{currentWorkspace.participantEntityName}</span>
+          </div>
+        </div>
+        <div className="opening-agent-scope-panel">
+          <strong>审查内容</strong>
+          <label>
+            <input type="checkbox" checked readOnly />
+            <span>资料完整性（必选）</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={complianceReviewRequested}
+              onChange={(event) => setComplianceReviewRequested(event.target.checked)}
+            />
+            <span>资料合规性（可选）</span>
+          </label>
+          <small>深度合规结论只展示工作流或平台后端已生成的结果。</small>
+        </div>
+      </section>
+
+      <section className="opening-agent-entry">
+        <div>
+          <span className="eyebrow">新建审核</span>
+          <h2>准备好后上传审核资料</h2>
+          <p>需要合同/资质依据、资料核查表和核查资料包三类资料。</p>
+        </div>
+        <button type="button" className="primary opening-agent-upload-button" onClick={() => setUploadModalOpen(true)}>
+          上传审核资料
+        </button>
+      </section>
+
+      <section className="opening-agent-history">
+        <div className="opening-report-workbench-header">
+          <div>
+            <span className="eyebrow">历史审核记录</span>
+            <h2>{currentWorkspace.projectName}</h2>
+            <p>当前项目下的审核任务会保留在这里，点击任务查看文件和处理进度。</p>
+          </div>
+          <button type="button" className="secondary" onClick={onGoToIntake}>
+            打开资料接入页
+          </button>
+        </div>
+        {agentTasks.length === 0 ? (
+          <div className="opening-agent-empty">
+            <strong>当前项目还没有审核任务</strong>
+            <p>点击“上传审核资料”创建第一条开工条件核查任务。</p>
+          </div>
+        ) : (
+          <div className="opening-agent-task-list">
+            {agentTasks.map((task) => {
+              const progress = getOpeningConditionAgentTaskProgress(task);
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  className={task.id === selectedAgentTask?.id ? "opening-agent-task-row active" : "opening-agent-task-row"}
+                  onClick={() => setSelectedAgentTaskId(task.id)}
+                >
+                  <span className="opening-agent-progress-ring" style={{ "--progress": `${progress}%` } as CSSProperties}>
+                    <strong>{progress}%</strong>
+                  </span>
+                  <span className="opening-agent-task-copy">
+                    <strong>{getOpeningConditionAgentTaskTitle(task)}</strong>
+                    <small>{openingConditionPilotStateLabels[task.state] ?? task.state}</small>
+                    <span>{task.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length} 项待人工复核</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="opening-agent-detail">
+        <div className="opening-agent-file-pane">
+          <div className="opening-agent-pane-header">
+            <div>
+              <span className="eyebrow">资料预览</span>
+              <h2>{selectedAgentTaskTitle}</h2>
+            </div>
+            <span className="opening-report-chip tone-info">{agentMaterialFiles.length} 个资料对象</span>
+          </div>
+          <div className="opening-agent-file-list">
+            {agentMaterialFiles.length === 0 ? (
+              <p className="opening-task-detail-empty">任务创建后，已入库资料会显示在这里。</p>
+            ) : (
+              agentMaterialFiles.map((file) => (
+                <button
+                  key={file.id}
+                  type="button"
+                  className={file.id === selectedAgentFile?.id ? "opening-agent-file-row active" : "opening-agent-file-row"}
+                  onClick={() => setSelectedAgentFileId(file.id)}
+                >
+                  <strong>{file.label}</strong>
+                  <span>{file.fileName}</span>
+                </button>
+              ))
+            )}
+          </div>
+          <div className="opening-agent-file-preview">
+            {selectedAgentFile ? (
+              <>
+                <span className="eyebrow">{selectedAgentFile.kind}</span>
+                <h3>{selectedAgentFile.fileName}</h3>
+                <p>{selectedAgentFile.summary}</p>
+                <small>当前为平台对象摘要预览，真实 PDF/DOCX 阅读器作为后续增强。</small>
+              </>
+            ) : (
+              <p>选择左侧资料后查看对象摘要。</p>
+            )}
+          </div>
+        </div>
+        <div className="opening-agent-progress-pane">
+          <div className="opening-agent-pane-header">
+            <div>
+              <span className="eyebrow">智能体处理进度</span>
+              <h2>{selectedAgentTask ? `${agentProgress}% · ${openingConditionPilotStateLabels[selectedAgentTask.state] ?? selectedAgentTask.state}` : "等待创建任务"}</h2>
+            </div>
+            {selectedAgentTask && (
+              <button type="button" className="secondary" onClick={() => onGoToPage("reports")}>
+                查看报告页
+              </button>
+            )}
+          </div>
+          <div className="opening-agent-progress-bar">
+            <span style={{ width: `${agentProgress}%` }} />
+          </div>
+          <div className="opening-agent-step-list">
+            {agentSteps.map((step) => (
+              <div key={step.label} className={step.done ? "opening-agent-step done" : "opening-agent-step"}>
+                <strong>{step.label}</strong>
+                <span>{step.done ? "已完成" : "待处理"}</span>
+                <small>{step.detail}</small>
+              </div>
+            ))}
+          </div>
+          <div className="opening-agent-report-handoff">
+            <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "最终报告将在核查完成后生成"}</strong>
+            <p>
+              {complianceReviewRequested
+                ? "已选择资料合规性，详细问题说明须等待工作流/平台深审结果。"
+                : "当前仅进行资料完整性核查，报告不得宣称已完成深度合规审查。"}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <details className="opening-agent-advanced">
+        <summary>高级台账与闭环信息</summary>
+        <div className="opening-agent-advanced-body">
+          <OpeningConditionReviewTaskWorkbench
+            rows={taskWorkbenchRows}
+            onGoToIntake={onGoToIntake}
+            onGoToPage={onGoToPage}
+            onFocusCheckItem={onFocusCheckItem}
+            onFocusHumanReview={onFocusHumanReview}
+          />
+          {actionOwnership ? (
+            <OpeningConditionResponsibilityBoard summary={actionOwnership} onNavigate={onGoToPage} />
+          ) : null}
+        </div>
+      </details>
+
+      {uploadModalOpen && (
+        <div className="opening-agent-modal-backdrop" role="presentation" onMouseDown={() => setUploadModalOpen(false)}>
+          <div className="opening-agent-modal" role="dialog" aria-modal="true" aria-labelledby="opening-agent-upload-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="opening-agent-modal-header">
+              <div>
+                <span className="eyebrow">上传审核资料</span>
+                <h2 id="opening-agent-upload-title">提交三类资料后开始解析</h2>
+              </div>
+              <button type="button" className="theme-toggle" onClick={() => setUploadModalOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <p>资料完整性为必选；资料合规性{complianceReviewRequested ? "已选择" : "未选择"}，不会改变三类资料的必传要求。</p>
+            <OpeningConditionRealTrialIntakePanel
+              packet={packet}
+              pilotTask={pilotTask}
+              portalState={deriveOpeningConditionPortalViewState({
+                pilotTask,
+                intakeMode: "default",
+                readiness: pilotReadiness,
+              })}
+              busy={false}
+              submittedBy="opening-condition-agent-console"
+              onComplete={(result) => {
+                setUploadModalOpen(false);
+                onTrialBootstrapComplete?.(result);
+              }}
+              getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="opening-condition-page">
@@ -2531,7 +2902,7 @@ function OpeningConditionObjectOverviewProductizedPage({
                   ? `当前 run 绑定到 ${currentWorkspace.reviewObjectName} / ${currentWorkspace.participantEntityName}，后续操作应沿推荐入口继续。`
                   : "先通过资料接入创建真实试点 run，再进入正式资料核查。"}
               </p>
-              {selectedReviewObject && <small>该审查对象下共有 {selectedReviewObject.participants.length} 个参建主体。</small>}
+              {selectedReviewObject && <small>该审查对象下共有 {selectedReviewObject?.participants.length ?? 0} 个参建主体。</small>}
             </div>
           </div>
           <div className="dialog-actions">
@@ -2539,8 +2910,8 @@ function OpeningConditionObjectOverviewProductizedPage({
               进入资料接入
             </button>
             {actionOwnership && (
-              <button type="button" className="secondary" onClick={() => onGoToPage(actionOwnership.recommendedPage)}>
-                {actionOwnership.primaryActionLabel}
+              <button type="button" className="secondary" onClick={() => onGoToPage(actionOwnership?.recommendedPage ?? "workspace-context")}>
+                {actionOwnership?.primaryActionLabel ?? "进入任务详情"}
               </button>
             )}
           </div>
@@ -2557,40 +2928,40 @@ function OpeningConditionObjectOverviewProductizedPage({
                 <div className="opening-overview-asset-card">
                   <strong>Basis ownership</strong>
                   <span>
-                    {selectedWorkspaceRegistry.basis.published}/{selectedWorkspaceRegistry.basis.total} published
+                    {selectedWorkspaceRegistry?.basis.published}/{selectedWorkspaceRegistry?.basis.total} published
                   </span>
-                  <small>{selectedWorkspaceRegistry.basis.provisional} provisional or unpublished records remain.</small>
+                    <small>{selectedWorkspaceRegistry?.basis.provisional} provisional or unpublished records remain.</small>
                 </div>
                 <div className="opening-overview-asset-card">
                   <strong>Master data readiness</strong>
                   <span>
-                    {selectedWorkspaceRegistry.masterData.published}/{selectedWorkspaceRegistry.masterData.total} approved
+                    {selectedWorkspaceRegistry?.masterData.published}/{selectedWorkspaceRegistry?.masterData.total} approved
                   </span>
                   <small>
-                    Review {selectedWorkspaceRegistry.masterData.reviewNeeded} / Rejected{" "}
-                    {selectedWorkspaceRegistry.masterData.rejected}
+                    Review {selectedWorkspaceRegistry?.masterData.reviewNeeded} / Rejected{" "}
+                    {selectedWorkspaceRegistry?.masterData.rejected}
                   </small>
                 </div>
                 <div className="opening-overview-asset-card">
                   <strong>Knowledge base</strong>
                   <span>
-                    {selectedWorkspaceRegistry.knowledgeBase.label} /{" "}
-                    {readinessLabels[selectedWorkspaceRegistry.knowledgeBase.status] ??
-                      selectedWorkspaceRegistry.knowledgeBase.status}
+                    {selectedWorkspaceRegistry?.knowledgeBase.label} /{" "}
+                    {readinessLabels[selectedWorkspaceRegistry?.knowledgeBase.status ?? ""] ??
+                      selectedWorkspaceRegistry?.knowledgeBase.status}
                   </span>
-                  <small>Provider sync {selectedWorkspaceRegistry.knowledgeBase.providerSyncStatus ?? "unknown"}</small>
+                    <small>Provider sync {selectedWorkspaceRegistry?.knowledgeBase.providerSyncStatus ?? "unknown"}</small>
                 </div>
                 <div className="opening-overview-asset-card">
                   <strong>Run history</strong>
                   <span>
-                    {selectedWorkspaceRegistry.runHistory.total} rounds / {selectedWorkspaceRegistry.runHistory.archived} archived
+                    {selectedWorkspaceRegistry?.runHistory.total} rounds / {selectedWorkspaceRegistry?.runHistory.archived} archived
                   </span>
-                  <small>{formatWorkspaceLatestRun(selectedWorkspaceRegistry)}</small>
+                    <small>{formatWorkspaceLatestRun(selectedWorkspaceRegistry!)}</small>
                 </div>
                 <div className="opening-overview-asset-card">
                   <strong>Current run binding</strong>
-                  <span>{selectedWorkspaceRegistry.currentRunBinding.status}</span>
-                  <small>{selectedWorkspaceRegistry.currentRunBinding.summary}</small>
+                    <span>{selectedWorkspaceRegistry?.currentRunBinding.status}</span>
+                    <small>{selectedWorkspaceRegistry?.currentRunBinding.summary}</small>
                 </div>
               </div>
             </article>
@@ -3701,6 +4072,10 @@ function OpeningConditionPublicationGovernancePage({
 
   const basisSnapshot = basisEntries.find((entry) => entry.isBound) ?? null;
   const currentRunFacts = masterEntries.filter((entry) => entry.isCurrentRun);
+  const missingCurrentRunMasterData = (pilotTask?.requiredMasterData ?? []).filter(
+    (required) => !currentRunFacts.some((entry) => entry.id === required.id),
+  );
+  const missingBoundBasis = Boolean(pilotTask?.basisVersion?.id && !basisSnapshot);
   const boundKnowledgeBase =
     displayedKnowledgeBases.find((knowledgeBase) => knowledgeBase.id === boundKnowledgeBaseId) ?? pilotTask?.knowledgeBaseRef ?? null;
 
@@ -3910,10 +4285,13 @@ function OpeningConditionPublicationGovernancePage({
       <section className="opening-panel opening-panel-wide">
         <div className="section-title row">
           <div>
-            <span className="eyebrow">Current Run Snapshot</span>
+            <span className="eyebrow" data-governance-snapshot="current-run-binding">Current Run Snapshot</span>
             <h2>当前 run 绑定快照</h2>
           </div>
         </div>
+        <small data-governance-semantics="preview-is-not-published">
+          Preview 仅表示候选事实；只有人工确认并完成发布/批准后，资产才可用于正式核查。
+        </small>
         <div className="opening-governance-section-grid">
           <article className="opening-governance-card">
             <strong>对象上下文</strong>
@@ -3967,6 +4345,79 @@ function OpeningConditionPublicationGovernancePage({
             <p>{boundKnowledgeBase?.label ?? "未绑定知识库"}</p>
             <small>{boundKnowledgeBase?.summary ?? "当前 run 还没有稳定知识库摘要。"}</small>
           </article>
+        </div>
+        <div className="opening-governance-list" data-governance-detail="bound-asset-status">
+          <div className="opening-governance-item" data-governance-asset="basis">
+            <div className="opening-report-finding-header">
+              <strong>Current-run basis binding</strong>
+              <span className={`opening-report-chip tone-${basisSnapshot?.meta.tone ?? "warning"}`}>
+                {basisSnapshot?.meta.label ?? "Binding record missing"}
+              </span>
+            </div>
+            <p>{basisSnapshot?.title ?? pilotTask?.basisVersion?.id ?? "No basis binding recorded"}</p>
+            <small>
+              Formal match usability:{" "}
+              {basisSnapshot?.meta.group === "published" ? "usable (published)" : "blocked until published"}
+            </small>
+            {basisSnapshot?.preview && (
+              <small>
+                Preview status: {basisPreviewStatusLabels[basisSnapshot.preview.status] ?? basisSnapshot.preview.status} /{" "}
+                Confidence: {basisSnapshot.preview.confidence} / Missing:{" "}
+                {basisSnapshot.preview.missingFields.length > 0 ? basisSnapshot.preview.missingFields.join(", ") : "none"} / Next:{" "}
+                {basisSnapshot.preview.nextAction}
+              </small>
+            )}
+            {missingBoundBasis && <small>Next action: restore the bound basis record or reinitialize this run.</small>}
+          </div>
+
+          <div className="opening-governance-item" data-governance-asset="master-data">
+            <div className="opening-report-finding-header">
+              <strong>Current-run master-data bindings</strong>
+              <span className="opening-report-chip tone-info">{currentRunFacts.length} resolved</span>
+            </div>
+            {currentRunFacts.map((item) => (
+              <div key={item.id} className="opening-report-detail-list">
+                <small>
+                  <strong>{item.title}</strong>
+                  {item.category} / {item.meta.label} /{" "}
+                  {item.meta.group === "published" || item.meta.group === "current_run_confirmed"
+                    ? "usable for formal match"
+                    : "not usable for formal match"}
+                </small>
+                <small>
+                  Evidence:{" "}
+                  {item.masterPreview
+                    ? summarizeMasterDataPreviewSources(item.masterPreview)
+                    : item.safeNote ?? item.note ?? "No safe evidence summary"}
+                </small>
+                <small>
+                  Next: {item.nextAction ?? item.masterPreview?.nextAction ?? item.meta.description}
+                </small>
+              </div>
+            ))}
+            {missingCurrentRunMasterData.length > 0 && (
+              <small data-governance-missing="master-data">
+                Missing bound records: {missingCurrentRunMasterData.map((item) => item.label).join(", ")}. Formal matching remains blocked.
+              </small>
+            )}
+            {currentRunFacts.length === 0 && missingCurrentRunMasterData.length === 0 && (
+              <small>No task-bound master-data facts recorded for this run.</small>
+            )}
+          </div>
+
+          <div className="opening-governance-item" data-governance-asset="knowledge-base">
+            <div className="opening-report-finding-header">
+              <strong>Current-run knowledge-base binding</strong>
+              <span className={`opening-report-chip tone-${knowledgeBaseReady ? "success" : "warning"}`}>
+                {knowledgeBaseReady ? "usable for formal match" : "not ready"}
+              </span>
+            </div>
+            <p>{boundKnowledgeBase?.label ?? boundKnowledgeBaseId ?? "No knowledge-base binding recorded"}</p>
+            <small>
+              Provider sync: {boundKnowledgeBase?.providerSyncStatus ?? "unknown"} /{" "}
+              {boundKnowledgeBase?.summary ?? readiness?.nextAction ?? "Resolve the knowledge-base binding before formal matching."}
+            </small>
+          </div>
         </div>
       </section>
 
@@ -5904,7 +6355,8 @@ function OpeningConditionRealTrialIntakePanel({
     }
   }
 
-  const disabled = busy || submitting || !portalState.canUploadNewRun;
+  const missingRequiredFiles = !basisFile || !checklistFile || !packetFile;
+  const disabled = busy || submitting || !portalState.canUploadNewRun || missingRequiredFiles;
 
   return (
     <section className="opening-panel opening-panel-wide">
@@ -5914,7 +6366,7 @@ function OpeningConditionRealTrialIntakePanel({
           <h2>{isRectificationRerun ? "上传补正后的依据、核查表和资料包" : "合同依据、核查表和资料包"}</h2>
         </div>
         <button type="button" className="primary" onClick={handleBootstrap} disabled={disabled}>
-          {submitting ? "接入中..." : isRectificationRerun ? "上传并创建复审 run" : "上传并初始化试点"}
+          {submitting ? "解析中..." : isRectificationRerun ? "上传并创建复审 run" : "开始解析"}
         </button>
       </div>
       {portalState.intakeReadOnly && (
@@ -5946,7 +6398,9 @@ function OpeningConditionRealTrialIntakePanel({
           <small>{packetFile ? `${packetFile.name} · ${formatFileSize(packetFile.size)}` : "上传 ZIP 后由后端提取 manifest"}</small>
         </label>
       </div>
-      <small>{message}</small>
+      <small>
+        {missingRequiredFiles ? "请先完成三类资料上传后再开始解析。" : message}
+      </small>
     </section>
   );
 }

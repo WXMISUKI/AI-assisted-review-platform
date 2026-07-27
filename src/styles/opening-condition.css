@@ -6,6 +6,407 @@
   padding-right: 2px;
 }
 
+.opening-agent-console {
+  gap: 16px;
+}
+
+.opening-agent-hero,
+.opening-agent-entry,
+.opening-agent-history,
+.opening-agent-detail,
+.opening-agent-advanced {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.opening-agent-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 28px;
+  align-items: center;
+  padding: 30px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary-soft) 62%, transparent), transparent 52%),
+    var(--surface);
+}
+
+.opening-agent-hero h2,
+.opening-agent-entry h2,
+.opening-agent-history h2,
+.opening-agent-detail h2,
+.opening-agent-modal h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.opening-agent-hero p,
+.opening-agent-entry p,
+.opening-agent-history p,
+.opening-agent-progress-pane p,
+.opening-agent-file-preview p,
+.opening-agent-modal > p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.opening-agent-scope-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface-muted) 70%, var(--surface));
+}
+
+.opening-agent-scope-panel label {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.opening-agent-scope-panel input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+}
+
+.opening-agent-scope-panel small {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.opening-agent-entry {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 20px 24px;
+}
+
+.opening-agent-entry p {
+  margin-bottom: 0;
+}
+
+.opening-agent-upload-button {
+  min-width: 150px;
+}
+
+.opening-agent-history {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+}
+
+.opening-agent-history .opening-report-workbench-header {
+  margin: 0;
+}
+
+.opening-agent-task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.opening-agent-task-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: var(--surface-muted);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.opening-agent-task-row:hover,
+.opening-agent-task-row.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary-soft) 54%, var(--surface));
+}
+
+.opening-agent-progress-ring {
+  --progress: 0%;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--primary) var(--progress), var(--border-soft) 0);
+  position: relative;
+}
+
+.opening-agent-progress-ring::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.opening-agent-progress-ring strong {
+  z-index: 1;
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.opening-agent-task-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.opening-agent-task-copy strong,
+.opening-agent-task-copy small,
+.opening-agent-task-copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opening-agent-task-copy strong {
+  color: var(--text-primary);
+}
+
+.opening-agent-task-copy small,
+.opening-agent-task-copy span {
+  color: var(--text-secondary);
+}
+
+.opening-agent-empty {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 18px;
+  background: var(--surface-muted);
+}
+
+.opening-agent-empty strong,
+.opening-agent-empty p {
+  margin: 0;
+}
+
+.opening-agent-detail {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+  gap: 0;
+  overflow: hidden;
+}
+
+.opening-agent-file-pane,
+.opening-agent-progress-pane {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+  padding: 22px;
+}
+
+.opening-agent-file-pane {
+  border-right: 1px solid var(--border);
+}
+
+.opening-agent-pane-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.opening-agent-pane-header h2 {
+  font-size: 18px;
+}
+
+.opening-agent-file-list {
+  display: grid;
+  gap: 8px;
+}
+
+.opening-agent-file-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-muted);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.opening-agent-file-row:hover,
+.opening-agent-file-row.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary-soft) 48%, var(--surface));
+}
+
+.opening-agent-file-row strong,
+.opening-agent-file-row span {
+  overflow-wrap: anywhere;
+}
+
+.opening-agent-file-row strong {
+  color: var(--text-primary);
+}
+
+.opening-agent-file-row span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.opening-agent-file-preview {
+  min-height: 170px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 9px;
+  padding: 16px;
+  background: var(--surface-muted);
+}
+
+.opening-agent-file-preview h3 {
+  margin: 8px 0;
+  color: var(--text-primary);
+}
+
+.opening-agent-file-preview p {
+  margin: 0;
+}
+
+.opening-agent-file-preview small {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.opening-agent-progress-bar {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-soft);
+}
+
+.opening-agent-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 220ms ease-out;
+}
+
+.opening-agent-step-list {
+  display: grid;
+  gap: 8px;
+}
+
+.opening-agent-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  border-left: 3px solid var(--border-soft);
+  padding: 10px 12px;
+  background: var(--surface-muted);
+}
+
+.opening-agent-step.done {
+  border-left-color: var(--success);
+}
+
+.opening-agent-step strong,
+.opening-agent-step span,
+.opening-agent-step small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opening-agent-step strong {
+  color: var(--text-primary);
+}
+
+.opening-agent-step span,
+.opening-agent-step small {
+  color: var(--text-secondary);
+}
+
+.opening-agent-step small {
+  grid-column: 1 / -1;
+}
+
+.opening-agent-report-handoff {
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--primary-soft) 35%, var(--surface));
+}
+
+.opening-agent-report-handoff strong,
+.opening-agent-report-handoff p {
+  margin: 0;
+}
+
+.opening-agent-report-handoff strong {
+  color: var(--text-primary);
+}
+
+.opening-agent-report-handoff p {
+  margin-top: 6px;
+}
+
+.opening-agent-advanced {
+  padding: 0;
+}
+
+.opening-agent-advanced summary {
+  padding: 16px 20px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.opening-agent-advanced-body {
+  display: grid;
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+
+.opening-agent-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.opening-agent-modal {
+  display: grid;
+  gap: 14px;
+  width: min(760px, 100%);
+  max-height: min(840px, 92vh);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+}
+
+.opening-agent-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.opening-agent-modal > .opening-panel {
+  box-shadow: none;
+}
+
 .opening-shell-context-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1724,6 +2125,8 @@
   .opening-trial-upload-grid,
   .opening-overview-command-hero,
   .opening-overview-context-grid,
+  .opening-agent-hero,
+  .opening-agent-detail,
   .opening-task-workbench-row,
   .opening-task-handoff-stage-list,
   .opening-task-handoff-summary-grid,
@@ -1744,6 +2147,18 @@
   .opening-task-handoff-header,
   .opening-task-detail-summary-header {
     flex-direction: column;
+  }
+
+  .opening-agent-entry,
+  .opening-agent-pane-header,
+  .opening-agent-modal-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .opening-agent-file-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   .opening-overview-run-panel {

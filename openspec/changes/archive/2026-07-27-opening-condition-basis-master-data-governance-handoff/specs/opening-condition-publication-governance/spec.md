@@ -1,14 +1,4 @@
-# opening-condition-publication-governance Specification
-
-## Purpose
-TBD - created by archiving change opening-condition-intake-publication-governance. Update Purpose after archive.
-## Requirements
-### Requirement: Publication governance workspace
-The system SHALL present basis and master-data publication as an operator-facing governance workspace rather than as a flat debugging record list.
-
-#### Scenario: Operator opens basis and master-data page
-- **WHEN** the operator opens the opening-condition basis-and-master-data page for a workspace
-- **THEN** the page shows publication governance sections for gate summary, current-run binding snapshot, pending publication queues, published records, and exception records
+## MODIFIED Requirements
 
 ### Requirement: Current run binding snapshot
 The system SHALL show which published or approved intake assets the current run is actually consuming in a visually separate snapshot, without treating workspace catalog records as current-run bindings.
@@ -29,27 +19,6 @@ The system SHALL show which published or approved intake assets the current run 
 - **THEN** the governance page shows a reuse snapshot for the current run
 - **AND** it distinguishes reused assets, newly introduced assets, assets needing reconfirmation, and assets no longer used by the current run
 
-### Requirement: Exception records stay visible
-The system SHALL preserve visibility of rejected, superseded, or expired publication records without mixing them into the primary publish-ready queue.
-
-#### Scenario: Operator reviews non-active records
-- **WHEN** basis or master-data records have been rejected, superseded, or expired
-- **THEN** the page shows them in an exception section with their status and safe reason
-- **AND** they do not appear as publish-ready records
-
-### Requirement: Intake preview and governance continuity
-The system SHALL keep the semantics of intake candidate preview and publication governance aligned.
-
-#### Scenario: Operator moves from intake preview to publication governance
-- **WHEN** the operator reviews candidate preview on the material-intake page and later opens the basis-and-master-data governance page
-- **THEN** the status language and grouping used in both pages remain consistent
-- **AND** the operator can understand that the governance page is the catalog view of records first introduced by the intake preview
-
-#### Scenario: Operator compares intake and governance pages for the same rerun
-- **WHEN** the operator moves between the intake preview page and the governance page for the same current run
-- **THEN** both pages use the same asset reuse and difference semantics
-- **AND** the operator does not need to reinterpret a record's meaning between the two pages
-
 ### Requirement: Basis preview governance queue
 The opening-condition publication governance workspace SHALL distinguish basis records by preview and publication readiness instead of showing only raw status values, including the current run's bound preview state.
 
@@ -64,13 +33,6 @@ The opening-condition publication governance workspace SHALL distinguish basis r
 - **AND** it shows preview status, confidence, extraction provenance, missing fields, and next action
 - **AND** the page explains that preview confirmation is not the same as publication
 
-### Requirement: Basis preview safe display
-The publication governance workspace SHALL display only safe preview facts and bounded summaries.
-
-#### Scenario: Unsafe provider data is present in an incoming basis payload
-- **WHEN** the backend stores the basis preview
-- **THEN** private URLs, tokens, raw OCR text, raw prompts, provider traces, and credentials are removed from stored and returned preview data
-
 ### Requirement: Provider provenance in publication governance
 The publication governance surface SHALL show provider provenance for provider-derived basis previews before publication and SHALL keep formal-match availability gated on publication.
 
@@ -82,4 +44,3 @@ The publication governance surface SHALL show provider provenance for provider-d
 #### Scenario: Provider-derived preview is rejected
 - **WHEN** an operator rejects a provider-derived preview
 - **THEN** the system keeps the provider provenance and rejection note visible as an exception record for follow-up
-
