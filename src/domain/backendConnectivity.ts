@@ -496,6 +496,14 @@ export interface OpeningConditionPilotTasksResult {
   message?: string;
 }
 
+export interface OpeningConditionPilotTaskDeleteResult {
+  ok: boolean;
+  status?: string;
+  taskId?: string;
+  deleted?: boolean;
+  message?: string;
+}
+
 export interface OpeningConditionPilotReadinessResult {
   ok: boolean;
   taskId?: string;
@@ -901,6 +909,13 @@ export async function upsertOpeningConditionPilotTask(taskId: string, task: Part
 export async function fetchOpeningConditionPilotTasks() {
   const response = await fetch("/api/opening-condition/pilot-tasks");
   return readJson<OpeningConditionPilotTasksResult>(response);
+}
+
+export async function deleteOpeningConditionPilotTask(taskId: string) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
+  return readJson<OpeningConditionPilotTaskDeleteResult>(response);
 }
 
 export async function fetchOpeningConditionWorkspaceAssetRegistry(workspaceIds: string[]) {

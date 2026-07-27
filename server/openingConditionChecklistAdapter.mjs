@@ -1,3 +1,5 @@
+import { parseDocxBuffer } from "./docxParser.mjs";
+
 function normalizeLookupValue(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
@@ -73,6 +75,122 @@ function buildPierCapChecklistTemplate({ basisVersionId = "", requiredMasterData
     masterDataIds: masterDataIdsByItem[itemId] ?? [],
     rowIndex,
   }));
+}
+
+function isDocxChecklistObject(objectRef = {}) {
+  const fileName = String(objectRef.fileName ?? "").toLowerCase();
+  const contentType = String(objectRef.contentType ?? "").toLowerCase();
+  return fileName.endsWith(".docx") || contentType.includes("wordprocessingml.document");
+}
+
+function splitTableRowText(text = "") {
+  const match = String(text).match(/^表格：行(\d+)\s+([\s\S]+)$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    rowIndex: Number(match[1]),
+    cells: match[2]
+      .split("|")
+      .map((cell) => cell.trim())
+      .filter(Boolean),
+  };
+}
+
+function normalizeMaterialName(value = "") {
+  return value
+    .replace(/[。；;，,、]+$/g, "")
+    .replace(/^(需提供|提供|包括|含|附件|资料|材料)[:：]*/g, "")
+    .trim();
+}
+
+function deriveMaterialsFromText(text = "") {
+  const candidateText = String(text)
+    .replace(/等(资料|报审资料|报审记录)?(齐全|完整)?[。.]?$/g, "")
+    .replace(/[★*]/g, "");
+  const parts = candidateText
+    .split(/[、,，;；及和与]/)
+    .map(normalizeMaterialName)
+    .filter((part) => part.length >= 2 && part.length <= 60)
+    .filter((part) => !/^(资料核查|现场核查|核查项目|类别|序号|内容|备注|是否)$/.test(part));
+
+  return Array.from(new Set(parts)).slice(0, 20);
+}
+
+function pickChecklistContentCell(cells = []) {
+  return [...cells]
+    .filter((cell) => !/^(\d+|[一二三四五六七八九十]+)$/.test(cell))
+    .filter((cell) => !/^(资料核查|现场核查|类别|序号|核查项目|核查内容|备注|是否|结果)$/.test(cell))
+    .sort((left, right) => right.length - left.length)[0] ?? "";
+}
+
+function deriveItemId(cells = [], rowIndex = 0, sequence = 0) {
+  const explicitId = cells.find((cell) => /^(\d+[-.])+\d+$/.test(cell) || /^\d+$/.test(cell));
+  return explicitId ? explicitId.replace(/\./g, "-") : `docx-${rowIndex || sequence + 1}`;
+}
+
+function deriveSubCategory(cells = [], content = "") {
+  const categoryIndex = cells.findIndex((cell) => cell.includes("资料核查"));
+  if (categoryIndex >= 0) {
+    const nextCell = cells[categoryIndex + 1];
+    if (nextCell && nextCell.length <= 20 && !content.includes(nextCell)) {
+      return nextCell;
+    }
+  }
+
+  const known = ["人员", "设备器具", "设备", "原材料", "方法", "环境", "许可", "其他"];
+  return known.find((item) => cells.includes(item) || content.includes(item)) ?? "";
+}
+
+export async function extractOpeningConditionChecklistDefinitionFromDocxBuffer(
+  buffer,
+  { basisVersionId = "", requiredMasterData = [] } = {},
+) {
+  const structure = await parseDocxBuffer(buffer);
+  const rows = (structure.paragraphs ?? [])
+    .filter((paragraph) => paragraph.blockType === "table_row")
+    .map((paragraph) => splitTableRowText(paragraph.text))
+    .filter(Boolean);
+  const items = [];
+
+  for (const row of rows) {
+    const rowText = row.cells.join(" ");
+    if (!rowText || rowText.includes("现场核查")) {
+      continue;
+    }
+    if (!rowText.includes("资料核查") && !/(资料|报审|证书|记录|合同|方案|许可|台账|报告)/.test(rowText)) {
+      continue;
+    }
+    if (/(核查项目|核查内容|检查内容|序号|类别)/.test(rowText) && rowText.length < 80) {
+      continue;
+    }
+
+    const content = pickChecklistContentCell(row.cells);
+    if (!content || content.length < 6) {
+      continue;
+    }
+
+    const materials = deriveMaterialsFromText(content);
+    const itemId = deriveItemId(row.cells, row.rowIndex, items.length);
+    items.push({
+      id: itemId,
+      category: "资料核查",
+      subCategory: deriveSubCategory(row.cells, content),
+      name: content,
+      required: content.includes("★"),
+      isAsNeeded: content.includes("按需"),
+      expectedEvidenceHints: materials.length > 0 ? materials : [content.replace(/[★*]/g, "").trim()],
+      basisVersionId,
+      masterDataIds: selectMasterDataIds(requiredMasterData, {
+        type: content.includes("设备") || content.includes("仪器") || content.includes("泵车") ? "equipment" : "system_document",
+        labelKeywords: materials,
+      }),
+      rowIndex: row.rowIndex,
+    });
+  }
+
+  return items;
 }
 
 const pilotChecklistTemplates = [

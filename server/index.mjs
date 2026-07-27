@@ -46,6 +46,7 @@ import {
   decideOpeningConditionPilotBasisPreview,
   decideOpeningConditionPilotMasterDataRecord,
   decideOpeningConditionPilotHumanReviewItem,
+  deleteOpeningConditionPilotTask,
   buildOpeningConditionPilotReportHtml,
   generateOpeningConditionPilotReport,
   getOpeningConditionPilotStoreInfo,
@@ -268,6 +269,7 @@ export function createBackendServer(options = {}) {
           "GET /api/opening-condition/pilot-tasks",
           "GET /api/opening-condition/pilot-tasks/:taskId",
           "PUT /api/opening-condition/pilot-tasks/:taskId",
+          "DELETE /api/opening-condition/pilot-tasks/:taskId",
           "POST /api/opening-condition/pilot-tasks/intake-init",
           "POST /api/opening-condition/pilot-tasks/trial-bootstrap",
           "POST /api/opening-condition/pilot-tasks/:taskId/packet",
@@ -626,6 +628,12 @@ export function createBackendServer(options = {}) {
         const body = await readJson(request);
         const result = await upsertOpeningConditionPilotTask(taskId, body.task ?? body, openingConditionStoreOptions);
         sendJson(response, result.ok ? 200 : 400, result);
+        return;
+      }
+
+      if (request.method === "DELETE") {
+        const result = await deleteOpeningConditionPilotTask(taskId, openingConditionStoreOptions);
+        sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
         return;
       }
     }

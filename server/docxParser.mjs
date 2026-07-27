@@ -230,6 +230,44 @@ export async function parseDocxFile(filePath) {
   });
 }
 
+export async function parseDocxBuffer(buffer) {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
+      if (err) {
+        reject(new Error(`Failed to open DOCX buffer: ${err.message}`));
+        return;
+      }
+
+      let documentXml = null;
+
+      zipfile.readEntry();
+      zipfile.on("entry", (entry) => {
+        if (entry.fileName === "word/document.xml") {
+          readEntryBuffer(zipfile, entry)
+            .then((entryBuffer) => {
+              documentXml = entryBuffer.toString("utf8");
+              zipfile.close();
+              try {
+                resolve(parseDocumentXmlToStructure(documentXml));
+              } catch (parseErr) {
+                reject(parseErr);
+              }
+            })
+            .catch(reject);
+        } else {
+          zipfile.readEntry();
+        }
+      });
+
+      zipfile.on("end", () => {
+        if (!documentXml) {
+          reject(new Error("DOCX buffer does not contain word/document.xml"));
+        }
+      });
+    });
+  });
+}
+
 export function parseDocumentXmlToStructure(xml) {
   const rawParagraphs = [];
 

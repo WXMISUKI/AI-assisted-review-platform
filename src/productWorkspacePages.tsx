@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   Archive,
   BookOpen,
   EyeOff,
+  ExternalLink,
   FileSearch,
   LogOut,
   RotateCcw,
   ShieldCheck,
   SunMoon,
+  Trash2,
   Users,
 } from "lucide-react";
 import { ConnectivityStatus, formatFileSize, MetricBlock, NavButton } from "./appShellDisplay";
@@ -16,6 +18,7 @@ import { roleLabels } from "./appShellTypes";
 import type { OpeningConditionPortalPage, Role, Session, ThemeMode } from "./appShellTypes";
 import {
   bootstrapOpeningConditionPilotTrial,
+  fetchMinioPresignedDocumentUrl,
   uploadMinioDocument,
   type OpeningConditionPilotBasisRecord,
   type OpeningConditionPilotIntakeInitResult,
@@ -1140,6 +1143,9 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
     fileName: string;
     summary: string;
     kind: string;
+    storageKey?: string;
+    contentType?: string;
+    sizeBytes?: number;
   }> = [];
   const basisObject = task.basisVersion?.sourceObject;
   if (basisObject) {
@@ -1149,6 +1155,9 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       fileName: basisObject.fileName,
       summary: basisObject.summary ?? "平台已绑定的审查依据",
       kind: basisObject.kind,
+      storageKey: basisObject.storageKey,
+      contentType: basisObject.contentType,
+      sizeBytes: basisObject.sizeBytes,
     });
   }
   if (task.packet?.checklistObject) {
@@ -1158,6 +1167,9 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       fileName: task.packet.checklistObject.fileName,
       summary: task.packet.checklistObject.summary ?? "用于整理核查项目",
       kind: task.packet.checklistObject.kind,
+      storageKey: task.packet.checklistObject.storageKey,
+      contentType: task.packet.checklistObject.contentType,
+      sizeBytes: task.packet.checklistObject.sizeBytes,
     });
   }
   for (const sourceObject of task.packet?.sourceObjects ?? []) {
@@ -1167,6 +1179,9 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       fileName: sourceObject.fileName,
       summary: sourceObject.summary ?? "平台已接入的资料包",
       kind: sourceObject.kind,
+      storageKey: sourceObject.storageKey,
+      contentType: sourceObject.contentType,
+      sizeBytes: sourceObject.sizeBytes,
     });
   }
   for (const entry of task.packet?.inventoryEntries ?? []) {
@@ -1176,9 +1191,135 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       fileName: entry.fileName,
       summary: entry.summary ?? "资料包拆分清单文件",
       kind: "inventory",
+      sizeBytes: entry.sizeBytes,
     });
   }
   return files;
+}
+
+type OpeningConditionAgentMaterialFile = ReturnType<typeof buildOpeningConditionAgentMaterialFiles>[number];
+
+function isDocxAgentMaterialFile(file: OpeningConditionAgentMaterialFile) {
+  const fileName = file.fileName.toLowerCase();
+  const contentType = (file.contentType ?? "").toLowerCase();
+  return fileName.endsWith(".docx") || contentType.includes("wordprocessingml.document");
+}
+
+function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningConditionAgentMaterialFile | null }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const renderTokenRef = useRef(0);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "fallback" | "error">("idle");
+  const [message, setMessage] = useState("Select a file from the document library.");
+  const [openUrl, setOpenUrl] = useState("");
+
+  useEffect(() => {
+    renderTokenRef.current += 1;
+    const token = renderTokenRef.current;
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.innerHTML = "";
+    setOpenUrl("");
+    if (!file) {
+      setStatus("fallback");
+      setMessage("Select a file from the document library.");
+      return;
+    }
+
+    if (!file.storageKey) {
+      setStatus("fallback");
+      setMessage("This packet inventory entry has no standalone stored object for inline preview.");
+      return;
+    }
+
+    const previewFile = file;
+    const previewContainer = container;
+    let cancelled = false;
+    async function loadPreview() {
+      try {
+        setStatus("loading");
+        setMessage("Resolving a temporary document URL...");
+        const presigned = await fetchMinioPresignedDocumentUrl(previewFile.storageKey ?? "", 900);
+        if (cancelled || token !== renderTokenRef.current) {
+          return;
+        }
+        const previewUrl = presigned.presigned?.url ?? "";
+        if (!presigned.ok || !previewUrl) {
+          throw new Error(presigned.message || "Could not resolve a temporary document URL.");
+        }
+        setOpenUrl(previewUrl);
+
+        if (!isDocxAgentMaterialFile(previewFile)) {
+          setStatus("fallback");
+          setMessage("Inline preview currently supports DOCX files. Use the temporary link to open this file.");
+          return;
+        }
+
+        setMessage("Loading DOCX preview...");
+        const response = await fetch(previewUrl);
+        if (!response.ok) {
+          throw new Error(`Document download failed: ${response.status}`);
+        }
+        const blob = await response.blob();
+        if (cancelled || token !== renderTokenRef.current) {
+          return;
+        }
+        const docxPreview = await import("docx-preview");
+        previewContainer.innerHTML = "";
+        await docxPreview.renderAsync(blob, previewContainer, undefined, {
+          breakPages: true,
+          className: "docx-preview-root",
+          inWrapper: true,
+          ignoreLastRenderedPageBreak: false,
+        });
+        if (cancelled || token !== renderTokenRef.current) {
+          return;
+        }
+        setStatus("ready");
+        setMessage("DOCX preview loaded.");
+      } catch (error) {
+        if (cancelled || token !== renderTokenRef.current) {
+          return;
+        }
+        previewContainer.innerHTML = "";
+        setStatus("error");
+        setMessage(error instanceof Error ? error.message : "Document preview failed.");
+      }
+    }
+
+    void loadPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
+
+  return (
+    <div className="opening-agent-file-preview">
+      {file ? (
+        <>
+          <div className="opening-agent-preview-header">
+            <div>
+              <span className="eyebrow">{file.kind}</span>
+              <h3>{file.fileName}</h3>
+              <p>{file.summary}</p>
+            </div>
+            {openUrl && (
+              <a className="secondary opening-agent-preview-link" href={openUrl} target="_blank" rel="noreferrer">
+                <ExternalLink size={14} />
+                Open
+              </a>
+            )}
+          </div>
+          <p className={`source-faithful-preview-status ${status}`}>{message}</p>
+          <div ref={containerRef} className="docx-preview-shell opening-agent-docx-preview" />
+        </>
+      ) : (
+        <p>Select a file from the document library.</p>
+      )}
+    </div>
+  );
 }
 
 function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask | null) {
@@ -1231,31 +1372,79 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
 }
 
 function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTask | null) {
-  const progress = getOpeningConditionAgentTaskProgress(task);
-  const complianceAvailable = Boolean(
-    task?.checkItems.some((item) => item.contentCompliance && item.contentCompliance !== "not_evaluated"),
-  );
-  const eventByType = new Map((task?.events ?? []).map((event) => [event.type, event]));
+  if (!task) {
+    return [
+      {
+        key: "waiting-upload",
+        label: "Waiting for upload",
+        detail: "Upload the basis document, checklist, and material packet first.",
+        progress: 0,
+        done: false,
+        active: true,
+        operatorRequired: false,
+        occurredAt: undefined,
+      },
+    ];
+  }
+
+  const events = [...(task.events ?? [])].sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0));
+  const eventLabelByType: Record<string, string> = {
+    "task.created": "Create audit task",
+    "task.intake_initialized": "Initialize intake",
+    "packet.uploaded": "Receive packet",
+    "extraction.started": "Extract checklist",
+    "extraction.completed": "Prepare checklist items",
+    "matching.started": "Run material matching",
+    "matching.completed": "Complete automatic review",
+    "human_review.waiting": "Wait for human review",
+    "report.ready": "Generate final report",
+    "report.exported": "Export report asset",
+    "task.archived": "Archive history",
+    "task.failed": "Task failed",
+    "task.canceled": "Task canceled",
+  };
+  const latestSequence = events[events.length - 1]?.sequence ?? 0;
+  const eventSteps = events.map((event) => {
+    const operatorRequired = event.type === "human_review.waiting" && task.state === "awaiting_human_review";
+    return {
+      key: event.id,
+      label: eventLabelByType[event.type] ?? event.type,
+      detail: event.message,
+      progress: typeof event.progress === "number" ? event.progress : 0,
+      done: !operatorRequired,
+      active: operatorRequired || event.sequence === latestSequence,
+      operatorRequired,
+      occurredAt: event.occurredAt,
+    };
+  });
+
+  if (task.state === "awaiting_human_review" && !eventSteps.some((step) => step.operatorRequired)) {
+    eventSteps.push({
+      key: "human-review-pause",
+      label: "??????",
+      detail: "AI ?????????????????????????????????",
+      progress: getOpeningConditionAgentTaskProgress(task),
+      done: false,
+      active: true,
+      operatorRequired: true,
+      occurredAt: task.updatedAt,
+    });
+  }
+
+  if (eventSteps.length > 0) {
+    return eventSteps;
+  }
+
   return [
     {
-      label: "整理资料核查项",
-      detail: eventByType.get("extraction.completed")?.message ?? "根据资料核查表提取并整理核查项目。",
-      done: Boolean(eventByType.get("extraction.completed")) || progress >= 42,
-    },
-    {
-      label: "拆分核查资料包",
-      detail: eventByType.get("packet.uploaded")?.message ?? "建立资料包文件清单，准备逐文件审核。",
-      done: Boolean(eventByType.get("packet.uploaded")) || progress >= 28,
-    },
-    {
-      label: "执行资料核查",
-      detail: complianceAvailable ? "已获得平台规范化的内容核查结果。" : "当前以资料完整性核查为主。",
-      done: Boolean(eventByType.get("matching.completed") ?? eventByType.get("human_review.waiting")) || progress >= 70,
-    },
-    {
-      label: "生成核查报告",
-      detail: task?.reportAsset ? "报告资产已由平台生成。" : "等待核查结果和人工复核完成。",
-      done: progress >= 90,
+      key: "state-fallback",
+      label: openingConditionPilotStateLabels[task.state] ?? task.state,
+      detail: "?????????????????",
+      progress: getOpeningConditionAgentTaskProgress(task),
+      done: task.state === "report_ready" || task.state === "archived",
+      active: task.state !== "report_ready" && task.state !== "archived",
+      operatorRequired: task.state === "awaiting_human_review",
+      occurredAt: task.updatedAt,
     },
   ];
 }
@@ -2101,6 +2290,7 @@ export function OpeningConditionWorkspaceShell({
   onGenerateReport,
   onExportReport,
   onArchivePilotTask,
+  onDeletePilotTask,
   onStartRectificationRerun,
   onTrialBootstrapComplete,
   getNextOpeningPilotRunTaskId,
@@ -2148,6 +2338,7 @@ export function OpeningConditionWorkspaceShell({
   onGenerateReport?: () => void;
   onExportReport?: (taskId: string) => void;
   onArchivePilotTask?: () => void;
+  onDeletePilotTask?: (taskId: string) => void;
   onStartRectificationRerun?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
   getNextOpeningPilotRunTaskId?: () => string;
@@ -2171,6 +2362,9 @@ export function OpeningConditionWorkspaceShell({
 
   function goToOpeningPage(page: OpeningConditionPortalPage) {
     clearOpeningFocus();
+    if (page === "workspace-context") {
+      setSelectedAgentTaskId(null);
+    }
     onSelectPage(page);
   }
 
@@ -2233,15 +2427,32 @@ export function OpeningConditionWorkspaceShell({
               <small>当前项目暂无历史审核</small>
             ) : (
               projectTasks.map((task) => (
-                <button
+                <div
                   key={task.id}
-                  type="button"
                   className={task.id === selectedAgentTaskId ? "opening-sidebar-task active" : "opening-sidebar-task"}
-                  onClick={() => selectAgentTask(task.id)}
                 >
-                  <span>{getOpeningConditionAgentTaskTitle(task)}</span>
-                  <small>{getOpeningConditionAgentTaskProgress(task)}%</small>
-                </button>
+                  <button type="button" className="opening-sidebar-task-main" onClick={() => selectAgentTask(task.id)}>
+                    <span>{getOpeningConditionAgentTaskTitle(task)}</span>
+                    <small>{getOpeningConditionAgentTaskProgress(task)}%</small>
+                  </button>
+                  {onDeletePilotTask && (
+                    <button
+                      type="button"
+                      className="opening-sidebar-task-delete"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (selectedAgentTaskId === task.id) {
+                          setSelectedAgentTaskId(null);
+                        }
+                        onDeletePilotTask(task.id);
+                      }}
+                      disabled={pilotBusy}
+                      aria-label={`删除历史审核记录 ${getOpeningConditionAgentTaskTitle(task)}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               ))
             )}
           </div>
@@ -2736,7 +2947,7 @@ function OpeningConditionObjectOverviewProductizedPage({
               </button>
             </div>
           </div>
-          <details className="opening-agent-file-group" open>
+          <details className="opening-agent-file-group">
             <summary>资料文档库</summary>
             <div className="opening-agent-file-list">
               {agentMaterialFiles.length === 0 ? (
@@ -2756,7 +2967,7 @@ function OpeningConditionObjectOverviewProductizedPage({
               )}
             </div>
           </details>
-          <details className="opening-agent-file-group" open>
+          <details className="opening-agent-file-group">
             <summary>待核查资料项</summary>
             <div className="opening-agent-review-item-list">
               {agentReviewItems.length === 0 ? (
@@ -2783,18 +2994,7 @@ function OpeningConditionObjectOverviewProductizedPage({
               )}
             </div>
           </details>
-          <div className="opening-agent-file-preview">
-            {selectedAgentFile ? (
-              <>
-                <span className="eyebrow">{selectedAgentFile.kind}</span>
-                <h3>{selectedAgentFile.fileName}</h3>
-                <p>{selectedAgentFile.summary}</p>
-                <small>后续可复用施工审查侧的文档预览组件接入 PDF/DOCX 在线预览。</small>
-              </>
-            ) : (
-              <p>请选择资料文档库中的文件。</p>
-            )}
-          </div>
+          <OpeningConditionAgentDocumentPreview file={selectedAgentFile} />
         </div>
         <div className="opening-agent-progress-pane">
           <div className="opening-agent-pane-header">
@@ -2813,10 +3013,19 @@ function OpeningConditionObjectOverviewProductizedPage({
           </div>
           <div className="opening-agent-step-list">
             {agentSteps.map((step) => (
-              <div key={step.label} className={step.done ? "opening-agent-step done" : "opening-agent-step"}>
+              <div
+                key={step.key}
+                className={[
+                  "opening-agent-step",
+                  step.done ? "done" : "",
+                  step.active ? "active" : "",
+                  step.operatorRequired ? "needs-operator" : "",
+                ].filter(Boolean).join(" ")}
+              >
                 <strong>{step.label}</strong>
-                <span>{step.done ? "已完成" : "待处理"}</span>
+                <span>{step.operatorRequired ? "??????" : step.done ? "????" : "???"}</span>
                 <small>{step.detail}</small>
+                {step.occurredAt && <small>{step.occurredAt}</small>}
               </div>
             ))}
           </div>
@@ -2825,7 +3034,7 @@ function OpeningConditionObjectOverviewProductizedPage({
             <p>
               {selectedReviewScope === "completeness_and_compliance"
                 ? "当前任务包含资料完整性和合规性核查，报告将基于平台核查事实、人工复核结论和报告资产生成。"
-                : "当前任务以资料完整性核查为主，待人工复核项处理完成后即可生成报告。"}
+                : "当前以资料完整性核查为主，待人工复核项处理完成后即可生成报告。"}
             </p>
             {selectedAgentTask?.reportAsset?.markdownContent ? (
               <pre className="opening-agent-report-markdown">{selectedAgentTask.reportAsset.markdownContent}</pre>

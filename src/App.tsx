@@ -11,6 +11,7 @@ import {
   archiveOpeningConditionPilotTask,
   bindOpeningConditionPilotKnowledgeBase,
   completeOpeningConditionPilotHumanReview,
+  deleteOpeningConditionPilotTask,
   decideOpeningConditionPilotMasterData,
   decideOpeningConditionPilotHumanReview,
   exportOpeningConditionPilotReportDocx,
@@ -121,6 +122,10 @@ function isOpeningPilotBasisRecord(
   basisRecord?: OpeningConditionPilotBasisRecord | OpeningConditionPilotTask["basisVersion"] | null,
 ): basisRecord is OpeningConditionPilotBasisRecord {
   return Boolean(basisRecord && "title" in basisRecord);
+}
+
+function upsertOpeningPilotTaskList(tasks: OpeningConditionPilotTask[], nextTask: OpeningConditionPilotTask) {
+  return [nextTask, ...tasks.filter((task) => task.id !== nextTask.id)].sort(compareOpeningPilotTaskRecency);
 }
 
 function isPersistedOpeningPilotObject(objectRef?: OpeningPilotPacketRef | null) {
@@ -1022,26 +1027,53 @@ export function App() {
       return;
     }
 
+    const createdTask = result.task;
     setOpeningPilotIntakeMode("default");
-    setOpeningPilotTask(result.task);
+    setOpeningPilotTask(createdTask);
+    setOpeningPilotAllTasks((tasks) => upsertOpeningPilotTaskList(tasks, createdTask));
+    setOpeningPilotWorkspaceTasks((tasks) => upsertOpeningPilotTaskList(tasks, createdTask));
     setOpeningPilotReadiness(
       result.preflightReadiness
         ? {
             ok: true,
-            taskId: result.task.id,
-            workspaceId: result.task.context.workspaceId,
-            state: result.task.state,
+            taskId: createdTask.id,
+            workspaceId: createdTask.context.workspaceId,
+            state: createdTask.state,
             preflightReadiness: result.preflightReadiness,
-            knowledgeBaseRef: result.task.knowledgeBaseRef,
+            knowledgeBaseRef: createdTask.knowledgeBaseRef,
           }
         : null,
     );
     setOpeningPilotStatus(
-      `核查任务已创建：资料清单 ${result.packet?.inventoryEntries.length ?? 0} 项，当前状态 ${result.task.state}`,
+      `核查任务已创建：资料清单 ${result.packet?.inventoryEntries.length ?? 0} 项，当前状态 ${createdTask.state}`,
     );
-    void refreshOpeningWorkspaceFacts(result.task.context.workspaceId);
-    void refreshOpeningWorkspaceTasks(result.task.context.workspaceId);
+    void refreshOpeningWorkspaceFacts(createdTask.context.workspaceId);
+    void refreshOpeningWorkspaceTasks(createdTask.context.workspaceId);
     void refreshOpeningWorkspaceAssetRegistry();
+  }
+
+  async function deleteOpeningPilotHistoryTask(taskId: string) {
+    setOpeningPilotBusy(true);
+    try {
+      const result = await deleteOpeningConditionPilotTask(taskId);
+      if (!result.ok) {
+        setOpeningPilotStatus(result.message ?? "删除历史审核记录失败。");
+        return;
+      }
+
+      setOpeningPilotAllTasks((tasks) => tasks.filter((task) => task.id !== taskId));
+      setOpeningPilotWorkspaceTasks((tasks) => tasks.filter((task) => task.id !== taskId));
+      if (openingPilotTask?.id === taskId) {
+        setOpeningPilotTask(null);
+        setOpeningPilotReadiness(null);
+      }
+      setOpeningPilotStatus("历史审核记录已删除。");
+      void refreshOpeningWorkspaceAssetRegistry();
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "删除历史审核记录失败。");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
   }
 
   if (!session) {
@@ -1117,6 +1149,7 @@ export function App() {
       onGenerateReport={() => void generateOpeningPilotReport()}
       onExportReport={(taskId) => void exportOpeningPilotReportDocx(taskId)}
       onArchivePilotTask={() => void archiveOpeningPilotTask()}
+      onDeletePilotTask={(taskId) => void deleteOpeningPilotHistoryTask(taskId)}
       onStartRectificationRerun={startOpeningRectificationRerun}
       onTrialBootstrapComplete={handleOpeningTrialBootstrapComplete}
       getNextOpeningPilotRunTaskId={() => getOpeningPilotRunTaskId(openingPacket)}

@@ -1,7 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { readDocumentObjectBuffer } from "./minioClient.mjs";
-import { deriveOpeningConditionPilotChecklistDefinition } from "./openingConditionChecklistAdapter.mjs";
+import {
+  deriveOpeningConditionPilotChecklistDefinition,
+  extractOpeningConditionChecklistDefinitionFromDocxBuffer,
+} from "./openingConditionChecklistAdapter.mjs";
 import { extractOpeningConditionZipManifestEntries } from "./openingConditionZipManifest.mjs";
 import { normalizeProviderRefs } from "./providerContracts.mjs";
 
@@ -3258,6 +3261,46 @@ export async function listOpeningConditionPilotTasks(options = {}) {
   return readSnapshot(options.storePath);
 }
 
+export async function deleteOpeningConditionPilotTask(taskId, options = {}) {
+  const normalizedTaskId = normalizeString(taskId, "", 180);
+  if (!normalizedTaskId) {
+    return {
+      ok: false,
+      status: "invalid_input",
+      message: "taskId is required.",
+    };
+  }
+
+  return mutateSnapshot((snapshot) => {
+    const exists = snapshot.tasks.some((task) => task.id === normalizedTaskId);
+    if (!exists) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          taskId: normalizedTaskId,
+          deleted: false,
+          message: "Opening-condition pilot task not found.",
+        },
+      };
+    }
+
+    return {
+      snapshot: {
+        ...snapshot,
+        tasks: snapshot.tasks.filter((task) => task.id !== normalizedTaskId),
+      },
+      value: {
+        ok: true,
+        status: "deleted",
+        taskId: normalizedTaskId,
+        deleted: true,
+      },
+    };
+  }, options.storePath);
+}
+
 function compareTaskByUpdatedAtDesc(left, right) {
   return String(right.updatedAt ?? right.createdAt ?? "").localeCompare(String(left.updatedAt ?? left.createdAt ?? ""));
 }
@@ -4181,7 +4224,7 @@ function resolveKnowledgeBaseForIntake(snapshot, workspaceId, requestedKnowledge
   };
 }
 
-function resolveChecklistDefinitionForIntake(input, packet, basisVersion, requiredMasterData = [], existingTask = null) {
+async function resolveChecklistDefinitionForIntake(input, packet, basisVersion, requiredMasterData = [], existingTask = null, options = {}) {
   const explicitChecklistDefinition =
     Array.isArray(input.checklistItems) && input.checklistItems.length > 0
       ? input.checklistItems
@@ -4194,6 +4237,31 @@ function resolveChecklistDefinitionForIntake(input, packet, basisVersion, requir
       checklistDefinition: explicitChecklistDefinition,
       resolution: "direct_input",
     };
+  }
+
+  const readObjectBuffer = options.readObjectBuffer ?? readDocumentObjectBuffer;
+  const extractChecklistDefinitionFromBuffer =
+    options.extractChecklistDefinitionFromBuffer ?? extractOpeningConditionChecklistDefinitionFromDocxBuffer;
+  if (packet?.checklistObject?.storageKey) {
+    try {
+      const loadedObject = await readObjectBuffer(packet.checklistObject.storageKey);
+      const extractedChecklistDefinition = (await extractChecklistDefinitionFromBuffer(loadedObject.buffer, {
+        basisVersionId: basisVersion?.id ?? "",
+        requiredMasterData,
+      }))
+        .map((item, index) => normalizeChecklistItem(item, index))
+        .filter(Boolean)
+        .slice(0, MAX_CHECKLIST_ITEMS);
+
+      if (extractedChecklistDefinition.length > 0) {
+        return {
+          checklistDefinition: extractedChecklistDefinition,
+          resolution: "derived_from_uploaded_checklist",
+        };
+      }
+    } catch (error) {
+      // Keep the known template fallback when uploaded checklist parsing is unavailable.
+    }
   }
 
   const derivedChecklist = deriveOpeningConditionPilotChecklistDefinition({
@@ -4430,7 +4498,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
     };
   }
 
-  return mutateSnapshot((snapshot) => {
+  return mutateSnapshot(async (snapshot) => {
     const existingTask = snapshot.tasks.find((task) => task.id === taskId) ?? null;
     if (existingTask && terminalStates.has(existingTask.state)) {
       return {
@@ -4462,12 +4530,13 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       normalizeString(input.knowledgeBaseId, "", 180),
       existingTask?.knowledgeBaseRef?.id ?? "",
     );
-    const checklistResolution = resolveChecklistDefinitionForIntake(
+    const checklistResolution = await resolveChecklistDefinitionForIntake(
       input,
       packet,
       basisVersion,
       masterDataResolution.boundRefs,
       existingTask,
+      options,
     );
     const checklistDefinition = checklistResolution.checklistDefinition;
     const inventoryResolution = packetResolution?.inventoryResolution ?? "derived_from_source_objects";

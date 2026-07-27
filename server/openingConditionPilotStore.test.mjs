@@ -15,6 +15,7 @@ import {
   decideOpeningConditionPilotBasisPreview,
   decideOpeningConditionPilotHumanReviewItem,
   decideOpeningConditionPilotMasterDataRecord,
+  deleteOpeningConditionPilotTask,
   deriveOpeningConditionPilotPreflightReadiness,
   generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotTaskIntake,
@@ -637,6 +638,99 @@ test("initializes intake from workspace facts in one orchestration flow", async 
     assert.equal(initialized.task.checklistDefinition[0].id, "1-1-1");
     assert.equal(initialized.task.checklistDefinition[0].expectedEvidenceHints.includes("施工单位营业执照"), true);
     assert.equal(initialized.task.checklistDefinition[21].rowIndex, 24);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("prefers uploaded checklist extraction over templates and can delete history tasks", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-dynamic-checklist-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "Dynamic checklist basis",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-system-1",
+      {
+        type: "system_document",
+        label: "business license qualification certificate",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "Dynamic checklist KB",
+        status: "ready",
+      },
+      { storePath },
+    );
+
+    const initialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-dynamic-checklist-1",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        checklistObject: {
+          objectId: "checklist-dynamic-1",
+          kind: "checklist",
+          fileName: "pier-cap-opening-condition-checklist.docx",
+          storageKey: "checklists/dynamic.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-dynamic-1",
+            kind: "source_archive",
+            fileName: "business-license.pdf",
+          },
+        ],
+      },
+      {
+        storePath,
+        readObjectBuffer: async () => ({ buffer: Buffer.from("fake-docx") }),
+        extractChecklistDefinitionFromBuffer: async () => [
+          {
+            id: "dynamic-1",
+            category: "资料核查",
+            subCategory: "人员",
+            name: "Business license and qualification certificate are complete.★",
+            required: true,
+            expectedEvidenceHints: ["business license", "qualification certificate"],
+            rowIndex: 3,
+          },
+        ],
+      },
+    );
+
+    assert.equal(initialized.ok, true);
+    assert.equal(initialized.intake.checklistDefinitionResolution, "derived_from_uploaded_checklist");
+    assert.equal(initialized.task.checklistDefinition.length, 1);
+    assert.equal(initialized.task.checklistDefinition[0].id, "dynamic-1");
+    assert.equal(initialized.task.checklistDefinition[0].name.includes("Business license"), true);
+
+    const listedBeforeDelete = await listOpeningConditionPilotTasks({ storePath });
+    assert.equal(listedBeforeDelete.tasks.some((task) => task.id === "task-dynamic-checklist-1"), true);
+
+    const deleted = await deleteOpeningConditionPilotTask("task-dynamic-checklist-1", { storePath });
+    assert.equal(deleted.ok, true);
+    assert.equal(deleted.deleted, true);
+
+    const listedAfterDelete = await listOpeningConditionPilotTasks({ storePath });
+    assert.equal(listedAfterDelete.tasks.some((task) => task.id === "task-dynamic-checklist-1"), false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
