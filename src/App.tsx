@@ -1057,7 +1057,7 @@ export function App() {
     setOpeningPilotBusy(true);
     try {
       const result = await deleteOpeningConditionPilotTask(taskId);
-      if (!result.ok) {
+      if (!result.ok && result.status !== "not_found") {
         setOpeningPilotStatus(result.message ?? "删除历史审核记录失败。");
         return;
       }
@@ -1068,8 +1068,13 @@ export function App() {
         setOpeningPilotTask(null);
         setOpeningPilotReadiness(null);
       }
-      setOpeningPilotStatus("历史审核记录已删除。");
+      setOpeningPilotStatus(
+        result.status === "not_found"
+          ? "该历史记录在当前后端实例中已不存在，已从前端列表清理。"
+          : "历史审核记录已删除。",
+      );
       void refreshOpeningWorkspaceAssetRegistry();
+      void refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
     } catch (error) {
       setOpeningPilotStatus(error instanceof Error ? error.message : "删除历史审核记录失败。");
     } finally {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -1137,6 +1137,7 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
     return [];
   }
 
+  const packetSourceObjects = new Map((task.packet?.sourceObjects ?? []).map((item) => [item.objectId, item]));
   const files: Array<{
     id: string;
     label: string;
@@ -1146,6 +1147,9 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
     storageKey?: string;
     contentType?: string;
     sizeBytes?: number;
+    sourceObjectId?: string;
+    sourceArchiveFileName?: string;
+    sourceArchiveStorageKey?: string;
   }> = [];
   const basisObject = task.basisVersion?.sourceObject;
   if (basisObject) {
@@ -1185,6 +1189,7 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
     });
   }
   for (const entry of task.packet?.inventoryEntries ?? []) {
+    const sourceArchive = entry.sourceObjectId ? packetSourceObjects.get(entry.sourceObjectId) : undefined;
     files.push({
       id: entry.id,
       label: "资料包文件",
@@ -1192,6 +1197,9 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       summary: entry.summary ?? "资料包拆分清单文件",
       kind: "inventory",
       sizeBytes: entry.sizeBytes,
+      sourceObjectId: entry.sourceObjectId,
+      sourceArchiveFileName: sourceArchive?.fileName,
+      sourceArchiveStorageKey: sourceArchive?.storageKey,
     });
   }
   return files;
@@ -1210,11 +1218,163 @@ function isDocxAgentMaterialFile(file: OpeningConditionAgentMaterialFile) {
   return fileName.endsWith(".docx") || contentType.includes("wordprocessingml.document");
 }
 
+function renderOpeningMarkdownInline(text: string) {
+  const nodes: ReactNode[] = [];
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\(([^)]+)\))/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      nodes.push(<strong key={`strong-${match.index}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("*") && token.endsWith("*")) {
+      nodes.push(<em key={`em-${match.index}`}>{token.slice(1, -1)}</em>);
+    } else {
+      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        nodes.push(
+          <a key={`link-${match.index}`} href={linkMatch[2]} target="_blank" rel="noreferrer">
+            {linkMatch[1]}
+          </a>,
+        );
+      } else {
+        nodes.push(token);
+      }
+    }
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+  return nodes.length > 0 ? nodes : text;
+}
+
+function parseOpeningMarkdownTableRow(line: string) {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function isOpeningMarkdownTableDivider(line: string) {
+  return /^\|\s*[-:| ]+\|\s*$/.test(line.trim());
+}
+
+function OpeningConditionMarkdownReport({ markdown }: { markdown: string }) {
+  const lines = markdown.split(/\r?\n/);
+  const blocks: ReactNode[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("### ")) {
+      blocks.push(<h4 key={`h4-${index}`}>{renderOpeningMarkdownInline(trimmed.slice(4))}</h4>);
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("## ")) {
+      blocks.push(<h3 key={`h3-${index}`}>{renderOpeningMarkdownInline(trimmed.slice(3))}</h3>);
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("|")) {
+      const tableLines: string[] = [];
+      while (index < lines.length && lines[index].trim().startsWith("|")) {
+        tableLines.push(lines[index].trim());
+        index += 1;
+      }
+      const [headerLine, ...rest] = tableLines;
+      const bodyLines = rest.filter((entry) => !isOpeningMarkdownTableDivider(entry));
+      const headers = parseOpeningMarkdownTableRow(headerLine);
+      blocks.push(
+        <div key={`table-${index}`} className="opening-agent-markdown-table-wrap">
+          <table className="opening-agent-markdown-table">
+            <thead>
+              <tr>
+                {headers.map((cell, cellIndex) => (
+                  <th key={`th-${cellIndex}`}>{renderOpeningMarkdownInline(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bodyLines.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`}>
+                  {parseOpeningMarkdownTableRow(row).map((cell, cellIndex) => (
+                    <td key={`td-${rowIndex}-${cellIndex}`}>{renderOpeningMarkdownInline(cell)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
+    if (trimmed.startsWith("- ")) {
+      const items: string[] = [];
+      while (index < lines.length && lines[index].trim().startsWith("- ")) {
+        items.push(lines[index].trim().slice(2).trim());
+        index += 1;
+      }
+      blocks.push(
+        <ul key={`list-${index}`} className="opening-agent-markdown-list">
+          {items.map((item, itemIndex) => (
+            <li key={`li-${itemIndex}`}>{renderOpeningMarkdownInline(item)}</li>
+          ))}
+        </ul>,
+      );
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const current = lines[index].trim();
+      if (!current || current.startsWith("## ") || current.startsWith("### ") || current.startsWith("- ") || current.startsWith("|")) {
+        break;
+      }
+      paragraphLines.push(current);
+      index += 1;
+    }
+    const paragraph = paragraphLines.join(" ");
+    const isEmphasisLine = /^\*[^*].*[^*]\*$/.test(paragraph);
+    if (isEmphasisLine) {
+      blocks.push(
+        <p key={`emphasis-${index}`} className="opening-agent-markdown-emphasis">
+          <em>{paragraph.slice(1, -1)}</em>
+        </p>,
+      );
+    } else {
+      blocks.push(
+        <p key={`p-${index}`} className="opening-agent-markdown-paragraph">
+          {renderOpeningMarkdownInline(paragraph)}
+        </p>,
+      );
+    }
+  }
+
+  return <div className="opening-agent-markdown-report">{blocks}</div>;
+}
+
 function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningConditionAgentMaterialFile | null }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const renderTokenRef = useRef(0);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "fallback" | "error">("idle");
-  const [message, setMessage] = useState("Select a file from the document library.");
+  const [message, setMessage] = useState("请选择资料文档库中的文件进行预览。");
   const [openUrl, setOpenUrl] = useState("");
 
   useEffect(() => {
@@ -1229,13 +1389,7 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
     setOpenUrl("");
     if (!file) {
       setStatus("fallback");
-      setMessage("Select a file from the document library.");
-      return;
-    }
-
-    if (!file.storageKey) {
-      setStatus("fallback");
-      setMessage("This packet inventory entry has no standalone stored object for inline preview.");
+      setMessage("请选择资料文档库中的文件进行预览。");
       return;
     }
 
@@ -1245,27 +1399,48 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
     async function loadPreview() {
       try {
         setStatus("loading");
-        setMessage("Resolving a temporary document URL...");
-        const presigned = await fetchMinioPresignedDocumentUrl(previewFile.storageKey ?? "", 900);
+        if (!previewFile.storageKey) {
+          if (previewFile.sourceArchiveStorageKey) {
+            setMessage("该资料包条目来自历史资料包清单，正在生成原始资料包访问链接...");
+            const archivePresigned = await fetchMinioPresignedDocumentUrl(previewFile.sourceArchiveStorageKey, 900);
+            if (cancelled || token !== renderTokenRef.current) {
+              return;
+            }
+            setOpenUrl(archivePresigned.presigned?.url ?? "");
+            setStatus("fallback");
+            setMessage(
+              `当前文件“${previewFile.fileName}”属于旧资料包清单条目，平台没有为它保留独立预览对象。可先打开原始资料包${
+                previewFile.sourceArchiveFileName ? `（${previewFile.sourceArchiveFileName}）` : ""
+              }，或重新上传新资料包以获得逐文件预览。`,
+            );
+            return;
+          }
+          setStatus("fallback");
+          setMessage("当前文件来自历史资料包清单，平台没有可用于内联预览的独立对象。这通常是旧数据限制，建议重新上传新资料包后再逐文件预览。");
+          return;
+        }
+
+        setMessage("正在生成临时预览链接...");
+        const presigned = await fetchMinioPresignedDocumentUrl(previewFile.storageKey, 900);
         if (cancelled || token !== renderTokenRef.current) {
           return;
         }
         const previewUrl = presigned.presigned?.url ?? "";
         if (!presigned.ok || !previewUrl) {
-          throw new Error(presigned.message || "Could not resolve a temporary document URL.");
+          throw new Error(presigned.message || "无法生成临时预览链接。");
         }
         setOpenUrl(previewUrl);
 
         if (!isDocxAgentMaterialFile(previewFile)) {
           setStatus("fallback");
-          setMessage("Inline preview currently supports DOCX files. Use the temporary link to open this file.");
+          setMessage("当前内联预览优先支持 DOCX。你可以直接打开原文件查看。");
           return;
         }
 
-        setMessage("Loading DOCX preview...");
+        setMessage("正在加载 DOCX 预览...");
         const response = await fetch(previewUrl);
         if (!response.ok) {
-          throw new Error(`Document download failed: ${response.status}`);
+          throw new Error(`文件下载失败：${response.status}`);
         }
         const blob = await response.blob();
         if (cancelled || token !== renderTokenRef.current) {
@@ -1283,14 +1458,14 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
           return;
         }
         setStatus("ready");
-        setMessage("DOCX preview loaded.");
+        setMessage("预览已加载。");
       } catch (error) {
         if (cancelled || token !== renderTokenRef.current) {
           return;
         }
         previewContainer.innerHTML = "";
         setStatus("error");
-        setMessage(error instanceof Error ? error.message : "Document preview failed.");
+        setMessage(error instanceof Error ? error.message : "文件预览失败。");
       }
     }
 
@@ -1311,11 +1486,11 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
               <p>{file.summary}</p>
             </div>
             {openUrl && (
-              <a className="secondary opening-agent-preview-link" href={openUrl} target="_blank" rel="noreferrer">
-                <ExternalLink size={14} />
-                Open
-              </a>
-            )}
+                <a className="secondary opening-agent-preview-link" href={openUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink size={14} />
+                  打开原文件
+                </a>
+              )}
           </div>
           <p className={`source-faithful-preview-status ${status}`}>{message}</p>
           {status === "loading" ? (
@@ -1327,7 +1502,7 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
           <div ref={containerRef} className="docx-preview-shell opening-agent-docx-preview" />
         </>
       ) : (
-        <p>Select a file from the document library.</p>
+        <p>请选择资料文档库中的文件进行预览。</p>
       )}
     </div>
   );
@@ -3237,7 +3412,7 @@ function OpeningConditionObjectOverviewProductizedPage({
                 : "当前以资料完整性核查为主，待人工复核项处理完成后即可生成报告。"}
             </p>
             {selectedAgentTask?.reportAsset?.markdownContent ? (
-              <pre className="opening-agent-report-markdown">{selectedAgentTask.reportAsset.markdownContent}</pre>
+              <OpeningConditionMarkdownReport markdown={selectedAgentTask.reportAsset.markdownContent} />
             ) : null}
           </div>
         </div>
@@ -5139,7 +5314,7 @@ function OpeningConditionHumanReviewQueuePage({
               type="button"
               className="primary"
               disabled={!canCompleteHumanReview}
-              onClick={onCompleteHumanReview}
+              onClick={() => onCompleteHumanReview?.()}
             >
               完成人工复核并生成报告
             </button>
@@ -5536,6 +5711,7 @@ function OpeningConditionReportDeliveryWorkbench({
       </div>
       <strong>{reportAsset ? "报告资产来自平台后端试点任务记录。" : packet.reportSummary.nextAction}</strong>
       <small>{reportAsset?.disclaimer ?? packet.reportSummary.disclaimer}</small>
+      {reportAsset?.markdownContent ? <OpeningConditionMarkdownReport markdown={reportAsset.markdownContent} /> : null}
 
       {selectedTask && (
         <div className="opening-report-workbench">

@@ -132,8 +132,10 @@ function normalizeWorkspaceContext(value) {
     workspaceId: normalizeString(value.workspaceId, "", 160),
     tenantId: normalizeString(value.tenantId, "", 160),
     projectId: normalizeString(value.projectId, "", 160),
+    reviewObjectId: normalizeString(value.reviewObjectId, "", 160) || undefined,
     contractPackageId: normalizeString(value.contractPackageId, "", 160),
     participatingOrganizationId: normalizeString(value.participatingOrganizationId, "", 160),
+    participantEntityId: normalizeString(value.participantEntityId, "", 160) || undefined,
   };
 
   return Object.values(context).every(Boolean) ? context : null;
@@ -5591,6 +5593,62 @@ function buildOpeningConditionPilotReportMarkdown(task, summary, now) {
   ].join("\n");
 }
 
+function buildOpeningConditionPilotReportMarkdownV2(task, summary, now) {
+  const nonCompliantItems = task.checkItems.filter((item) => item.verdict !== "pass" && item.finalDisposition !== "not_applicable");
+  const seriousFailures = nonCompliantItems.filter((item) => item.required).length;
+  const generalFailures = Math.max(0, nonCompliantItems.length - seriousFailures);
+  const allowConstruction = nonCompliantItems.length === 0;
+  const reportDate = now.slice(0, 10);
+  const previewFacts = task.basisVersion?.ingestionPreview?.facts ?? {};
+  const projectName = previewFacts.projectName || task.context.projectId || "暂无";
+  const reviewObjectName = task.context.reviewObjectId || task.context.contractPackageId || "暂无";
+  const rows = nonCompliantItems.map((item, index) => {
+    const risk = item.required ? "🔴严重" : "🟡一般";
+    const basis =
+      item.legalBasis?.map((basisItem) => [basisItem.title, basisItem.clause].filter(Boolean).join("")).join("、") ||
+      "平台内置开工条件核查规则";
+    const issue =
+      item.verdict === "needs_human_review" || item.verdict === "blocked"
+        ? "资料缺失、匹配不稳定或需人工复核确认"
+        : item.ruleExplanation || "资料核查未通过";
+    const itemName = item.name.replace(/★/g, "");
+    const rectification = item.required
+      ? `立即对“${itemName}”对应资料进行补充或复核，核实真实性、有效性和合规性，并在3日内完成整改反馈`
+      : `请补充或复核“${itemName}”对应资料，并在3日内完善报审记录`;
+    return `| ${index + 1} | ${item.category}${item.subCategory ? `-${item.subCategory}` : ""}${item.required ? "★" : ""} | ${issue} | ${risk} | ${basis} | ${rectification} |`;
+  });
+
+  return [
+    `## 施工条件核查报告 ${allowConstruction ? "🟢 允许施工" : "🔴 不允许施工"}`,
+    "*智能体自动生成 · 仅供参考*",
+    "",
+    `**工程名称：**${projectName}`,
+    `**核查部位：**${reviewObjectName}`,
+    `**申报日期：**${reportDate}`,
+    "",
+    "### 一、核查总体情况",
+    `本次共核查 ${summary.total} 项内容，其中符合 ${summary.passed} 项，不符合 ${nonCompliantItems.length} 项（含严重不符合 ${seriousFailures} 项）。`,
+    "",
+    "**统计概览：**",
+    `- 总核查项：**${summary.total}**`,
+    `- 符合项：**${summary.passed}**`,
+    `- 一般不符合：**${generalFailures}**`,
+    `- 严重不符合：**${seriousFailures}**`,
+    "",
+    "### 二、不符合项清单",
+    "| 序号 | 核查项目 | 问题描述 | 风险等级 | 法规依据 | 整改要求 |",
+    "|------|----------|----------|----------|----------|----------|",
+    ...(rows.length > 0 ? rows : ["| - | - | 未发现不符合项 | - | - | - |"]),
+    "",
+    "### 三、整改要求",
+    allowConstruction
+      ? "当前未发现阻断施工的不符合项，建议提交监理工程师进行最终审核。"
+      : "请施工单位在限定时间内完成所有问题整改并重新上报。整改完成后，平台智能体将自动进行复核，复核通过后提交监理工程师最终审核。",
+    "",
+    "**AI评判结果：** 详细报告已在平台内生成，可继续导出 DOCX 或进入后续交付。",
+  ].join("\n");
+}
+
 export async function generateOpeningConditionPilotReport(taskId, input = {}, options = {}) {
   return mutateSnapshot((snapshot) => {
     const index = snapshot.tasks.findIndex((task) => task.id === taskId);
@@ -5634,7 +5692,7 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
     const reportTask = normalizeOpeningConditionPilotTask(existingTask) ?? existingTask;
     const summary = summarizePilotCheckItems(reportTask.checkItems);
     const markdownContent =
-      input.markdownContent ?? buildOpeningConditionPilotReportMarkdown(reportTask, summary, now);
+      input.markdownContent ?? buildOpeningConditionPilotReportMarkdownV2(reportTask, summary, now);
     const reportAsset = normalizeReportAsset(
       {
         id: input.id ?? `report-${taskId}`,

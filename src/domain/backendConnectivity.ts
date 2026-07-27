@@ -915,7 +915,19 @@ export async function deleteOpeningConditionPilotTask(taskId: string) {
   const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}`, {
     method: "DELETE",
   });
-  return readJson<OpeningConditionPilotTaskDeleteResult>(response);
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return readJson<OpeningConditionPilotTaskDeleteResult>(response);
+  }
+
+  const message = await response.text().catch(() => "");
+  return {
+    ok: response.ok,
+    status: response.status === 404 ? "not_found" : "http_error",
+    taskId,
+    deleted: response.ok,
+    message: message || `删除历史审核记录失败（HTTP ${response.status}）。`,
+  } satisfies OpeningConditionPilotTaskDeleteResult;
 }
 
 export async function fetchOpeningConditionWorkspaceAssetRegistry(workspaceIds: string[]) {

@@ -227,6 +227,25 @@ test("UI smoke exposes the low-noise agent review console and source-bound compl
   assert.match(guidance, /资料合规性.*可选/);
 });
 
+test("UI smoke keeps history delete, old inventory preview fallback, and markdown report rendering in the agent console", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+  const appSource = await readFile(appSourcePath, "utf8");
+  const styles = await readFile(new URL("../src/styles/opening-condition.css", import.meta.url), "utf8");
+
+  assert.match(source, /opening-sidebar-task-delete/);
+  assert.match(appSource, /deleteOpeningConditionPilotTask\(taskId\)/);
+  assert.doesNotMatch(source, /!isOpeningConditionBasePilotTask\(task\.id, selectedWorkspaceId\)/);
+  assert.match(source, /sourceArchiveStorageKey/);
+  assert.match(source, /sourceArchiveFileName/);
+  assert.match(source, /旧资料包清单条目/);
+  assert.match(source, /重新上传新资料包以获得逐文件预览/);
+  assert.match(source, /OpeningConditionMarkdownReport/);
+  assert.match(source, /opening-agent-markdown-report/);
+  assert.match(source, /selectedAgentTask\.reportAsset\.markdownContent/);
+  assert.match(styles, /\.opening-agent-markdown-report/);
+  assert.match(styles, /\.opening-agent-markdown-table/);
+});
+
 test("UI smoke keeps the cloud-case shell clean when no backend task exists", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
   const cleanReviewSource = await readFile(cleanReviewSourcePath, "utf8");
