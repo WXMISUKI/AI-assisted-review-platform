@@ -1,11 +1,14 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { readDocumentObjectBuffer } from "./minioClient.mjs";
+import { readDocumentObjectBuffer, uploadDocumentObject } from "./minioClient.mjs";
 import {
   deriveOpeningConditionPilotChecklistDefinition,
   extractOpeningConditionChecklistDefinitionFromDocxBuffer,
 } from "./openingConditionChecklistAdapter.mjs";
-import { extractOpeningConditionZipManifestEntries } from "./openingConditionZipManifest.mjs";
+import {
+  extractOpeningConditionZipManifestEntries,
+  extractOpeningConditionZipPreviewEntries,
+} from "./openingConditionZipManifest.mjs";
 import { normalizeProviderRefs } from "./providerContracts.mjs";
 
 const STORAGE_VERSION = 1;
@@ -175,6 +178,24 @@ function normalizePacketInventoryEntry(value, index = 0, sourceObjectIds = new S
   }
 
   const sourceObjectId = normalizeString(value.sourceObjectId, "", 180);
+  const derivedObjectRef = normalizeObjectRef(value.derivedObjectRef);
+  const assetizationStatus = ["derived_object_ready", "manifest_only", "source_object_fallback"].includes(value.assetizationStatus)
+    ? value.assetizationStatus
+    : derivedObjectRef
+      ? "derived_object_ready"
+      : sourceObjectId && sourceObjectIds.has(sourceObjectId)
+        ? "manifest_only"
+        : "source_object_fallback";
+  const fallbackReason = [
+    "zip_storage_key_missing",
+    "zip_manifest_extract_failed",
+    "zip_manifest_empty",
+    "zip_entry_read_failed",
+    "zip_entry_upload_failed",
+    "zip_entry_unsupported",
+  ].includes(value.fallbackReason)
+    ? value.fallbackReason
+    : undefined;
   return sanitizeOpeningConditionPilotValue({
     id: normalizeString(value.id, `packet-entry-${index + 1}`, 180),
     sourceObjectId: sourceObjectId && sourceObjectIds.has(sourceObjectId) ? sourceObjectId : undefined,
@@ -182,6 +203,10 @@ function normalizePacketInventoryEntry(value, index = 0, sourceObjectIds = new S
     relativePath: normalizeString(value.relativePath ?? value.path, "", 500) || undefined,
     summary: normalizeString(value.summary, "", 300) || undefined,
     sizeBytes: normalizeNumber(value.sizeBytes ?? value.size, 0, 1024 * 1024 * 1024) || undefined,
+    contentType: normalizeString(value.contentType, "", 120) || derivedObjectRef?.contentType || undefined,
+    derivedObjectRef: derivedObjectRef ?? undefined,
+    assetizationStatus,
+    fallbackReason,
   });
 }
 
@@ -193,6 +218,9 @@ function derivePacketInventoryEntryFromSourceObject(objectRef, index = 0) {
     relativePath: objectRef.fileName,
     summary: objectRef.summary,
     sizeBytes: objectRef.sizeBytes,
+    contentType: objectRef.contentType,
+    derivedObjectRef: objectRef,
+    assetizationStatus: "source_object_fallback",
   });
 }
 
@@ -416,7 +444,7 @@ function normalizeProviderStructuredPreview(input = {}, sourceObject = null, con
     .map(([key]) => key)
     .slice(0, 20);
 
-  return {
+  const normalizedItem = {
     facts,
     missingFields,
     confidence,
@@ -443,6 +471,8 @@ function normalizeProviderStructuredPreview(input = {}, sourceObject = null, con
       sourceObject,
     ),
   };
+
+  return normalizedItem;
 }
 
 function escapeRegExp(value = "") {
@@ -1456,16 +1486,18 @@ function buildPacketMatchCandidates(packet) {
 
   return inventoryEntries.map((entry) => {
     const sourceObject = entry.sourceObjectId ? sourceObjectMap.get(entry.sourceObjectId) : null;
+    const preferredObjectRef = entry.derivedObjectRef ?? sourceObject;
     return {
       entry,
       objectRef: sanitizeOpeningConditionPilotValue({
-        ...(sourceObject ?? {
+        ...(preferredObjectRef ?? {
           objectId: `${packet?.id ?? "packet"}:${entry.id}`,
           kind: "evidence",
         }),
         fileName: entry.fileName,
-        summary: entry.summary ?? entry.relativePath ?? sourceObject?.summary,
-        sizeBytes: entry.sizeBytes ?? sourceObject?.sizeBytes,
+        contentType: entry.contentType ?? preferredObjectRef?.contentType,
+        summary: entry.summary ?? entry.relativePath ?? preferredObjectRef?.summary,
+        sizeBytes: entry.sizeBytes ?? preferredObjectRef?.sizeBytes,
       }),
     };
   });
@@ -1480,6 +1512,19 @@ function getChecklistReviewText(checklistItem) {
       ...(checklistItem.expectedEvidenceHints ?? []),
     ].join(" "),
   );
+}
+
+function isChecklistDefinitionInCurrentMvpScope(checklistItem) {
+  const text = getChecklistReviewText(checklistItem);
+  if (!text) {
+    return false;
+  }
+
+  if (/鐜板満鏍告煡|鐜板満妫€鏌鐜板満纭|鏃犻渶鐜板満|鍒板満/.test(text)) {
+    return false;
+  }
+
+  return /璧勬枡鏍告煡|璧勬枡|鎶ュ|璇佷功|鍚堝悓|鏂规|璁稿彲|鍙版湳|鎶ュ憡|鍙拌处|褰卞儚|鏂囦欢/.test(text);
 }
 
 function isOutOfScopeChecklistItem(checklistItem) {
@@ -4310,9 +4355,22 @@ function isZipSourceObject(objectRef) {
   return fileName.endsWith(".zip") || contentType.includes("zip") || contentType.includes("compressed");
 }
 
+function createDerivedInventoryObjectRef(sourceObject, previewEntry, uploadResult) {
+  return normalizeObjectRef({
+    objectId: `derived:${sourceObject.objectId}:${previewEntry.id}`,
+    kind: "evidence",
+    fileName: previewEntry.fileName,
+    storageKey: uploadResult.key,
+    contentType: uploadResult.contentType,
+    sizeBytes: uploadResult.size,
+    summary: `Derived from ${sourceObject.fileName}${previewEntry.relativePath ? ` / ${previewEntry.relativePath}` : ""}`,
+  });
+}
+
 async function resolvePacketInventoryFromSourceObjects(sourceObjects = [], options = {}) {
   const maxEntries = normalizeNumber(options.maxEntries, MAX_PACKET_INVENTORY_ENTRIES, MAX_PACKET_INVENTORY_ENTRIES);
   const readObjectBuffer = options.readObjectBuffer ?? readDocumentObjectBuffer;
+  const uploadObjectBuffer = options.uploadObjectBuffer ?? uploadDocumentObject;
   const inventoryEntries = [];
   let usedZipManifest = false;
   let fallbackReason;
@@ -4336,13 +4394,48 @@ async function resolvePacketInventoryFromSourceObjects(sourceObjects = [], optio
     try {
       const loadedObject = await readObjectBuffer(sourceObject.storageKey);
       const remainingSlots = maxEntries - inventoryEntries.length;
+      const zipPreviewEntries = await extractOpeningConditionZipPreviewEntries(loadedObject.buffer, {
+        sourceObjectId: sourceObject.objectId,
+        maxEntries: remainingSlots,
+      });
+      const previewEntryPathSet = new Set(zipPreviewEntries.map((entry) => entry.relativePath));
       const zipEntries = await extractOpeningConditionZipManifestEntries(loadedObject.buffer, {
         sourceObjectId: sourceObject.objectId,
         maxEntries: remainingSlots,
       });
 
       if (zipEntries.length > 0) {
-        inventoryEntries.push(...zipEntries);
+        const previewEntryMap = new Map(zipPreviewEntries.map((entry) => [entry.relativePath, entry]));
+        for (const zipEntry of zipEntries) {
+          const previewEntry = previewEntryMap.get(zipEntry.relativePath);
+          let derivedObjectRef;
+          let entryFallbackReason;
+
+          if (previewEntry) {
+            try {
+              const uploadResult = await uploadObjectBuffer({
+                buffer: previewEntry.buffer,
+                filename: previewEntry.fileName,
+                contentType: previewEntry.contentType,
+              });
+              derivedObjectRef = createDerivedInventoryObjectRef(sourceObject, previewEntry, uploadResult);
+            } catch (error) {
+              entryFallbackReason = "zip_entry_upload_failed";
+              fallbackReason ||= entryFallbackReason;
+            }
+          } else if (!previewEntryPathSet.has(zipEntry.relativePath)) {
+            entryFallbackReason = "zip_entry_unsupported";
+            fallbackReason ||= entryFallbackReason;
+          }
+
+          inventoryEntries.push({
+            ...zipEntry,
+            contentType: previewEntry?.contentType,
+            derivedObjectRef,
+            assetizationStatus: derivedObjectRef ? "derived_object_ready" : "manifest_only",
+            fallbackReason: entryFallbackReason,
+          });
+        }
         usedZipManifest = true;
         continue;
       }
@@ -4358,7 +4451,7 @@ async function resolvePacketInventoryFromSourceObjects(sourceObjects = [], optio
   return {
     inventoryEntries: inventoryEntries.slice(0, maxEntries),
     inventoryResolution: usedZipManifest ? "derived_from_zip_manifest" : "derived_from_source_objects",
-    inventoryFallbackReason: usedZipManifest ? undefined : fallbackReason,
+    inventoryFallbackReason: fallbackReason,
   };
 }
 

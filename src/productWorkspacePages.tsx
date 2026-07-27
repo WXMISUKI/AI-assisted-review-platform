@@ -1190,13 +1190,16 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
   }
   for (const entry of task.packet?.inventoryEntries ?? []) {
     const sourceArchive = entry.sourceObjectId ? packetSourceObjects.get(entry.sourceObjectId) : undefined;
+    const derivedObject = entry.derivedObjectRef;
     files.push({
       id: entry.id,
       label: "资料包文件",
       fileName: entry.fileName,
       summary: entry.summary ?? "资料包拆分清单文件",
       kind: "inventory",
-      sizeBytes: entry.sizeBytes,
+      storageKey: derivedObject?.storageKey,
+      contentType: entry.contentType ?? derivedObject?.contentType,
+      sizeBytes: entry.sizeBytes ?? derivedObject?.sizeBytes,
       sourceObjectId: entry.sourceObjectId,
       sourceArchiveFileName: sourceArchive?.fileName,
       sourceArchiveStorageKey: sourceArchive?.storageKey,

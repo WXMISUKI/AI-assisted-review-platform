@@ -163,6 +163,16 @@ export interface OpeningConditionPilotPacketInventoryEntry {
   relativePath?: string;
   summary?: string;
   sizeBytes?: number;
+  contentType?: string;
+  derivedObjectRef?: OpeningConditionObjectRef;
+  assetizationStatus?: "derived_object_ready" | "manifest_only" | "source_object_fallback";
+  fallbackReason?:
+    | "zip_storage_key_missing"
+    | "zip_manifest_extract_failed"
+    | "zip_manifest_empty"
+    | "zip_entry_read_failed"
+    | "zip_entry_upload_failed"
+    | "zip_entry_unsupported";
 }
 
 export interface OpeningConditionPilotEvidence {
@@ -595,10 +605,17 @@ export interface OpeningConditionPilotIntakeDiagnostics {
   packetObjectCount: number;
   inventoryResolution?: "direct_input" | "derived_from_zip_manifest" | "derived_from_source_objects";
   inventoryEntryCount?: number;
-  inventoryFallbackReason?: "zip_storage_key_missing" | "zip_manifest_extract_failed" | "zip_manifest_empty";
+  inventoryFallbackReason?:
+    | "zip_storage_key_missing"
+    | "zip_manifest_extract_failed"
+    | "zip_manifest_empty"
+    | "zip_entry_read_failed"
+    | "zip_entry_upload_failed"
+    | "zip_entry_unsupported";
   checklistDefinitionCount?: number;
   checklistDefinitionResolution?:
     | "direct_input"
+    | "derived_from_uploaded_checklist"
     | "derived_from_template"
     | "reused_existing_task"
     | "manual_definition_required";

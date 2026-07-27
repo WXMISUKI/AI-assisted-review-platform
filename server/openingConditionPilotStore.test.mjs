@@ -898,18 +898,26 @@ test("initializes packet inventory from ZIP manifest when a readable ZIP source 
       {
         storePath,
         readObjectBuffer: async () => ({ buffer: zipFixtureBuffer }),
+        uploadObjectBuffer: async ({ filename, contentType, buffer }) => ({
+          key: `derived/${filename}`,
+          contentType,
+          size: buffer.length,
+        }),
       },
     );
 
     assert.equal(initialized.ok, true);
     assert.equal(initialized.intake.inventoryResolution, "derived_from_zip_manifest");
     assert.equal(initialized.intake.inventoryEntryCount, 2);
-    assert.equal(initialized.intake.inventoryFallbackReason, undefined);
+    assert.equal(initialized.intake.inventoryFallbackReason, "zip_entry_unsupported");
+    assert.equal(initialized.task.packet.inventoryEntries[0].derivedObjectRef?.storageKey?.startsWith("derived/"), true);
+    assert.equal(initialized.task.packet.inventoryEntries[0].assetizationStatus, "derived_object_ready");
     assert.equal(initialized.task.packet.inventoryEntries[0].relativePath, "人员/专职安全员证书.txt");
 
     const matchResult = await runOpeningConditionPilotChecklistMatch("task-init-zip", {}, { storePath });
     assert.equal(matchResult.ok, true);
     assert.equal(matchResult.checkItems[0].verdict, "pass");
+    assert.equal(matchResult.evidence[0].objectRef.storageKey?.startsWith("derived/"), true);
     assert.equal(matchResult.evidence[0].locator, "人员/专职安全员证书.txt");
   } finally {
     await rm(directory, { recursive: true, force: true });
