@@ -42,7 +42,7 @@ import {
   openingConditionReviewPacket,
   openingConditionWorkspaces,
   type OpeningConditionReviewPacket,
-} from "./domain/openingConditionReview";
+} from "./domain/openingConditionReviewClean";
 import type { OpeningPilotIntakeMode } from "./openingConditionPortalState";
 
 // Platform orchestration boundary: login, product switching, and cross-product coordination only.

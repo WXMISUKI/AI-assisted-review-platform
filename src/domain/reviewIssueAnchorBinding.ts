@@ -48,6 +48,7 @@ function buildFallbackAnchor(
     startOffset: 0,
     endOffset: fallbackText.length,
     text: fallbackText,
+    viewer: issue.anchor.viewer,
   };
 }
 
@@ -70,6 +71,7 @@ export function rebindReviewIssueAnchors(
           startOffset: exactMatch.startOffset,
           endOffset: exactMatch.endOffset,
           text: exactMatch.text,
+          viewer: issue.anchor.viewer,
         },
       };
     }

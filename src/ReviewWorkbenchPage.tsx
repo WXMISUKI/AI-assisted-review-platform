@@ -37,6 +37,7 @@ import type {
   ReviewSession,
   ReviewSupportingEvidenceHit,
   StatusFilter,
+  ReviewViewerAnchor,
   ReviewViewContext,
   ReviewTaskSourceObject,
 } from "./domain/reviewTypes";
@@ -88,6 +89,7 @@ interface SelectionDraft {
   startOffset: number;
   endOffset: number;
   text: string;
+  viewerAnchor?: ReviewViewerAnchor;
   popover: {
     top: number;
     left: number;
@@ -250,6 +252,38 @@ function resolveInitialIssueId(
   return issues[0]?.id ?? "";
 }
 
+function normalizeSelectionText(value: string) {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+function findBestParagraphForSelection(
+  paragraphs: DocumentParagraph[],
+  selectedText: string,
+  preferredParagraphId?: string | null,
+) {
+  const normalizedSelection = normalizeSelectionText(selectedText);
+  if (!normalizedSelection) {
+    return null;
+  }
+
+  const preferredParagraph = preferredParagraphId
+    ? paragraphs.find((paragraph) => paragraph.id === preferredParagraphId) ?? null
+    : null;
+
+  const searchPool = preferredParagraph
+    ? [preferredParagraph, ...paragraphs.filter((paragraph) => paragraph.id !== preferredParagraph.id)]
+    : paragraphs;
+
+  for (const paragraph of searchPool) {
+    const normalizedParagraph = normalizeSelectionText(paragraph.text);
+    if (normalizedParagraph.includes(normalizedSelection)) {
+      return paragraph;
+    }
+  }
+
+  return preferredParagraph ?? paragraphs[0] ?? null;
+}
+
 export function ReviewWorkbenchPage({
   allowedModes = ["review", "revise"],
   roleLabel = "监理",
@@ -303,9 +337,22 @@ export function ReviewWorkbenchPage({
   const documentScrollRef = useRef<HTMLDivElement | null>(null);
   const scrollRafRef = useRef<number | null>(null);
   const reviewParagraphs = sessionRecoveredStructure?.paragraphs ?? sessionParagraphs;
+  const previewAvailable = Boolean(sourceObject?.key?.toLowerCase().endsWith(".docx"));
+  const primaryReviewParagraphs = useMemo(
+    () => reviewParagraphs.filter((paragraph) => paragraph.reviewEligible !== false),
+    [reviewParagraphs],
+  );
+  const primaryReviewParagraphIds = useMemo(
+    () => new Set(primaryReviewParagraphs.map((paragraph) => paragraph.id)),
+    [primaryReviewParagraphs],
+  );
+  const reviewIssues = useMemo(
+    () => issues.filter((issue) => primaryReviewParagraphIds.has(issue.anchor.paragraphId)),
+    [issues, primaryReviewParagraphIds],
+  );
 
-  const counts = useMemo(() => getIssueCounts(issues), [issues]);
-  const reviewComplete = useMemo(() => isReviewComplete(issues), [issues]);
+  const counts = useMemo(() => getIssueCounts(reviewIssues), [reviewIssues]);
+  const reviewComplete = useMemo(() => isReviewComplete(reviewIssues), [reviewIssues]);
   const defaultSectionTitle =
     sessionRecoveredStructure?.progress.currentSection ??
     sessionPipelineSnapshot?.currentSection ??
@@ -323,7 +370,7 @@ export function ReviewWorkbenchPage({
     () =>
       sessionViewContext?.activeIssueId ??
       resolveInitialIssueId(
-        sessionIssues,
+        reviewIssues,
         reviewParagraphs,
         sessionViewContext?.activeParagraphId ??
           sessionRecoveredStructure?.progress.currentParagraphId ??
@@ -334,7 +381,7 @@ export function ReviewWorkbenchPage({
     [
       defaultSectionTitle,
       reviewParagraphs,
-      sessionIssues,
+      reviewIssues,
       sessionPipelineSnapshot?.currentParagraphId,
       sessionRecoveredStructure?.progress.currentParagraphId,
       sessionViewContext?.activeIssueId,
@@ -354,7 +401,7 @@ export function ReviewWorkbenchPage({
   }, [reviewParagraphs]);
   const issuesByParagraphId = useMemo(() => {
     const map = new Map<string, ReviewIssue[]>();
-    issues.forEach((issue) => {
+    reviewIssues.forEach((issue) => {
       const current = map.get(issue.anchor.paragraphId);
       if (current) {
         current.push(issue);
@@ -364,15 +411,22 @@ export function ReviewWorkbenchPage({
       map.set(issue.anchor.paragraphId, [issue]);
     });
     return map;
-  }, [issues]);
+  }, [reviewIssues]);
   const sectionOutline = useMemo(() => {
     if (sessionRecoveredStructure?.sections && sessionRecoveredStructure.sections.length > 0) {
-      return sessionRecoveredStructure.sections.map((section) => ({
-        id: section.id,
-        title: section.title,
-        paragraphCount: section.paragraphIds.length,
-        firstParagraphId: section.paragraphIds[0] ?? null,
-      }));
+      return sessionRecoveredStructure.sections
+        .map((section) => {
+          const eligibleParagraphIds = section.paragraphIds.filter((paragraphId) =>
+            primaryReviewParagraphIds.has(paragraphId),
+          );
+          return {
+            id: section.id,
+            title: section.title,
+            paragraphCount: eligibleParagraphIds.length,
+            firstParagraphId: eligibleParagraphIds[0] ?? null,
+          };
+        })
+        .filter((section) => section.paragraphCount > 0);
     }
 
     const fallback = new Map<
@@ -380,7 +434,7 @@ export function ReviewWorkbenchPage({
       { title: string; paragraphCount: number; firstParagraphId: string | null }
     >();
 
-    reviewParagraphs.forEach((paragraph) => {
+    primaryReviewParagraphs.forEach((paragraph) => {
       const existing = fallback.get(paragraph.section);
       if (existing) {
         existing.paragraphCount += 1;
@@ -400,7 +454,12 @@ export function ReviewWorkbenchPage({
       paragraphCount: entry.paragraphCount,
       firstParagraphId: entry.firstParagraphId,
     }));
-  }, [sessionRecoveredStructure?.sections, reviewParagraphs]);
+  }, [
+    primaryReviewParagraphIds,
+    primaryReviewParagraphs,
+    sessionRecoveredStructure?.sections,
+    reviewParagraphs,
+  ]);
   const activeParagraph = useMemo(
     () => reviewParagraphs.find((paragraph) => paragraph.id === activeParagraphId) ?? null,
     [activeParagraphId, reviewParagraphs],
@@ -409,12 +468,12 @@ export function ReviewWorkbenchPage({
     ? `${activeParagraph.section} / ${activeParagraph.id}`
     : "未定位到段落";
   const processedParagraphs = useMemo(
-    () => buildProcessedParagraphs(reviewParagraphs, issues, reviewMode),
-    [issues, reviewParagraphs, reviewMode],
+    () => buildProcessedParagraphs(reviewParagraphs, reviewIssues, reviewMode),
+    [reviewIssues, reviewParagraphs, reviewMode],
   );
   const filteredIssues = useMemo(
-    () => issues.filter((issue) => matchesFilter(issue, filter)),
-    [filter, issues],
+    () => reviewIssues.filter((issue) => matchesFilter(issue, filter)),
+    [filter, reviewIssues],
   );
   const issueGroups = useMemo(() => {
     const grouped = new Map<string, ReviewIssue[]>();
@@ -446,7 +505,7 @@ export function ReviewWorkbenchPage({
     return orderedGroups;
   }, [filteredIssues, sectionByParagraphId, sectionOutline]);
 
-  const activeIssue = issues.find((issue) => issue.id === activeIssueId) ?? issues[0];
+  const activeIssue = reviewIssues.find((issue) => issue.id === activeIssueId) ?? reviewIssues[0];
   const visibleModes: ReviewMode[] =
     allowedModes.length > 0 ? allowedModes : ["review", "revise"];
   const dragStateRef = useRef<{
@@ -459,14 +518,14 @@ export function ReviewWorkbenchPage({
   useEffect(() => {
     setIssues(sessionIssues);
     setActiveIssueId((currentActiveId) =>
-      sessionIssues.some((issue) => issue.id === currentActiveId)
+      reviewIssues.some((issue) => issue.id === currentActiveId)
         ? currentActiveId
         : initialActiveIssueId,
     );
     setDraftSuggestions(
       Object.fromEntries(sessionIssues.map((issue) => [issue.id, issue.finding.suggestion])),
     );
-  }, [initialActiveIssueId, sessionIssues]);
+  }, [initialActiveIssueId, reviewIssues, sessionIssues]);
 
   useEffect(() => {
     setActiveSectionTitle(defaultSectionTitle);
@@ -794,6 +853,48 @@ export function ReviewWorkbenchPage({
     setSelectionMessage("已捕获选区，可在下方填写人工标注。");
   }
 
+  function captureViewerSelection(draft: { text: string; viewerAnchor: ReviewViewerAnchor }) {
+    const paragraph = findBestParagraphForSelection(reviewParagraphs, draft.text, activeParagraphId);
+    if (!paragraph) {
+      return;
+    }
+
+    const startOffset = Math.max(paragraph.text.indexOf(draft.text), 0);
+    const endOffset = Math.min(
+      paragraph.text.length,
+      startOffset + draft.text.length,
+    );
+    const selection = window.getSelection();
+    const selectionRect =
+      selection && selection.rangeCount > 0
+        ? selection.getRangeAt(0).getBoundingClientRect()
+        : new DOMRect(40, 40, 0, 0);
+    const popover = getClampedPopoverPosition(selectionRect);
+
+    setSelectionDraft({
+      paragraphId: paragraph.id,
+      startOffset,
+      endOffset,
+      text: draft.text,
+      viewerAnchor: draft.viewerAnchor,
+      popover,
+    });
+    setActiveParagraphId(paragraph.id);
+    setActiveSectionTitle(paragraph.section);
+    onViewContextChange?.({
+      activeSectionTitle: paragraph.section,
+      activeParagraphId: paragraph.id,
+      activeIssueId,
+    });
+    setManualForm({
+      title: "人工补充审查意见",
+      reason: "",
+      basis: "",
+      suggestion: draft.text,
+    });
+    setSelectionMessage("已从原页视图捕获选区，可直接新增人工标注。");
+  }
+
   function cancelSelectionDraft() {
     setSelectionDraft(null);
     setPopoverDragging(false);
@@ -818,7 +919,13 @@ export function ReviewWorkbenchPage({
       source: "manual",
       status: "pending",
       severity: "medium",
-      anchor: selectionDraft,
+      anchor: {
+        paragraphId: selectionDraft.paragraphId,
+        startOffset: selectionDraft.startOffset,
+        endOffset: selectionDraft.endOffset,
+        text: selectionDraft.text,
+        viewer: selectionDraft.viewerAnchor,
+      },
       finding: {
         title: manualForm.title.trim() || "人工补充审查意见",
         reason: manualForm.reason.trim() || fallbackReason,
@@ -883,7 +990,7 @@ export function ReviewWorkbenchPage({
       mode: reviewMode,
       documentName,
       projectName,
-      issues,
+      issues: reviewIssues,
       processedParagraphs,
     });
     setCompletionConfirmOpen(false);
@@ -1072,6 +1179,7 @@ export function ReviewWorkbenchPage({
             activeIssue={activeIssue}
             paragraphs={reviewParagraphs}
             fetchPresignedDocumentUrl={fetchMinioPresignedDocumentUrl}
+            onSelectionDraft={readonly ? undefined : captureViewerSelection}
           />
           <ManualSelectionPanel
             draft={selectionDraft}
@@ -1088,22 +1196,28 @@ export function ReviewWorkbenchPage({
               dragging={popoverDragging}
             />
           )}
-          <div ref={documentScrollRef} className="document-scroll">
-          {reviewParagraphs.map((paragraph) => (
-            <DocumentParagraphBlock
-                key={paragraph.id}
-                paragraph={paragraph}
-                issues={issuesByParagraphId.get(paragraph.id) ?? []}
-                activeIssueId={activeIssueId}
-                isCurrentParagraph={paragraph.id === activeParagraphId}
-                onIssueClick={(issueId) => focusIssue(issueId, "card")}
-                onTextSelection={captureSelection}
-                refSetter={(node) => {
-                  paragraphRefs.current[paragraph.id] = node;
-                }}
-              />
-            ))}
-          </div>
+          <details className="paragraph-fallback-panel" open={!previewAvailable}>
+            <summary>
+              <span>文本回退视图</span>
+              <small>{previewAvailable ? "用于回退与调试" : "当前作为主回退视图"}</small>
+            </summary>
+            <div ref={documentScrollRef} className="document-scroll fallback">
+              {reviewParagraphs.map((paragraph) => (
+                <DocumentParagraphBlock
+                  key={paragraph.id}
+                  paragraph={paragraph}
+                  issues={issuesByParagraphId.get(paragraph.id) ?? []}
+                  activeIssueId={activeIssueId}
+                  isCurrentParagraph={paragraph.id === activeParagraphId}
+                  onIssueClick={(issueId) => focusIssue(issueId, "card")}
+                  onTextSelection={captureSelection}
+                  refSetter={(node) => {
+                    paragraphRefs.current[paragraph.id] = node;
+                  }}
+                />
+              ))}
+            </div>
+          </details>
         </section>
 
         <aside className="issues-panel" aria-label="审查问题列表">

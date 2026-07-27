@@ -2054,7 +2054,7 @@ h4 {
 
 .docx-preview-shell {
   min-height: 220px;
-  max-height: 360px;
+  max-height: 68vh;
   overflow: auto;
   border: 1px solid #e3e9ee;
   border-radius: 8px;
@@ -2066,6 +2066,12 @@ h4 {
   outline: 2px solid rgba(15, 118, 110, 0.45);
   background: rgba(15, 118, 110, 0.1) !important;
   transition: background-color 0.2s ease, outline-color 0.2s ease;
+}
+
+.docx-preview-shell .docx-preview-highlight-active {
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16);
+  background: rgba(220, 38, 38, 0.16) !important;
+  outline-color: rgba(220, 38, 38, 0.72);
 }
 
 .panel-heading.compact {
@@ -2109,6 +2115,41 @@ h4 {
   max-height: calc(100vh - 218px);
   overflow: auto;
   padding: 18px 20px 24px;
+}
+
+.document-scroll.fallback {
+  max-height: 360px;
+  border-top: 1px solid #e3e9ee;
+}
+
+.paragraph-fallback-panel {
+  margin: 0 16px 16px;
+  border: 1px solid #dce6ec;
+  border-radius: 10px;
+  background: #f9fbfc;
+  overflow: hidden;
+}
+
+.paragraph-fallback-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: #314256;
+  font-weight: 800;
+  list-style: none;
+}
+
+.paragraph-fallback-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.paragraph-fallback-panel summary small {
+  color: #607384;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .manual-selection {

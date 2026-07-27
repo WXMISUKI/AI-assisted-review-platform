@@ -10,6 +10,62 @@
   gap: 16px;
 }
 
+.opening-sidebar-history {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.opening-sidebar-section-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.opening-sidebar-history > small {
+  padding: 4px 8px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.opening-sidebar-task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.opening-sidebar-task:hover,
+.opening-sidebar-task.active {
+  border-color: var(--border-soft);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.opening-sidebar-task span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opening-sidebar-task small {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
 .opening-agent-hero,
 .opening-agent-entry,
 .opening-agent-history,
@@ -49,6 +105,21 @@
 .opening-agent-modal > p {
   color: var(--text-secondary);
   line-height: 1.7;
+}
+
+.opening-agent-modal .opening-trial-upload-grid {
+  grid-template-columns: 1fr;
+}
+
+.opening-agent-modal .opening-trial-upload-grid label {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.opening-agent-modal .opening-trial-upload-grid label small {
+  grid-column: 2;
 }
 
 .opening-agent-scope-panel {
@@ -217,6 +288,14 @@
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+}
+
+.opening-agent-pane-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .opening-agent-pane-header h2 {
@@ -2151,6 +2230,7 @@
 
   .opening-agent-entry,
   .opening-agent-pane-header,
+  .opening-agent-pane-actions,
   .opening-agent-modal-header {
     align-items: stretch;
     flex-direction: column;

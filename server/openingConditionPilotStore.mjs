@@ -1962,6 +1962,10 @@ function normalizeTrialPackageInputObjects(value) {
   });
 }
 
+function normalizeReviewScope(value) {
+  return value === "completeness_and_compliance" ? "completeness_and_compliance" : "completeness";
+}
+
 function normalizeTrialPackageProviderReadiness(value) {
   if (!isPlainObject(value)) {
     return undefined;
@@ -3101,6 +3105,7 @@ export function normalizeOpeningConditionPilotTask(value) {
     id,
     context,
     state,
+    reviewScope: normalizeReviewScope(value.reviewScope),
     basisVersion: normalizeBasisVersion(value.basisVersion),
     requiredMasterData,
     knowledgeBaseRef,
@@ -4540,6 +4545,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       id: taskId,
       context,
       state: nextTaskState,
+      reviewScope: normalizeReviewScope(input.reviewScope ?? existingTask?.reviewScope),
       basisVersion,
       requiredMasterData: masterDataResolution.boundRefs,
       knowledgeBaseRef: knowledgeBaseResolution.knowledgeBaseRef,
@@ -4721,6 +4727,7 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
       checklistObject,
       sourceObjects,
       submittedBy,
+      reviewScope: normalizeReviewScope(input.reviewScope),
     },
     options,
   );
@@ -4735,6 +4742,7 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
       masterDataIds: savedMasterData.map((item) => item.id),
       sourceObjectCount: sourceObjects.length,
       providerRefCount: providerRefs.length,
+      reviewScope: normalizeReviewScope(input.reviewScope),
       knowledgeBaseResolution: reusableKnowledgeBase ? "reused_ready_workspace_kb" : "upserted_trial_kb",
       nextHandoff: "OCR Worker batch ingestion and MaxKB retrieval-check can be attached to this task in the next slice.",
     }),

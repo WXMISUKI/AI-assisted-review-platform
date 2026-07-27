@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DocumentParagraph, ReviewIssue, ReviewTaskSourceObject } from "./domain/reviewTypes";
+import type {
+  DocumentParagraph,
+  ReviewIssue,
+  ReviewTaskSourceObject,
+  ReviewViewerAnchor,
+} from "./domain/reviewTypes";
 
 type FetchPresignedDocumentUrl = (
   key: string,
@@ -21,6 +26,10 @@ interface SourceFaithfulDocxPreviewProps {
   activeIssue?: ReviewIssue | null;
   paragraphs: DocumentParagraph[];
   fetchPresignedDocumentUrl: FetchPresignedDocumentUrl;
+  onSelectionDraft?: (draft: {
+    text: string;
+    viewerAnchor: ReviewViewerAnchor;
+  }) => void;
 }
 
 type PreviewState =
@@ -34,9 +43,58 @@ function normalizeText(value: string) {
   return value.replace(/\s+/g, "").toLowerCase();
 }
 
+function collectRenderableBlocks(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, h5, h6, li, td, th"),
+  ).filter((node) => normalizeText(node.textContent || "").length > 0);
+}
+
+function inferPageHint(node: HTMLElement, blocks: HTMLElement[]) {
+  const nearestPage = node.closest("section");
+  if (!nearestPage) {
+    return undefined;
+  }
+
+  const pages = Array.from(new Set(blocks.map((item) => item.closest("section")).filter(Boolean)));
+  const pageIndex = pages.findIndex((page) => page === nearestPage);
+  return pageIndex >= 0 ? pageIndex + 1 : undefined;
+}
+
+function scoreBlockMatch(node: HTMLElement, terms: string[]) {
+  const normalized = normalizeText(node.textContent || "");
+  if (!normalized) {
+    return -1;
+  }
+
+  let score = -1;
+  for (const term of terms) {
+    if (!term) {
+      continue;
+    }
+
+    if (normalized === term) {
+      score = Math.max(score, term.length + 2000);
+      continue;
+    }
+
+    if (normalized.includes(term)) {
+      score = Math.max(score, term.length + 1000);
+      continue;
+    }
+
+    if (term.includes(normalized)) {
+      score = Math.max(score, normalized.length + 300);
+    }
+  }
+
+  return score;
+}
+
 function buildSearchTerms(issue: ReviewIssue | null | undefined, paragraphs: DocumentParagraph[]) {
   const fallbackParagraph = issue ? paragraphs.find((item) => item.id === issue.anchor.paragraphId) : null;
   return [
+    issue?.anchor.viewer?.matchText,
+    issue?.anchor.viewer?.blockText,
     issue?.anchor.text,
     fallbackParagraph?.text,
     issue?.finding.title,
@@ -51,9 +109,9 @@ export function SourceFaithfulDocxPreview({
   activeIssue,
   paragraphs,
   fetchPresignedDocumentUrl,
+  onSelectionDraft,
 }: SourceFaithfulDocxPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const highlightTimerRef = useRef<number | null>(null);
   const renderTokenRef = useRef(0);
   const [state, setState] = useState<PreviewState>({
     status: "idle",
@@ -151,44 +209,78 @@ export function SourceFaithfulDocxPreview({
       return;
     }
 
-    if (highlightTimerRef.current != null) {
-      window.clearTimeout(highlightTimerRef.current);
-      highlightTimerRef.current = null;
-    }
+    const blocks = collectRenderableBlocks(container);
 
-    const nodes = Array.from(
-      container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, h5, h6, li, td, th, div, span"),
-    );
-
-    const target = nodes.find((node) => {
-      const text = normalizeText(node.textContent || "");
-      return terms.some((term) => term.length > 0 && text.includes(term));
-    });
+    const target = blocks
+      .map((node) => ({ node, score: scoreBlockMatch(node, terms) }))
+      .filter((item) => item.score >= 0)
+      .sort((left, right) => right.score - left.score)[0]?.node;
 
     if (!target) {
       return;
     }
 
-    container.querySelectorAll(".docx-preview-highlight").forEach((node) => {
+    container.querySelectorAll(".docx-preview-highlight, .docx-preview-highlight-active").forEach((node) => {
       node.classList.remove("docx-preview-highlight");
+      node.classList.remove("docx-preview-highlight-active");
     });
     target.classList.add("docx-preview-highlight");
+    target.classList.add("docx-preview-highlight-active");
     target.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    highlightTimerRef.current = window.setTimeout(() => {
-      target.classList.remove("docx-preview-highlight");
-      highlightTimerRef.current = null;
-    }, 2400);
   }, [state.status, terms]);
 
-  useEffect(
-    () => () => {
-      if (highlightTimerRef.current != null) {
-        window.clearTimeout(highlightTimerRef.current);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onSelectionDraft || state.status !== "ready") {
+      return;
+    }
+    const previewContainer = container;
+    const handleSelectionDraft = onSelectionDraft;
+
+    function handleMouseUp() {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        return;
       }
-    },
-    [],
-  );
+
+      const range = selection.getRangeAt(0);
+      const commonAncestor = range.commonAncestorContainer;
+      if (!previewContainer.contains(commonAncestor)) {
+        return;
+      }
+
+      const text = selection.toString().trim();
+      if (!text) {
+        return;
+      }
+
+      const blocks = collectRenderableBlocks(previewContainer);
+      const selectionNode =
+        commonAncestor.nodeType === Node.ELEMENT_NODE
+          ? (commonAncestor as Element)
+          : commonAncestor.parentElement;
+      const block = selectionNode
+        ? blocks.find((item) => item.contains(selectionNode))
+        : undefined;
+      const blockText = block?.textContent?.trim() || text;
+      const blockIndex = block ? blocks.indexOf(block) : -1;
+
+      handleSelectionDraft({
+        text,
+        viewerAnchor: {
+          matchText: text,
+          blockText,
+          pageHint: block ? inferPageHint(block, blocks) : undefined,
+          blockHint: blockIndex >= 0 ? `block-${blockIndex + 1}` : undefined,
+        },
+      });
+    }
+
+    previewContainer.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      previewContainer.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [onSelectionDraft, state.status]);
 
   return (
     <section className="source-faithful-preview" aria-label="原文近似预览">

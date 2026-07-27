@@ -49,7 +49,7 @@ import {
   type OpeningConditionMasterDataRecord,
   type OpeningConditionReviewPacket,
   type OpeningConditionWorkspace,
-} from "./domain/openingConditionReview";
+} from "./domain/openingConditionReviewClean";
 import type {
   OpeningConditionMasterDataRef,
   OpeningConditionPilotTask,

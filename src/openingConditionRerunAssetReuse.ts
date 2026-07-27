@@ -7,7 +7,7 @@ import {
   openingConditionBasisComponentTypeLabels,
   openingConditionMasterDataTypeLabels,
   openingConditionRecordStatusLabels,
-} from "./domain/openingConditionReview";
+} from "./domain/openingConditionReviewClean";
 
 export type OpeningConditionAssetReuseStatus =
   | "reused"

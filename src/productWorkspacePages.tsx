@@ -39,7 +39,7 @@ import {
   type OpeningConditionReviewObjectType,
   type OpeningConditionWorkspace,
   type OpeningConditionWorkspaceProjectCatalog,
-} from "./domain/openingConditionReview";
+} from "./domain/openingConditionReviewClean";
 import type {
   OpeningConditionObjectRef,
   OpeningConditionPilotChecklistDefinitionItem,
@@ -50,6 +50,7 @@ import type {
   OpeningConditionPilotMvpAcceptanceSnapshot,
   OpeningConditionPilotReportDeliveryPackage,
   OpeningConditionPilotReportDeliveryPackageRow,
+  OpeningConditionPilotReviewScope,
   OpeningConditionPilotTask,
 } from "./domain/openingConditionPilot";
 import { openingConditionPilotStateLabels } from "./domain/openingConditionPilot";
@@ -84,10 +85,7 @@ const openingWorkspaceNav: Array<{
   label: string;
   icon: typeof BookOpen;
 }> = [
-  { id: "workspace-context", label: "核查任务台账", icon: BookOpen },
-  { id: "human-review", label: "人工复核", icon: FileSearch },
-  { id: "reports", label: "报告归档", icon: Archive },
-  { id: "basis-sets", label: "资产治理（后续）", icon: ShieldCheck },
+  { id: "workspace-context", label: "新建审核", icon: BookOpen },
 ];
 
 const openingWorkspacePageLabels: Record<OpeningConditionPortalPage, string> = {
@@ -2100,7 +2098,11 @@ export function OpeningConditionWorkspaceShell({
   const [focusedCheckItemId, setFocusedCheckItemId] = useState<string | null>(null);
   const [focusedHumanReviewId, setFocusedHumanReviewId] = useState<string | null>(null);
   const [focusedRouteOrigin, setFocusedRouteOrigin] = useState<OpeningConditionPortalPage | null>(null);
+  const [selectedAgentTaskId, setSelectedAgentTaskId] = useState<string | null>(null);
   const focusedRouteOriginLabel = focusedRouteOrigin ? openingWorkspacePageLabels[focusedRouteOrigin] : null;
+  const projectTasks = (allPilotTasks ?? pilotWorkspaceTasks ?? [])
+    .filter((task) => task.context.workspaceId === selectedWorkspaceId)
+    .sort(compareTaskByUpdatedAtDesc);
 
   function clearOpeningFocus() {
     setFocusedCheckItemId(null);
@@ -2111,6 +2113,12 @@ export function OpeningConditionWorkspaceShell({
   function goToOpeningPage(page: OpeningConditionPortalPage) {
     clearOpeningFocus();
     onSelectPage(page);
+  }
+
+  function selectAgentTask(taskId: string) {
+    clearOpeningFocus();
+    setSelectedAgentTaskId(taskId);
+    onSelectPage("workspace-context");
   }
 
   function focusOpeningChecklistItem(
@@ -2160,6 +2168,24 @@ export function OpeningConditionWorkspaceShell({
               onClick={() => goToOpeningPage(item.id)}
             />
           ))}
+          <div className="opening-sidebar-history">
+            <span className="opening-sidebar-section-label">历史审核记录</span>
+            {projectTasks.length === 0 ? (
+              <small>当前项目暂无历史审核</small>
+            ) : (
+              projectTasks.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  className={task.id === selectedAgentTaskId ? "opening-sidebar-task active" : "opening-sidebar-task"}
+                  onClick={() => selectAgentTask(task.id)}
+                >
+                  <span>{getOpeningConditionAgentTaskTitle(task)}</span>
+                  <small>{getOpeningConditionAgentTaskProgress(task)}%</small>
+                </button>
+              ))
+            )}
+          </div>
           {!activePageIsPrimary && (
             <div className="opening-secondary-route-card">
               <span>二级执行页</span>
@@ -2176,7 +2202,21 @@ export function OpeningConditionWorkspaceShell({
         <div className="shell-sidebar-foot">
           <div className="shell-role-card">
             <span>{roleLabel}</span>
-            <strong>{packet.workspaceContext.participatingOrganization}</strong>
+            <strong>当前施工项目</strong>
+            <select
+              aria-label="切换当前施工项目"
+              value={selectedWorkspaceId}
+              onChange={(event) => {
+                setSelectedAgentTaskId(null);
+                onSelectWorkspace(event.target.value);
+              }}
+            >
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.projectName}
+                </option>
+              ))}
+            </select>
             <p>{packet.workspaceContext.contractPackage}</p>
           </div>
           <button type="button" className="theme-toggle" onClick={onBack}>
@@ -2194,7 +2234,7 @@ export function OpeningConditionWorkspaceShell({
         <header className="shell-topbar">
           <div>
             <span className="eyebrow">AI资料审查平台 / 开工条件核查</span>
-            <h1>{activeNavLabel}</h1>
+            <h1>{activePage === "workspace-context" ? "开工条件核查智能体" : activeNavLabel}</h1>
             <div className="opening-shell-context-meta">
               <span>{packet.workspaceContext.projectCode}</span>
               <span>{packet.workspaceContext.reviewObjectName}</span>
@@ -2224,6 +2264,12 @@ export function OpeningConditionWorkspaceShell({
               onGoToPage={goToOpeningPage}
               onTrialBootstrapComplete={onTrialBootstrapComplete}
               getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
+              selectedAgentTaskId={selectedAgentTaskId}
+              onSelectAgentTask={(taskId) => {
+                setSelectedAgentTaskId(taskId);
+                onSelectPage("workspace-context");
+              }}
+              onCloseAgentTask={() => setSelectedAgentTaskId(null)}
               onFocusCheckItem={(checkItemId) => focusOpeningChecklistItem(checkItemId, "workspace-context")}
               onFocusHumanReview={(reviewId) => focusOpeningHumanReviewItem(reviewId, "workspace-context")}
             />
@@ -2436,6 +2482,9 @@ function OpeningConditionObjectOverviewProductizedPage({
   onGoToPage,
   onTrialBootstrapComplete,
   getNextOpeningPilotRunTaskId,
+  selectedAgentTaskId,
+  onSelectAgentTask,
+  onCloseAgentTask,
   onFocusCheckItem,
   onFocusHumanReview,
 }: {
@@ -2451,6 +2500,9 @@ function OpeningConditionObjectOverviewProductizedPage({
   onGoToPage: (page: OpeningConditionPortalPage) => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
   getNextOpeningPilotRunTaskId?: () => string;
+  selectedAgentTaskId?: string | null;
+  onSelectAgentTask?: (taskId: string) => void;
+  onCloseAgentTask?: () => void;
   onFocusCheckItem?: (checkItemId: string) => void;
   onFocusHumanReview?: (reviewId: string) => void;
 }) {
@@ -2485,7 +2537,6 @@ function OpeningConditionObjectOverviewProductizedPage({
     verdictSummary.needsHumanReview;
   const [complianceReviewRequested, setComplianceReviewRequested] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [selectedAgentTaskId, setSelectedAgentTaskId] = useState<string | null>(pilotTask?.id ?? null);
   const agentTasks = useMemo(
     () =>
       [...(allPilotTasks ?? []), ...(pilotTask ? [pilotTask] : [])]
@@ -2495,7 +2546,7 @@ function OpeningConditionObjectOverviewProductizedPage({
     [allPilotTasks, pilotTask, selectedWorkspaceId],
   );
   const selectedAgentTask =
-    agentTasks.find((task) => task.id === selectedAgentTaskId) ?? agentTasks[0] ?? pilotTask ?? null;
+    (selectedAgentTaskId ? agentTasks.find((task) => task.id === selectedAgentTaskId) : null) ?? null;
   const agentMaterialFiles = useMemo(
     () => buildOpeningConditionAgentMaterialFiles(selectedAgentTask),
     [selectedAgentTask],
@@ -2503,12 +2554,6 @@ function OpeningConditionObjectOverviewProductizedPage({
   const [selectedAgentFileId, setSelectedAgentFileId] = useState<string | null>(agentMaterialFiles[0]?.id ?? null);
   const selectedAgentFile =
     agentMaterialFiles.find((file) => file.id === selectedAgentFileId) ?? agentMaterialFiles[0] ?? null;
-
-  useEffect(() => {
-    if (!agentTasks.some((task) => task.id === selectedAgentTaskId)) {
-      setSelectedAgentTaskId(agentTasks[0]?.id ?? null);
-    }
-  }, [agentTasks, selectedAgentTaskId]);
 
   useEffect(() => {
     if (!agentMaterialFiles.some((file) => file.id === selectedAgentFileId)) {
@@ -2519,6 +2564,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   const agentProgress = getOpeningConditionAgentTaskProgress(selectedAgentTask);
   const agentSteps = buildOpeningConditionAgentProgressSteps(selectedAgentTask);
   const selectedAgentTaskTitle = selectedAgentTask ? getOpeningConditionAgentTaskTitle(selectedAgentTask) : "尚未创建审核任务";
+  const selectedReviewScope = selectedAgentTask?.reviewScope ?? "completeness";
 
   return (
     <div className="opening-condition-page opening-agent-console">
@@ -2588,8 +2634,8 @@ function OpeningConditionObjectOverviewProductizedPage({
                 <button
                   key={task.id}
                   type="button"
-                  className={task.id === selectedAgentTask?.id ? "opening-agent-task-row active" : "opening-agent-task-row"}
-                  onClick={() => setSelectedAgentTaskId(task.id)}
+                  className={task.id === selectedAgentTaskId ? "opening-agent-task-row active" : "opening-agent-task-row"}
+                  onClick={() => onSelectAgentTask?.(task.id)}
                 >
                   <span className="opening-agent-progress-ring" style={{ "--progress": `${progress}%` } as CSSProperties}>
                     <strong>{progress}%</strong>
@@ -2606,6 +2652,7 @@ function OpeningConditionObjectOverviewProductizedPage({
         )}
       </section>
 
+      {selectedAgentTask && (
       <section className="opening-agent-detail">
         <div className="opening-agent-file-pane">
           <div className="opening-agent-pane-header">
@@ -2613,11 +2660,16 @@ function OpeningConditionObjectOverviewProductizedPage({
               <span className="eyebrow">资料预览</span>
               <h2>{selectedAgentTaskTitle}</h2>
             </div>
-            <span className="opening-report-chip tone-info">{agentMaterialFiles.length} 个资料对象</span>
+            <div className="opening-agent-pane-actions">
+              <span className="opening-report-chip tone-info">{agentMaterialFiles.length} 个资料对象</span>
+              <button type="button" className="secondary" onClick={onCloseAgentTask}>
+                返回新建审核
+              </button>
+            </div>
           </div>
           <div className="opening-agent-file-list">
             {agentMaterialFiles.length === 0 ? (
-              <p className="opening-task-detail-empty">任务创建后，已入库资料会显示在这里。</p>
+              <p className="opening-task-detail-empty">该任务暂未返回可预览的资料对象。</p>
             ) : (
               agentMaterialFiles.map((file) => (
                 <button
@@ -2672,13 +2724,14 @@ function OpeningConditionObjectOverviewProductizedPage({
           <div className="opening-agent-report-handoff">
             <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "最终报告将在核查完成后生成"}</strong>
             <p>
-              {complianceReviewRequested
+              {selectedReviewScope === "completeness_and_compliance"
                 ? "已选择资料合规性，详细问题说明须等待工作流/平台深审结果。"
                 : "当前仅进行资料完整性核查，报告不得宣称已完成深度合规审查。"}
             </p>
           </div>
         </div>
       </section>
+      )}
 
       <details className="opening-agent-advanced">
         <summary>高级台账与闭环信息</summary>
@@ -2723,6 +2776,7 @@ function OpeningConditionObjectOverviewProductizedPage({
                 setUploadModalOpen(false);
                 onTrialBootstrapComplete?.(result);
               }}
+              reviewScope={complianceReviewRequested ? "completeness_and_compliance" : "completeness"}
               getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
             />
           </div>
@@ -6269,6 +6323,7 @@ function OpeningConditionRealTrialIntakePanel({
   busy,
   submittedBy,
   onComplete,
+  reviewScope = "completeness",
   getNextOpeningPilotRunTaskId,
 }: {
   packet: OpeningConditionReviewPacket;
@@ -6277,6 +6332,7 @@ function OpeningConditionRealTrialIntakePanel({
   busy?: boolean;
   submittedBy: string;
   onComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  reviewScope?: OpeningConditionPilotReviewScope;
   getNextOpeningPilotRunTaskId?: () => string;
 }) {
   const [basisFile, setBasisFile] = useState<File | null>(null);
@@ -6335,6 +6391,7 @@ function OpeningConditionRealTrialIntakePanel({
         sourceObjects: [sourceObject],
         subcontractTeamId: workspace.participantEntityId,
         submittedBy,
+        reviewScope,
       });
 
       if (!result.ok || !result.task) {

@@ -5,6 +5,7 @@ import type {
   OpeningConditionPilotIntakeDiagnostics,
   OpeningConditionPilotKnowledgeBaseRef,
   OpeningConditionPilotPreflightReadiness,
+  OpeningConditionPilotReviewScope,
   OpeningConditionPilotTask,
 } from "./openingConditionPilot";
 import type {
@@ -977,6 +978,7 @@ export async function initializeOpeningConditionPilotIntake(input: {
   knowledgeBaseId?: string;
   requiredMasterDataIds?: string[];
   submittedBy?: string;
+  reviewScope?: OpeningConditionPilotReviewScope;
 }) {
   const response = await fetch("/api/opening-condition/pilot-tasks/intake-init", {
     method: "POST",
@@ -996,6 +998,7 @@ export async function bootstrapOpeningConditionPilotTrial(input: {
   sourceObjects: OpeningConditionObjectRef[];
   submittedBy?: string;
   subcontractTeamId?: string;
+  reviewScope?: OpeningConditionPilotReviewScope;
 }) {
   const response = await fetch("/api/opening-condition/pilot-tasks/trial-bootstrap", {
     method: "POST",

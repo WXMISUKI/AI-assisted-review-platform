@@ -106,6 +106,14 @@ export interface ReviewAnchor {
   startOffset: number;
   endOffset: number;
   text: string;
+  viewer?: ReviewViewerAnchor;
+}
+
+export interface ReviewViewerAnchor {
+  matchText: string;
+  blockText?: string;
+  pageHint?: number;
+  blockHint?: string;
 }
 
 export interface ReviewFinding {

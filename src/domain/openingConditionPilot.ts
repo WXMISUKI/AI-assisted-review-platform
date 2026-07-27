@@ -12,6 +12,8 @@ export type OpeningConditionPilotTaskState =
   | "failed"
   | "canceled";
 
+export type OpeningConditionPilotReviewScope = "completeness" | "completeness_and_compliance";
+
 export type OpeningConditionPilotEventType =
   | "task.created"
   | "task.intake_initialized"
@@ -546,6 +548,7 @@ export interface OpeningConditionPilotTask {
   id: string;
   context: OpeningConditionPilotWorkspaceContext;
   state: OpeningConditionPilotTaskState;
+  reviewScope: OpeningConditionPilotReviewScope;
   basisVersion?: OpeningConditionBasisVersionRef;
   requiredMasterData: OpeningConditionMasterDataRef[];
   knowledgeBaseRef?: OpeningConditionPilotKnowledgeBaseRef;

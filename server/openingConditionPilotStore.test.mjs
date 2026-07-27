@@ -677,6 +677,7 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
           knowledgeId: "019f787c-644e-7162-bfe5-f4ee02a91539",
           syncStatus: "ready",
         },
+        reviewScope: "completeness_and_compliance",
       },
       {
         storePath,
@@ -703,6 +704,7 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
     assert.equal(result.task.trialPackage.diagnostics.inventoryEntryCount, 2);
     assert.equal(result.task.trialPackage.diagnostics.checklistDefinitionResolution, "derived_from_template");
     assert.equal(result.task.trialPackage.providerReadiness.status, "ready");
+    assert.equal(result.task.reviewScope, "completeness_and_compliance");
     assert.equal("privateUrl" in result.task.basisVersion.sourceObject, false);
     assert.equal("token" in result.task.packet.sourceObjects[0], false);
     assert.equal("token" in result.task.trialPackage, false);

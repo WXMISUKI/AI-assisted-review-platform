@@ -6,6 +6,7 @@ const portalStateSourcePath = new URL("../src/openingConditionPortalState.ts", i
 const workspacePagesSourcePath = new URL("../src/productWorkspacePages.tsx", import.meta.url);
 const runSnapshotSourcePath = new URL("../src/openingConditionRunSnapshot.ts", import.meta.url);
 const appSourcePath = new URL("../src/App.tsx", import.meta.url);
+const cleanReviewSourcePath = new URL("../src/domain/openingConditionReviewClean.ts", import.meta.url);
 
 test("UI smoke keeps archived opening-condition runs read-only in the shared portal state", async () => {
   const source = await readFile(portalStateSourcePath, "utf8");
@@ -222,4 +223,24 @@ test("UI smoke exposes the low-noise agent review console and source-bound compl
   assert.match(guidance, /前端不得自行编造审查结论/);
   assert.match(guidance, /资料完整性.*必选/);
   assert.match(guidance, /资料合规性.*可选/);
+});
+
+test("UI smoke keeps the cloud-case shell clean when no backend task exists", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+  const cleanReviewSource = await readFile(cleanReviewSourcePath, "utf8");
+  const appSource = await readFile(appSourcePath, "utf8");
+
+  assert.match(source, /label: "新建审核"/);
+  assert.match(source, /opening-sidebar-history/);
+  assert.match(source, /当前项目暂无历史审核/);
+  assert.match(source, /selectedAgentTaskId/);
+  assert.match(source, /onCloseAgentTask/);
+  assert.match(source, /返回新建审核/);
+  assert.match(source, /reviewScope=\{complianceReviewRequested \? "completeness_and_compliance" : "completeness"\}/);
+  assert.match(source, /reviewScope,/);
+  assert.match(cleanReviewSource, /const cleanOpeningWorkspace/);
+  assert.match(cleanReviewSource, /basisVersions: \[\]/);
+  assert.match(cleanReviewSource, /checkItems: \[\]/);
+  assert.doesNotMatch(cleanReviewSource, /G15|g15|汽车吊检验报告|basis-contract-g15-08|oc-check-001/);
+  assert.match(appSource, /from "\.\/domain\/openingConditionReviewClean"/);
 });
