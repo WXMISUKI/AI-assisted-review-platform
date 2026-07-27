@@ -1948,12 +1948,11 @@ h4 {
 
 .workspace {
   display: grid;
-  grid-template-columns: 210px minmax(520px, 1fr) 420px;
+  grid-template-columns: minmax(640px, 1fr) 420px;
   gap: 14px;
   align-items: start;
 }
 
-.outline-panel,
 .document-panel,
 .issues-panel,
 .processed-preview {
@@ -1962,7 +1961,6 @@ h4 {
   background: #ffffff;
 }
 
-.outline-panel,
 .issues-panel {
   position: sticky;
   top: 16px;
@@ -1970,11 +1968,6 @@ h4 {
   overflow: auto;
 }
 
-.outline-panel {
-  padding: 14px;
-}
-
-.panel-title,
 .panel-heading {
   display: flex;
   align-items: center;
@@ -1982,13 +1975,6 @@ h4 {
   gap: 12px;
   padding: 16px;
   border-bottom: 1px solid #e3e9ee;
-}
-
-.panel-title {
-  justify-content: flex-start;
-  padding: 0 0 12px;
-  color: #26384b;
-  font-weight: 800;
 }
 
 .source-faithful-preview {
@@ -2078,25 +2064,6 @@ h4 {
   padding-bottom: 12px;
 }
 
-.outline-item {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  border: 0;
-  border-radius: 6px;
-  padding: 9px 8px;
-  background: transparent;
-  color: #405160;
-  text-align: left;
-}
-
-.outline-item:hover {
-  background: #edf7f4;
-  color: #0f766e;
-}
-
 .legend {
   display: inline-flex;
   align-items: center;
@@ -2109,47 +2076,6 @@ h4 {
   width: 22px;
   height: 5px;
   border-bottom: 3px wavy #cf3f2f;
-}
-
-.document-scroll {
-  max-height: calc(100vh - 218px);
-  overflow: auto;
-  padding: 18px 20px 24px;
-}
-
-.document-scroll.fallback {
-  max-height: 360px;
-  border-top: 1px solid #e3e9ee;
-}
-
-.paragraph-fallback-panel {
-  margin: 0 16px 16px;
-  border: 1px solid #dce6ec;
-  border-radius: 10px;
-  background: #f9fbfc;
-  overflow: hidden;
-}
-
-.paragraph-fallback-panel summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  cursor: pointer;
-  color: #314256;
-  font-weight: 800;
-  list-style: none;
-}
-
-.paragraph-fallback-panel summary::-webkit-details-marker {
-  display: none;
-}
-
-.paragraph-fallback-panel summary small {
-  color: #607384;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .manual-selection {
@@ -3258,7 +3184,6 @@ body {
 .mode-switch-panel,
 .metric,
 .active-issue,
-.outline-panel,
 .document-panel,
 .issues-panel,
 .processed-preview,
@@ -3442,7 +3367,6 @@ body {
 :root[data-theme="dark"] .mode-switch-panel,
 :root[data-theme="dark"] .metric,
 :root[data-theme="dark"] .active-issue,
-:root[data-theme="dark"] .outline-panel,
 :root[data-theme="dark"] .document-panel,
 :root[data-theme="dark"] .issues-panel,
 :root[data-theme="dark"] .processed-preview,
@@ -3773,7 +3697,6 @@ body {
     .mode-switch-panel,
     .metric,
     .active-issue,
-    .outline-panel,
     .document-panel,
     .issues-panel,
     .processed-preview,
@@ -3828,7 +3751,6 @@ body {
     .filter,
     .metric,
     .active-issue,
-    .outline-panel,
     .document-panel,
     .issues-panel,
     .processed-preview,
@@ -4012,7 +3934,6 @@ body {
     .summary-strip,
     .mode-switch-panel,
     .workspace,
-    .outline-panel,
     .document-panel,
     .issues-panel,
     .processed-preview,

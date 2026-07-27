@@ -67,18 +67,19 @@ test("UI smoke preserves report handoff semantics without pixel-level assertions
   assert.match(appSource, /setOpeningPilotStatus\(".*整改复审.*"\);/);
 });
 
-test("UI smoke exposes workspace asset registry summaries on the overview", async () => {
+test("UI smoke preserves workspace asset registry helpers outside the default home", async () => {
   const workspaceSource = await readFile(workspacePagesSourcePath, "utf8");
   const appSource = await readFile(appSourcePath, "utf8");
 
   assert.match(appSource, /fetchOpeningConditionWorkspaceAssetRegistry/);
   assert.match(appSource, /workspaceAssetRegistry=\{openingPilotWorkspaceAssetRegistry\}/);
-  assert.match(workspaceSource, /Asset Registry/);
-  assert.match(workspaceSource, /Current workspace assets/);
   assert.match(workspaceSource, /findWorkspaceAssetRegistrySummary/);
-  assert.match(workspaceSource, /currentRunBinding/);
+  assert.match(workspaceSource, /selectedWorkspaceRegistry/);
   assert.match(workspaceSource, /formatWorkspaceAssetCompactSummary/);
   assert.match(workspaceSource, /formatWorkspaceLatestRun/);
+  assert.match(workspaceSource, /data-governance-snapshot="current-run-binding"/);
+  assert.doesNotMatch(workspaceSource, /Asset Registry/);
+  assert.doesNotMatch(workspaceSource, /Current workspace assets/);
   assert.doesNotMatch(workspaceSource, /buildOpeningConditionWorkspaceAssetRegistry/);
   assert.doesNotMatch(workspaceSource, /findOpeningConditionWorkspaceAssetRegistryRecord/);
 });
@@ -212,14 +213,15 @@ test("UI smoke exposes the low-noise agent review console and source-bound compl
   assert.match(source, /资料完整性（必选）/);
   assert.match(source, /资料合规性（可选）/);
   assert.match(source, /上传审核资料/);
+  assert.match(source, /上传待核查文件/);
   assert.match(source, /开始解析/);
-  assert.match(source, /opening-agent-progress-ring/);
+  assert.match(source, /opening-agent-progress-bar/);
   assert.match(source, /opening-agent-file-pane/);
   assert.match(source, /opening-agent-progress-pane/);
   assert.match(source, /OpeningConditionRealTrialIntakePanel/);
   assert.match(source, /bootstrapOpeningConditionPilotTrial/);
-  assert.match(source, /详细问题说明须等待工作流\/平台深审结果/);
-  assert.match(source, /当前仅进行资料完整性核查，报告不得宣称已完成深度合规审查/);
+  assert.match(source, /selectedReviewScope === "completeness_and_compliance"/);
+  assert.match(source, /当前以资料完整性核查为主/);
   assert.match(guidance, /前端不得自行编造审查结论/);
   assert.match(guidance, /资料完整性.*必选/);
   assert.match(guidance, /资料合规性.*可选/);
@@ -235,7 +237,7 @@ test("UI smoke keeps the cloud-case shell clean when no backend task exists", as
   assert.match(source, /当前项目暂无历史审核/);
   assert.match(source, /selectedAgentTaskId/);
   assert.match(source, /onCloseAgentTask/);
-  assert.match(source, /返回新建审核/);
+  assert.match(source, /onCloseAgentTask/);
   assert.match(source, /reviewScope=\{complianceReviewRequested \? "completeness_and_compliance" : "completeness"\}/);
   assert.match(source, /reviewScope,/);
   assert.match(cleanReviewSource, /const cleanOpeningWorkspace/);
@@ -243,4 +245,30 @@ test("UI smoke keeps the cloud-case shell clean when no backend task exists", as
   assert.match(cleanReviewSource, /checkItems: \[\]/);
   assert.doesNotMatch(cleanReviewSource, /G15|g15|汽车吊检验报告|basis-contract-g15-08|oc-check-001/);
   assert.match(appSource, /from "\.\/domain\/openingConditionReviewClean"/);
+});
+
+test("UI smoke keeps the default opening-condition home as one centered chat entry", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+  const styles = await readFile(new URL("../src/styles/opening-condition.css", import.meta.url), "utf8");
+
+  assert.match(source, /activePage !== "workspace-context" && \(/);
+  assert.match(source, /if \(!selectedAgentTask\) \{/);
+  assert.match(source, /opening-agent-chat-home|opening-agent-chat-page/);
+  assert.match(source, /opening-agent-chat-input/);
+  assert.match(source, /请上传审核资料，开始一次开工条件核查/);
+  assert.match(source, /上传待核查文件/);
+  assert.match(source, /资料完整性（必选）/);
+  assert.match(source, /资料合规性（可选）/);
+  assert.match(source, /const uploadDisabled = busy \|\| submitting \|\| !portalState\.canUploadNewRun;/);
+  assert.match(source, /const submitDisabled = uploadDisabled \|\| missingRequiredFiles;/);
+  assert.match(source, /disabled=\{uploadDisabled\}/);
+  assert.match(source, /disabled=\{submitDisabled\}/);
+  assert.match(source, /selectedAgentTask && \(/);
+  assert.match(source, /opening-agent-chat-stage/);
+  assert.match(styles, /\.opening-agent-chat-stage/);
+  assert.match(styles, /\.opening-agent-chat-input/);
+  assert.match(styles, /\.opening-agent-chat-scope/);
+  assert.match(styles, /\.opening-agent-modal \.opening-trial-upload-grid input::file-selector-button/);
+  assert.doesNotMatch(source, /<div className="opening-agent-chat-context">/);
+  assert.doesNotMatch(styles, /\.opening-agent-chat-context/);
 });

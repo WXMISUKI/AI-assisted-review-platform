@@ -585,3 +585,35 @@ The opening-condition frontend SHALL NOT seed historical project findings when t
 - **WHEN** the task API returns a task for the selected project
 - **THEN** the frontend renders task-owned facts only
 - **AND** the default fixture does not supplement or override task findings
+
+### Requirement: Agent-style review console is a single centered chat entry
+The opening-condition portal SHALL present one centered new-review input as the default home instead of multiple peer-level business panels.
+
+#### Scenario: Operator opens the new-review home
+- **WHEN** the operator enters the opening-condition platform with no selected task
+- **THEN** the primary content shows `开工条件核查智能体`
+- **AND** it shows review scope selection and one central upload/input entry
+- **AND** it does not present separate shell topbar, project context pills, hero, upload, history, metric, responsibility, or advanced-ledger panels as the default home
+
+#### Scenario: Operator selects a task
+- **WHEN** the operator selects a task from the left history list
+- **THEN** the primary content changes to task detail
+- **AND** the centered new-review input is no longer the primary content
+
+### Requirement: Project selector does not repeat the current project
+The opening-condition sidebar SHALL show the current project through its selector without a duplicate project-name paragraph beneath it.
+
+#### Scenario: Sidebar project context renders
+- **WHEN** the sidebar renders the current project selector
+- **THEN** the selector lists the available project contexts
+- **AND** no duplicate current project name is rendered directly below the selector
+
+### Requirement: Centered chat entry reuses the three-material upload flow
+The centered new-review input SHALL open the existing three-material upload modal and preserve the existing review-scope bootstrap contract.
+
+#### Scenario: Operator clicks the central upload entry
+- **WHEN** the operator clicks the centered upload/input entry
+- **THEN** the existing upload modal opens
+- **AND** contract/qualification basis, checklist, and material package remain required before parsing
+- **AND** the file inputs remain selectable while required files are still missing
+- **AND** the selected `reviewScope` is sent through the existing real bootstrap path

@@ -4,9 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
-  ChevronRight,
   ClipboardCheck,
-  FileText,
   GitCompareArrows,
   ListChecks,
   LocateFixed,
@@ -332,19 +330,15 @@ export function ReviewWorkbenchPage({
     Object.fromEntries(sessionIssues.map((issue) => [issue.id, issue.finding.suggestion])),
   );
   const [supportingEvidence, setSupportingEvidence] = useState<Record<string, SupportingEvidenceState>>({});
-  const paragraphRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const documentScrollRef = useRef<HTMLDivElement | null>(null);
-  const scrollRafRef = useRef<number | null>(null);
   const reviewParagraphs = sessionRecoveredStructure?.paragraphs ?? sessionParagraphs;
-  const previewAvailable = Boolean(sourceObject?.key?.toLowerCase().endsWith(".docx"));
-  const primaryReviewParagraphs = useMemo(
-    () => reviewParagraphs.filter((paragraph) => paragraph.reviewEligible !== false),
-    [reviewParagraphs],
-  );
   const primaryReviewParagraphIds = useMemo(
-    () => new Set(primaryReviewParagraphs.map((paragraph) => paragraph.id)),
-    [primaryReviewParagraphs],
+    () =>
+      new Set(
+        reviewParagraphs
+          .filter((paragraph) => paragraph.reviewEligible !== false)
+          .map((paragraph) => paragraph.id),
+      ),
+    [reviewParagraphs],
   );
   const reviewIssues = useMemo(
     () => issues.filter((issue) => primaryReviewParagraphIds.has(issue.anchor.paragraphId)),
@@ -399,67 +393,6 @@ export function ReviewWorkbenchPage({
     });
     return map;
   }, [reviewParagraphs]);
-  const issuesByParagraphId = useMemo(() => {
-    const map = new Map<string, ReviewIssue[]>();
-    reviewIssues.forEach((issue) => {
-      const current = map.get(issue.anchor.paragraphId);
-      if (current) {
-        current.push(issue);
-        return;
-      }
-
-      map.set(issue.anchor.paragraphId, [issue]);
-    });
-    return map;
-  }, [reviewIssues]);
-  const sectionOutline = useMemo(() => {
-    if (sessionRecoveredStructure?.sections && sessionRecoveredStructure.sections.length > 0) {
-      return sessionRecoveredStructure.sections
-        .map((section) => {
-          const eligibleParagraphIds = section.paragraphIds.filter((paragraphId) =>
-            primaryReviewParagraphIds.has(paragraphId),
-          );
-          return {
-            id: section.id,
-            title: section.title,
-            paragraphCount: eligibleParagraphIds.length,
-            firstParagraphId: eligibleParagraphIds[0] ?? null,
-          };
-        })
-        .filter((section) => section.paragraphCount > 0);
-    }
-
-    const fallback = new Map<
-      string,
-      { title: string; paragraphCount: number; firstParagraphId: string | null }
-    >();
-
-    primaryReviewParagraphs.forEach((paragraph) => {
-      const existing = fallback.get(paragraph.section);
-      if (existing) {
-        existing.paragraphCount += 1;
-        return;
-      }
-
-      fallback.set(paragraph.section, {
-        title: paragraph.section,
-        paragraphCount: 1,
-        firstParagraphId: paragraph.id,
-      });
-    });
-
-  return Array.from(fallback.entries()).map(([title, entry], index) => ({
-      id: `section-fallback-${index + 1}`,
-      title,
-      paragraphCount: entry.paragraphCount,
-      firstParagraphId: entry.firstParagraphId,
-    }));
-  }, [
-    primaryReviewParagraphIds,
-    primaryReviewParagraphs,
-    sessionRecoveredStructure?.sections,
-    reviewParagraphs,
-  ]);
   const activeParagraph = useMemo(
     () => reviewParagraphs.find((paragraph) => paragraph.id === activeParagraphId) ?? null,
     [activeParagraphId, reviewParagraphs],
@@ -489,23 +422,15 @@ export function ReviewWorkbenchPage({
       grouped.set(sectionTitle, [issue]);
     });
 
-    const orderedGroups: Array<{ title: string; issues: ReviewIssue[] }> = [];
-    sectionOutline.forEach((section) => {
-      const items = grouped.get(section.title);
-      if (items && items.length > 0) {
-        orderedGroups.push({ title: section.title, issues: items });
-        grouped.delete(section.title);
-      }
-    });
+    return Array.from(grouped.entries()).map(([title, issues]) => ({
+      title,
+      issues,
+    }));
+  }, [filteredIssues, sectionByParagraphId]);
 
-    grouped.forEach((items, title) => {
-      orderedGroups.push({ title, issues: items });
-    });
-
-    return orderedGroups;
-  }, [filteredIssues, sectionByParagraphId, sectionOutline]);
-
-  const activeIssue = reviewIssues.find((issue) => issue.id === activeIssueId) ?? reviewIssues[0];
+  const activeIssue = activeIssueId
+    ? reviewIssues.find((issue) => issue.id === activeIssueId) ?? null
+    : null;
   const visibleModes: ReviewMode[] =
     allowedModes.length > 0 ? allowedModes : ["review", "revise"];
   const dragStateRef = useRef<{
@@ -518,9 +443,11 @@ export function ReviewWorkbenchPage({
   useEffect(() => {
     setIssues(sessionIssues);
     setActiveIssueId((currentActiveId) =>
-      reviewIssues.some((issue) => issue.id === currentActiveId)
-        ? currentActiveId
-        : initialActiveIssueId,
+      currentActiveId === ""
+        ? ""
+        : reviewIssues.some((issue) => issue.id === currentActiveId)
+          ? currentActiveId
+          : initialActiveIssueId,
     );
     setDraftSuggestions(
       Object.fromEntries(sessionIssues.map((issue) => [issue.id, issue.finding.suggestion])),
@@ -534,72 +461,6 @@ export function ReviewWorkbenchPage({
   useEffect(() => {
     setActiveParagraphId(defaultParagraphId);
   }, [defaultParagraphId]);
-
-  useEffect(() => {
-    const container = documentScrollRef.current;
-    if (!container) {
-      return;
-    }
-
-    const updateActiveSectionFromScroll = () => {
-      if (scrollRafRef.current != null) {
-        window.cancelAnimationFrame(scrollRafRef.current);
-      }
-
-      scrollRafRef.current = window.requestAnimationFrame(() => {
-        const containerRect = container.getBoundingClientRect();
-        const sectionPivot = containerRect.top + 160;
-        const visibleFloor = containerRect.top + 24;
-
-        let nextSectionTitle = defaultSectionTitle;
-        let nextParagraphId = defaultParagraphId;
-        let bestDistance = Number.POSITIVE_INFINITY;
-        let foundVisibleParagraph = false;
-
-        for (const paragraph of reviewParagraphs) {
-          const node = paragraphRefs.current[paragraph.id];
-          if (!node) {
-            continue;
-          }
-
-          const rect = node.getBoundingClientRect();
-          const isVisible = rect.bottom >= visibleFloor && rect.top <= containerRect.bottom - 24;
-          if (isVisible) {
-            foundVisibleParagraph = true;
-            const distance = Math.abs(rect.top - sectionPivot);
-            if (distance <= bestDistance) {
-              bestDistance = distance;
-              nextParagraphId = paragraph.id;
-              nextSectionTitle = paragraph.section;
-            }
-          }
-        }
-
-        if (!foundVisibleParagraph) {
-          return;
-        }
-
-        setActiveSectionTitle((currentSection) =>
-          currentSection === nextSectionTitle ? currentSection : nextSectionTitle,
-        );
-        setActiveParagraphId((currentParagraph) =>
-          currentParagraph === nextParagraphId ? currentParagraph : nextParagraphId,
-        );
-      });
-    };
-
-    updateActiveSectionFromScroll();
-    container.addEventListener("scroll", updateActiveSectionFromScroll, { passive: true });
-    window.addEventListener("resize", updateActiveSectionFromScroll);
-
-    return () => {
-      container.removeEventListener("scroll", updateActiveSectionFromScroll);
-      window.removeEventListener("resize", updateActiveSectionFromScroll);
-      if (scrollRafRef.current != null) {
-        window.cancelAnimationFrame(scrollRafRef.current);
-      }
-    };
-  }, [defaultSectionTitle, reviewParagraphs]);
 
   useEffect(() => {
     if (!popoverDragging) {
@@ -666,13 +527,9 @@ export function ReviewWorkbenchPage({
       activeParagraphId: issue.anchor.paragraphId,
       activeIssueId: issueId,
     });
-    window.requestAnimationFrame(() => {
-      const element =
-        target === "paragraph"
-          ? paragraphRefs.current[issue.anchor.paragraphId]
-          : cardRefs.current[issueId];
-      element?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
+    if (target === "card") {
+      return;
+    }
   }
 
   async function loadSupportingEvidence(issueId: string) {
@@ -782,77 +639,6 @@ export function ReviewWorkbenchPage({
     onIssueDraftChange?.(issueId, value);
   }
 
-  function captureSelection(paragraph: DocumentParagraph, textElement: HTMLParagraphElement | null) {
-    const selection = window.getSelection();
-
-    if (!selection || selection.isCollapsed || !textElement || selection.rangeCount === 0) {
-      return;
-    }
-
-    const range = selection.getRangeAt(0);
-    if (
-      !textElement.contains(range.startContainer) ||
-      !textElement.contains(range.endContainer)
-    ) {
-      setSelectionMessage("当前原型仅支持选择同一段落内的文字。");
-      return;
-    }
-
-    const beforeRange = range.cloneRange();
-    beforeRange.selectNodeContents(textElement);
-    beforeRange.setEnd(range.startContainer, range.startOffset);
-
-    const startOffset = beforeRange.toString().length;
-    const selectedText = range.toString().trim();
-    const rawSelectedText = range.toString();
-    const leadingWhitespace = rawSelectedText.length - rawSelectedText.trimStart().length;
-    const normalizedStart = startOffset + leadingWhitespace;
-    const normalizedEnd = normalizedStart + selectedText.length;
-
-    if (!selectedText) {
-      return;
-    }
-
-    const overlapsExistingIssue = issues.some(
-      (issue) =>
-        issue.anchor.paragraphId === paragraph.id &&
-        normalizedStart < issue.anchor.endOffset &&
-        normalizedEnd > issue.anchor.startOffset,
-    );
-
-    if (overlapsExistingIssue) {
-      setSelectionDraft(null);
-      setSelectionMessage("选区与已有标注重叠。当前原型请先选择未标注文字。");
-      selection.removeAllRanges();
-      return;
-    }
-
-    const selectionRect = range.getBoundingClientRect();
-    const popover = getClampedPopoverPosition(selectionRect);
-
-    setSelectionDraft({
-      paragraphId: paragraph.id,
-      startOffset: normalizedStart,
-      endOffset: normalizedEnd,
-      text: selectedText,
-      popover,
-    });
-    setActiveParagraphId(paragraph.id);
-    setActiveSectionTitle(paragraph.section);
-    onViewContextChange?.({
-      activeSectionTitle: paragraph.section,
-      activeParagraphId: paragraph.id,
-      activeIssueId,
-    });
-    setManualForm({
-      title: "人工补充审查意见",
-      reason: "",
-      basis: "",
-      suggestion: selectedText,
-    });
-    setSelectionMessage("已捕获选区，可在下方填写人工标注。");
-  }
-
   function captureViewerSelection(draft: { text: string; viewerAnchor: ReviewViewerAnchor }) {
     const paragraph = findBestParagraphForSelection(reviewParagraphs, draft.text, activeParagraphId);
     if (!paragraph) {
@@ -879,12 +665,13 @@ export function ReviewWorkbenchPage({
       viewerAnchor: draft.viewerAnchor,
       popover,
     });
+    setActiveIssueId("");
     setActiveParagraphId(paragraph.id);
     setActiveSectionTitle(paragraph.section);
     onViewContextChange?.({
       activeSectionTitle: paragraph.section,
       activeParagraphId: paragraph.id,
-      activeIssueId,
+      activeIssueId: undefined,
     });
     setManualForm({
       title: "人工补充审查意见",
@@ -960,9 +747,6 @@ export function ReviewWorkbenchPage({
       activeIssueId: issueId,
     });
     cancelSelectionDraft();
-    window.requestAnimationFrame(() => {
-      cardRefs.current[issueId]?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
   }
 
   function startPopoverDrag(event: ReactPointerEvent<HTMLDivElement>) {
@@ -1135,34 +919,6 @@ export function ReviewWorkbenchPage({
       )}
 
       <section className="workspace">
-        <aside className="outline-panel" aria-label="文档目录">
-          <div className="panel-title">
-            <FileText size={18} />
-            <span>方案章节</span>
-          </div>
-          {sectionOutline.map((section) => (
-            <button
-              key={section.id}
-              className={activeSectionTitle === section.title ? "outline-item active" : "outline-item"}
-              type="button"
-              onClick={() => {
-                setActiveSectionTitle(section.title);
-                setActiveParagraphId(section.firstParagraphId ?? defaultParagraphId);
-                if (section.firstParagraphId) {
-                  paragraphRefs.current[section.firstParagraphId]?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                  });
-                }
-              }}
-            >
-              <ChevronRight size={15} />
-              <span>{section.title}</span>
-              <small>{section.paragraphCount} 段</small>
-            </button>
-          ))}
-        </aside>
-
         <section className="document-panel" aria-label="施工方案正文">
           <div className="panel-heading">
             <div>
@@ -1196,28 +952,6 @@ export function ReviewWorkbenchPage({
               dragging={popoverDragging}
             />
           )}
-          <details className="paragraph-fallback-panel" open={!previewAvailable}>
-            <summary>
-              <span>文本回退视图</span>
-              <small>{previewAvailable ? "用于回退与调试" : "当前作为主回退视图"}</small>
-            </summary>
-            <div ref={documentScrollRef} className="document-scroll fallback">
-              {reviewParagraphs.map((paragraph) => (
-                <DocumentParagraphBlock
-                  key={paragraph.id}
-                  paragraph={paragraph}
-                  issues={issuesByParagraphId.get(paragraph.id) ?? []}
-                  activeIssueId={activeIssueId}
-                  isCurrentParagraph={paragraph.id === activeParagraphId}
-                  onIssueClick={(issueId) => focusIssue(issueId, "card")}
-                  onTextSelection={captureSelection}
-                  refSetter={(node) => {
-                    paragraphRefs.current[paragraph.id] = node;
-                  }}
-                />
-              ))}
-            </div>
-          </details>
         </section>
 
         <aside className="issues-panel" aria-label="审查问题列表">
@@ -1285,10 +1019,7 @@ export function ReviewWorkbenchPage({
                     onReject={() => updateIssue(issue.id, "rejected")}
                     onRequestDelete={() => setDeleteCandidateId(issue.id)}
                     onLoadSupportingEvidence={() => loadSupportingEvidence(issue.id)}
-                    refSetter={(node) => {
-                      cardRefs.current[issue.id] = node;
-                    }}
-                      readonly={readonly}
+                    readonly={readonly}
                     />
                   ))}
                 </div>
@@ -1568,83 +1299,6 @@ function Metric({
   );
 }
 
-function DocumentParagraphBlock({
-  paragraph,
-  issues,
-  activeIssueId,
-  isCurrentParagraph,
-  onIssueClick,
-  onTextSelection,
-  refSetter,
-}: {
-  paragraph: DocumentParagraph;
-  issues: ReviewIssue[];
-  activeIssueId: string;
-  isCurrentParagraph: boolean;
-  onIssueClick: (issueId: string) => void;
-  onTextSelection: (paragraph: DocumentParagraph, textElement: HTMLParagraphElement | null) => void;
-  refSetter: (node: HTMLDivElement | null) => void;
-}) {
-  const ranges = [...issues].sort((a, b) => a.anchor.startOffset - b.anchor.startOffset);
-  let cursor = 0;
-  const parts: Array<{ text: string; issue?: ReviewIssue }> = [];
-
-  ranges.forEach((issue) => {
-    if (issue.anchor.startOffset > cursor) {
-      parts.push({ text: paragraph.text.slice(cursor, issue.anchor.startOffset) });
-    }
-
-    parts.push({
-      text: paragraph.text.slice(issue.anchor.startOffset, issue.anchor.endOffset),
-      issue,
-    });
-    cursor = issue.anchor.endOffset;
-  });
-
-  if (cursor < paragraph.text.length) {
-    parts.push({ text: paragraph.text.slice(cursor) });
-  }
-
-  let textElement: HTMLParagraphElement | null = null;
-
-  return (
-    <article
-      ref={refSetter}
-      className={
-        isCurrentParagraph || issues.some((issue) => issue.id === activeIssueId)
-          ? "document-paragraph active"
-          : "document-paragraph"
-      }
-    >
-      <h3>{paragraph.section}</h3>
-      <p
-        ref={(node) => {
-          textElement = node;
-        }}
-        onMouseUp={() => onTextSelection(paragraph, textElement)}
-      >
-        {parts.map((part, index) =>
-          part.issue ? (
-            <button
-              key={`${part.issue.id}-${index}`}
-              className={`inline-issue ${statusTone[part.issue.status]} ${
-                part.issue.id === activeIssueId ? "active" : ""
-              }`}
-              type="button"
-              onClick={() => onIssueClick(part.issue!.id)}
-              title={`${part.issue.id}：${part.issue.finding.title}`}
-            >
-              {part.text}
-            </button>
-          ) : (
-            <span key={`${paragraph.id}-${index}`}>{part.text}</span>
-          ),
-        )}
-      </p>
-    </article>
-  );
-}
-
 function IssueCard({
   issue,
   supportingEvidence,
@@ -1659,7 +1313,6 @@ function IssueCard({
   onReject,
   onRequestDelete,
   onLoadSupportingEvidence,
-  refSetter,
   readonly,
 }: {
   issue: ReviewIssue;
@@ -1675,14 +1328,12 @@ function IssueCard({
   onReject: () => void;
   onRequestDelete: () => void;
   onLoadSupportingEvidence: () => void;
-  refSetter: (node: HTMLDivElement | null) => void;
   readonly?: boolean;
 }) {
   const primaryReference = issue.kernel?.basisReferences[0];
 
   return (
     <article
-      ref={refSetter}
       className={`issue-card ${isActive ? "active" : ""} ${
         isCurrentParagraph ? "current-paragraph" : ""
       } ${statusTone[issue.status]}`}
