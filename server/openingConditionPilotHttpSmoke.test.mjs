@@ -246,7 +246,21 @@ test("HTTP smoke protects the opening-condition pilot delivery chain", async () 
     assert.equal(decision.statusCode, 200);
     assert.equal(decision.payload.ok, true);
     assert.equal(decision.payload.blockingCount, 0);
-    assert.equal(decision.payload.task.state, "report_ready");
+    assert.equal(decision.payload.task.state, "awaiting_human_review");
+
+    const completedHumanReview = await requestJson(
+      baseUrl,
+      "POST",
+      "/api/opening-condition/pilot-tasks/task-http-run-1/human-review/complete",
+      {
+        actorId: "http-smoke-reviewer",
+        safeNote: "All flagged items have been reviewed by the operator.",
+      },
+    );
+    assert.equal(completedHumanReview.statusCode, 200);
+    assert.equal(completedHumanReview.payload.ok, true);
+    assert.equal(completedHumanReview.payload.blockingCount, 0);
+    assert.equal(completedHumanReview.payload.task.state, "report_ready");
 
     const report = await requestJson(baseUrl, "POST", "/api/opening-condition/pilot-tasks/task-http-run-1/report", {
       objectRef: {

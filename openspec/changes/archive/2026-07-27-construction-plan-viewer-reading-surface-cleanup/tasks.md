@@ -19,10 +19,10 @@
 ## 4. Verification
 
 - [x] 4.1 Run `pnpm typecheck`.
-- [ ] 4.2 Run `openspec validate construction-plan-viewer-reading-surface-cleanup`.
+- [x] 4.2 Run `openspec validate construction-plan-viewer-reading-surface-cleanup`.
 - [ ] 4.3 Manually verify selection, manual issue creation, issue focus, and legacy task reopening.
 
 ## 5. Archive
 
 - [x] 5.1 Record implementation outcome and known MVP trade-offs.
-- [ ] 5.2 Archive the change and sync the modified workbench spec.
+- [x] 5.2 Archive the change and sync the modified workbench spec.

@@ -1099,6 +1099,13 @@ function getOpeningConditionAgentTaskProgress(task?: OpeningConditionPilotTask |
     return 0;
   }
 
+  const latestEventProgress = [...task.events]
+    .reverse()
+    .find((event) => typeof event.progress === "number")?.progress;
+  if (typeof latestEventProgress === "number") {
+    return Math.max(0, Math.min(100, latestEventProgress));
+  }
+
   switch (task.state) {
     case "archived":
       return 100;
@@ -1174,26 +1181,76 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
   return files;
 }
 
+function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask | null) {
+  if (!task) {
+    return [];
+  }
+
+  const evidenceById = new Map(task.evidence.map((item) => [item.id, item]));
+  const openHumanReviewByTargetId = new Map(
+    task.humanReviewQueue
+      .filter((item) => item.targetType === "check_item" && (item.status === "open" || item.status === "deferred"))
+      .map((item) => [item.targetId, item]),
+  );
+  const checkItems =
+    task.checkItems.length > 0
+      ? task.checkItems
+      : task.checklistDefinition.map((item) => ({
+          ...item,
+          taskId: task.id,
+          verdict: "needs_human_review" as const,
+          ruleExplanation: "待平台匹配后生成核查结论。",
+          evidenceIds: [],
+          masterDataIds: item.masterDataIds,
+          humanReviewIds: [],
+        }));
+
+  return checkItems.map((item) => {
+    const openReview = openHumanReviewByTargetId.get(item.id);
+    const matchedEvidence = item.evidenceIds.map((evidenceId) => evidenceById.get(evidenceId)).filter(Boolean);
+    const status = openReview
+      ? "待人工审核"
+      : matchedEvidence.length > 0 || item.verdict === "pass"
+        ? "已匹配"
+        : "未匹配";
+    const tone = status === "已匹配" ? "success" : status === "待人工审核" ? "warning" : "danger";
+
+    return {
+      id: item.id,
+      label: `${item.category}${item.subCategory ? `-${item.subCategory}` : ""}${item.required ? "★" : ""}`,
+      content: item.name,
+      status,
+      tone,
+      evidenceText:
+        matchedEvidence.length > 0
+          ? matchedEvidence.map((evidence) => evidence?.objectRef.fileName).filter(Boolean).join(" / ")
+          : item.ruleExplanation,
+      humanReviewId: openReview?.id ?? item.humanReviewIds[0],
+    };
+  });
+}
+
 function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTask | null) {
   const progress = getOpeningConditionAgentTaskProgress(task);
   const complianceAvailable = Boolean(
     task?.checkItems.some((item) => item.contentCompliance && item.contentCompliance !== "not_evaluated"),
   );
+  const eventByType = new Map((task?.events ?? []).map((event) => [event.type, event]));
   return [
     {
       label: "整理资料核查项",
-      detail: "根据资料核查表提取并整理核查项目。",
-      done: progress >= 42,
+      detail: eventByType.get("extraction.completed")?.message ?? "根据资料核查表提取并整理核查项目。",
+      done: Boolean(eventByType.get("extraction.completed")) || progress >= 42,
     },
     {
       label: "拆分核查资料包",
-      detail: "建立资料包文件清单，准备逐文件审核。",
-      done: progress >= 42,
+      detail: eventByType.get("packet.uploaded")?.message ?? "建立资料包文件清单，准备逐文件审核。",
+      done: Boolean(eventByType.get("packet.uploaded")) || progress >= 28,
     },
     {
       label: "执行资料核查",
       detail: complianceAvailable ? "已获得平台规范化的内容核查结果。" : "当前以资料完整性核查为主。",
-      done: progress >= 78,
+      done: Boolean(eventByType.get("matching.completed") ?? eventByType.get("human_review.waiting")) || progress >= 70,
     },
     {
       label: "生成核查报告",
@@ -2040,6 +2097,7 @@ export function OpeningConditionWorkspaceShell({
   onRunPilotMatch,
   onEnsureKnowledgeBase,
   onReviewDecision,
+  onCompleteHumanReview,
   onGenerateReport,
   onExportReport,
   onArchivePilotTask,
@@ -2086,6 +2144,7 @@ export function OpeningConditionWorkspaceShell({
   onRunPilotMatch?: () => void;
   onEnsureKnowledgeBase?: () => void;
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
+  onCompleteHumanReview?: () => void;
   onGenerateReport?: () => void;
   onExportReport?: (taskId: string) => void;
   onArchivePilotTask?: () => void;
@@ -2336,6 +2395,7 @@ export function OpeningConditionWorkspaceShell({
               pilotTask={pilotTask}
               pilotBusy={pilotBusy}
               onReviewDecision={onReviewDecision}
+              onCompleteHumanReview={onCompleteHumanReview}
               onGoToPage={goToOpeningPage}
               focusedHumanReviewId={focusedHumanReviewId}
               onClearFocusedHumanReview={clearOpeningFocus}
@@ -2555,6 +2615,10 @@ function OpeningConditionObjectOverviewProductizedPage({
   const [selectedAgentFileId, setSelectedAgentFileId] = useState<string | null>(agentMaterialFiles[0]?.id ?? null);
   const selectedAgentFile =
     agentMaterialFiles.find((file) => file.id === selectedAgentFileId) ?? agentMaterialFiles[0] ?? null;
+  const agentReviewItems = useMemo(
+    () => buildOpeningConditionAgentReviewItems(selectedAgentTask),
+    [selectedAgentTask],
+  );
 
   useEffect(() => {
     if (!agentMaterialFiles.some((file) => file.id === selectedAgentFileId)) {
@@ -2641,6 +2705,9 @@ function OpeningConditionObjectOverviewProductizedPage({
                 submittedBy="opening-condition-agent-console"
                 onComplete={(result) => {
                   setUploadModalOpen(false);
+                  if (result.task?.id) {
+                    onSelectAgentTask?.(result.task.id);
+                  }
                   onTrialBootstrapComplete?.(result);
                 }}
                 reviewScope={complianceReviewRequested ? "completeness_and_compliance" : "completeness"}
@@ -2659,55 +2726,85 @@ function OpeningConditionObjectOverviewProductizedPage({
         <div className="opening-agent-file-pane">
           <div className="opening-agent-pane-header">
             <div>
-              <span className="eyebrow">????</span>
+              <span className="eyebrow">核查任务详情</span>
               <h2>{selectedAgentTaskTitle}</h2>
             </div>
             <div className="opening-agent-pane-actions">
-              <span className="opening-report-chip tone-info">{agentMaterialFiles.length} ?????</span>
+              <span className="opening-report-chip tone-info">{agentMaterialFiles.length} 个文件</span>
               <button type="button" className="secondary" onClick={onCloseAgentTask}>
-                ??????
+                返回新建审核
               </button>
             </div>
           </div>
-          <div className="opening-agent-file-list">
-            {agentMaterialFiles.length === 0 ? (
-              <p className="opening-task-detail-empty">????????????????</p>
-            ) : (
-              agentMaterialFiles.map((file) => (
-                <button
-                  key={file.id}
-                  type="button"
-                  className={file.id === selectedAgentFile?.id ? "opening-agent-file-row active" : "opening-agent-file-row"}
-                  onClick={() => setSelectedAgentFileId(file.id)}
-                >
-                  <strong>{file.label}</strong>
-                  <span>{file.fileName}</span>
-                </button>
-              ))
-            )}
-          </div>
+          <details className="opening-agent-file-group" open>
+            <summary>资料文档库</summary>
+            <div className="opening-agent-file-list">
+              {agentMaterialFiles.length === 0 ? (
+                <p className="opening-task-detail-empty">暂无已上传或已拆分的资料文件。</p>
+              ) : (
+                agentMaterialFiles.map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    className={file.id === selectedAgentFile?.id ? "opening-agent-file-row active" : "opening-agent-file-row"}
+                    onClick={() => setSelectedAgentFileId(file.id)}
+                  >
+                    <strong>{file.label}</strong>
+                    <span>{file.fileName}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </details>
+          <details className="opening-agent-file-group" open>
+            <summary>待核查资料项</summary>
+            <div className="opening-agent-review-item-list">
+              {agentReviewItems.length === 0 ? (
+                <p className="opening-task-detail-empty">暂无待核查资料项，需先上传可识别的资料核查表。</p>
+              ) : (
+                agentReviewItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="opening-agent-review-item-row"
+                    onClick={() =>
+                      item.humanReviewId
+                        ? onFocusHumanReview?.(item.humanReviewId)
+                        : onFocusCheckItem?.(item.id)
+                    }
+                  >
+                    <span>
+                      <strong>{item.label}</strong>
+                      <small>{item.content}</small>
+                    </span>
+                    <em className={`opening-review-status tone-${item.tone}`}>{item.status}</em>
+                  </button>
+                ))
+              )}
+            </div>
+          </details>
           <div className="opening-agent-file-preview">
             {selectedAgentFile ? (
               <>
                 <span className="eyebrow">{selectedAgentFile.kind}</span>
                 <h3>{selectedAgentFile.fileName}</h3>
                 <p>{selectedAgentFile.summary}</p>
-                <small>?????????????? PDF/DOCX ??????????</small>
+                <small>后续可复用施工审查侧的文档预览组件接入 PDF/DOCX 在线预览。</small>
               </>
             ) : (
-              <p>??????????????</p>
+              <p>请选择资料文档库中的文件。</p>
             )}
           </div>
         </div>
         <div className="opening-agent-progress-pane">
           <div className="opening-agent-pane-header">
             <div>
-              <span className="eyebrow">???????</span>
-              <h2>{selectedAgentTask ? `${agentProgress}% ? ${openingConditionPilotStateLabels[selectedAgentTask.state] ?? selectedAgentTask.state}` : "??????"}</h2>
+              <span className="eyebrow">智能体处理进度</span>
+              <h2>{selectedAgentTask ? `${agentProgress}% · ${openingConditionPilotStateLabels[selectedAgentTask.state] ?? selectedAgentTask.state}` : "等待上传"}</h2>
             </div>
             {selectedAgentTask && (
               <button type="button" className="secondary" onClick={() => onGoToPage("reports")}>
-                ?????
+                查看报告
               </button>
             )}
           </div>
@@ -2718,24 +2815,27 @@ function OpeningConditionObjectOverviewProductizedPage({
             {agentSteps.map((step) => (
               <div key={step.label} className={step.done ? "opening-agent-step done" : "opening-agent-step"}>
                 <strong>{step.label}</strong>
-                <span>{step.done ? "???" : "???"}</span>
+                <span>{step.done ? "已完成" : "待处理"}</span>
                 <small>{step.detail}</small>
               </div>
             ))}
           </div>
           <div className="opening-agent-report-handoff">
-            <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "?????????????"}</strong>
+            <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "最终报告将在核查完成后生成"}</strong>
             <p>
               {selectedReviewScope === "completeness_and_compliance"
-                ? "?????????????????????/???????"
-                : "?????????????????????????????"}
+                ? "当前任务包含资料完整性和合规性核查，报告将基于平台核查事实、人工复核结论和报告资产生成。"
+                : "当前任务以资料完整性核查为主，待人工复核项处理完成后即可生成报告。"}
             </p>
+            {selectedAgentTask?.reportAsset?.markdownContent ? (
+              <pre className="opening-agent-report-markdown">{selectedAgentTask.reportAsset.markdownContent}</pre>
+            ) : null}
           </div>
         </div>
       </section>
 
       <details className="opening-agent-advanced">
-        <summary>?????????</summary>
+        <summary>高级任务台账</summary>
         <div className="opening-agent-advanced-body">
           <OpeningConditionReviewTaskWorkbench
             rows={taskWorkbenchRows}
@@ -2755,14 +2855,14 @@ function OpeningConditionObjectOverviewProductizedPage({
           <div className="opening-agent-modal" role="dialog" aria-modal="true" aria-labelledby="opening-agent-upload-title" onMouseDown={(event) => event.stopPropagation()}>
             <div className="opening-agent-modal-header">
               <div>
-                <span className="eyebrow">??????</span>
-                <h2 id="opening-agent-upload-title">???????????</h2>
+                <span className="eyebrow">上传审核资料</span>
+                <h2 id="opening-agent-upload-title">提交三类资料后开始解析</h2>
               </div>
               <button type="button" className="theme-toggle" onClick={() => setUploadModalOpen(false)}>
-                ??
+                关闭
               </button>
             </div>
-            <p>??????????????{complianceReviewRequested ? "???" : "???"}???????????????</p>
+            <p>资料完整性为必选；资料合规性{complianceReviewRequested ? "已选择" : "未选择"}，不会改变三类资料的必传要求。</p>
             <OpeningConditionRealTrialIntakePanel
               packet={packet}
               pilotTask={pilotTask}
@@ -2775,6 +2875,9 @@ function OpeningConditionObjectOverviewProductizedPage({
               submittedBy="opening-condition-agent-console"
               onComplete={(result) => {
                 setUploadModalOpen(false);
+                if (result.task?.id) {
+                  onSelectAgentTask?.(result.task.id);
+                }
                 onTrialBootstrapComplete?.(result);
               }}
               reviewScope={complianceReviewRequested ? "completeness_and_compliance" : "completeness"}
@@ -4460,6 +4563,7 @@ function OpeningConditionHumanReviewQueuePage({
   pilotTask,
   pilotBusy,
   onReviewDecision,
+  onCompleteHumanReview,
   onGoToPage,
   focusedHumanReviewId,
   onClearFocusedHumanReview,
@@ -4470,6 +4574,7 @@ function OpeningConditionHumanReviewQueuePage({
   pilotTask?: OpeningConditionPilotTask | null;
   pilotBusy?: boolean;
   onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
+  onCompleteHumanReview?: () => void;
   onGoToPage?: (page: OpeningConditionPortalPage) => void;
   focusedHumanReviewId?: string | null;
   onClearFocusedHumanReview?: () => void;
@@ -4484,6 +4589,8 @@ function OpeningConditionHumanReviewQueuePage({
   const pendingQueue = queue.filter((item) => item.status === "open");
   const deferredQueue = queue.filter((item) => item.status === "deferred");
   const resolvedQueue = queue.filter((item) => item.status !== "open" && item.status !== "deferred");
+  const blockingReviewCount = pendingQueue.length + deferredQueue.length;
+  const canCompleteHumanReview = Boolean(pilotTask && queue.length > 0 && blockingReviewCount === 0 && !pilotBusy);
   const focusedReviewItem = focusedHumanReviewId ? queue.find((item) => item.id === focusedHumanReviewId) ?? null : null;
 
   function renderQueueItem(item: OpeningConditionPilotHumanReviewItem) {
@@ -4599,16 +4706,36 @@ function OpeningConditionHumanReviewQueuePage({
         description="先关闭待处理和延期复核项，再进入报告生成、归档和下一轮整改复审。"
       />
       {queue.length > 0 ? (
-        groups.map((group) => (
-          <div key={group.key} className="opening-record-list opening-human-review-group">
-            <div>
-              <strong>{group.title}</strong>
-              <span>{group.items.length} 项</span>
-              <p>{group.description}</p>
+        <>
+          {groups.map((group) => (
+            <div key={group.key} className="opening-record-list opening-human-review-group">
+              <div>
+                <strong>{group.title}</strong>
+                <span>{group.items.length} 项</span>
+                <p>{group.description}</p>
+              </div>
+              {group.items.length > 0 ? group.items.map(renderQueueItem) : <div><small>当前分组暂无复核项。</small></div>}
             </div>
-            {group.items.length > 0 ? group.items.map(renderQueueItem) : <div><small>当前分组暂无复核项。</small></div>}
+          ))}
+          <div className="opening-human-review-complete">
+            <div>
+              <strong>完成人工复核</strong>
+              <p>
+                {blockingReviewCount > 0
+                  ? `仍有 ${blockingReviewCount} 项待处理或延期复核项，暂不能进入最终报告生成。`
+                  : "所有问题项已完成人工判断，可以继续进入最终报告生成节点。"}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary"
+              disabled={!canCompleteHumanReview}
+              onClick={onCompleteHumanReview}
+            >
+              完成人工复核并生成报告
+            </button>
           </div>
-        ))
+        </>
       ) : (
         <div className="opening-record-list">
           {packet.humanReviewQueue.map((item) => (

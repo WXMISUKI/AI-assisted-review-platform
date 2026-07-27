@@ -11,6 +11,7 @@ import {
   bootstrapOpeningConditionPilotTrial,
   buildOpeningConditionPilotReportHtml,
   canTransitionOpeningConditionPilotTask,
+  completeOpeningConditionPilotHumanReview,
   decideOpeningConditionPilotBasisPreview,
   decideOpeningConditionPilotHumanReviewItem,
   decideOpeningConditionPilotMasterDataRecord,
@@ -631,9 +632,11 @@ test("initializes intake from workspace facts in one orchestration flow", async 
     assert.equal(initialized.intake.inventoryEntryCount, 1);
     assert.equal(initialized.intake.checklistDefinitionResolution, "derived_from_template");
     assert.equal(initialized.intake.selectedChecklistTemplateId, "pier-cap-opening-condition-checklist");
-    assert.equal(initialized.task.checklistDefinition.length, 5);
+    assert.equal(initialized.task.checklistDefinition.length, 22);
     assert.equal(initialized.task.packet.inventoryEntries.length, 1);
-    assert.equal(initialized.task.checklistDefinition[0].name, "项目管理人员及专职安全员资格证书");
+    assert.equal(initialized.task.checklistDefinition[0].id, "1-1-1");
+    assert.equal(initialized.task.checklistDefinition[0].expectedEvidenceHints.includes("施工单位营业执照"), true);
+    assert.equal(initialized.task.checklistDefinition[21].rowIndex, 24);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -689,7 +692,7 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
 
     assert.equal(result.ok, true);
     assert.equal(result.task.id, "task-trial-1");
-    assert.equal(result.task.state, "packet_uploaded");
+    assert.equal(result.task.state, "awaiting_human_review");
     assert.equal(result.task.basisVersion.status, "published");
     assert.equal(result.task.requiredMasterData.length, 3);
     assert.equal(result.task.knowledgeBaseRef.providerRefs[0].provider, "maxkb");
@@ -698,13 +701,19 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
     assert.equal(result.intake.inventoryResolution, "derived_from_zip_manifest");
     assert.equal(result.intake.checklistDefinitionResolution, "derived_from_template");
     assert.equal(result.preflightReadiness.status, "ready");
-    assert.equal(result.task.trialPackage.status, "packet_uploaded");
+    assert.equal(result.task.trialPackage.status, "awaiting_human_review");
     assert.equal(result.task.trialPackage.inputObjects.sourceCount, 1);
     assert.equal(result.task.trialPackage.diagnostics.inventoryResolution, "derived_from_zip_manifest");
     assert.equal(result.task.trialPackage.diagnostics.inventoryEntryCount, 2);
     assert.equal(result.task.trialPackage.diagnostics.checklistDefinitionResolution, "derived_from_template");
     assert.equal(result.task.trialPackage.providerReadiness.status, "ready");
     assert.equal(result.task.reviewScope, "completeness_and_compliance");
+    assert.equal(result.task.checklistDefinition.length, 22);
+    assert.equal(result.task.checkItems.length, 22);
+    assert.equal(result.task.events.some((event) => event.type === "human_review.waiting"), true);
+    assert.equal(result.task.humanReviewQueue.length > 0, true);
+    assert.equal(result.orchestration.ok, true);
+    assert.equal(result.orchestration.finalState, "awaiting_human_review");
     assert.equal("privateUrl" in result.task.basisVersion.sourceObject, false);
     assert.equal("token" in result.task.packet.sourceObjects[0], false);
     assert.equal("token" in result.task.trialPackage, false);
@@ -1632,8 +1641,21 @@ test("records human-review decisions and gates report readiness", async () => {
     assert.equal(decision.ok, true);
     assert.equal(decision.humanReviewItem.status, "confirmed");
     assert.equal(decision.blockingCount, 0);
-    assert.equal(decision.task.state, "report_ready");
+    assert.equal(decision.task.state, "awaiting_human_review");
     assert.equal("token" in decision.event.safeDiagnostics, false);
+
+    const completed = await completeOpeningConditionPilotHumanReview(
+      "task-1",
+      {
+        actorId: "reviewer-1",
+        safeNote: "人工复核列表已提交完成。",
+      },
+      { storePath },
+    );
+
+    assert.equal(completed.ok, true);
+    assert.equal(completed.task.state, "report_ready");
+    assert.equal(completed.event.type, "report.ready");
 
     const report = await generateOpeningConditionPilotReport("task-1", {}, { storePath });
     const ledgerItem = report.reportAsset.packageDiagnostics.decisionLedger[0];
@@ -1858,8 +1880,19 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
     );
     assert.equal(decision.ok, true);
     assert.equal(decision.blockingCount, 0);
-    assert.equal(decision.task.state, "report_ready");
+    assert.equal(decision.task.state, "awaiting_human_review");
     assert.equal("privateUrl" in decision.event.safeDiagnostics, false);
+
+    const completed = await completeOpeningConditionPilotHumanReview(
+      "task-smoke-run-1",
+      {
+        actorId: "smoke-reviewer",
+        safeNote: "All flagged items have been reviewed by the operator.",
+      },
+      { storePath },
+    );
+    assert.equal(completed.ok, true);
+    assert.equal(completed.task.state, "report_ready");
 
     const report = await generateOpeningConditionPilotReport(
       "task-smoke-run-1",

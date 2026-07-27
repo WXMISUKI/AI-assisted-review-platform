@@ -705,6 +705,15 @@ export interface OpeningConditionPilotIntakeInitResult {
     providerRefCount: number;
     nextHandoff?: string;
   };
+  orchestration?: {
+    ok: boolean;
+    status?: string;
+    message?: string;
+    checkItemCount?: number;
+    evidenceCount?: number;
+    humanReviewCount?: number;
+    finalState?: OpeningConditionPilotTask["state"];
+  };
   message?: string;
   errors?: string[];
 }
@@ -1253,6 +1262,20 @@ export async function decideOpeningConditionPilotHumanReview(
     },
   );
   return readJson<OpeningConditionPilotHumanReviewResult>(response);
+}
+
+export async function completeOpeningConditionPilotHumanReview(taskId: string, actorId: string, safeNote?: string) {
+  const response = await fetch(
+    `/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/human-review/complete`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ actorId, safeNote }),
+    },
+  );
+  return readJson<OpeningConditionPilotTaskResult>(response);
 }
 
 export async function generateOpeningConditionPilotReport(taskId: string, objectRef?: OpeningConditionObjectRef) {

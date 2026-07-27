@@ -10,6 +10,7 @@ import {
 import {
   archiveOpeningConditionPilotTask,
   bindOpeningConditionPilotKnowledgeBase,
+  completeOpeningConditionPilotHumanReview,
   decideOpeningConditionPilotMasterData,
   decideOpeningConditionPilotHumanReview,
   exportOpeningConditionPilotReportDocx,
@@ -270,7 +271,7 @@ export function App() {
     const workspaceTasks = await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
 
     if (workspaceTasks.length === 0) {
-      return preferredTaskId ?? getOpeningPilotTaskId(openingPacket);
+      return preferredTaskId ?? null;
     }
 
     const preferredTask = preferredTaskId ? workspaceTasks.find((task) => task.id === preferredTaskId) : null;
@@ -283,7 +284,7 @@ export function App() {
       return runnableTask.id;
     }
 
-    return preferredTask?.id ?? workspaceTasks[0]?.id ?? getOpeningPilotTaskId(openingPacket);
+    return preferredTask?.id ?? workspaceTasks[0]?.id ?? null;
   }
 
   async function refreshOpeningPilotTask(
@@ -294,12 +295,20 @@ export function App() {
     },
   ) {
     const resolvedTaskId =
-      taskId ?? (options?.resolveCurrentRun ? await resolveOpeningPilotTaskId(openingPilotTask?.id) : openingPilotTask?.id ?? getOpeningPilotTaskId(openingPacket));
+      taskId ?? (options?.resolveCurrentRun ? await resolveOpeningPilotTaskId(openingPilotTask?.id) : openingPilotTask?.id ?? null);
 
     try {
       await refreshOpeningWorkspaceFacts(openingPacket.workspaceId);
       await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
       await refreshOpeningWorkspaceAssetRegistry();
+      if (!resolvedTaskId) {
+        setOpeningPilotTask(null);
+        setOpeningPilotReadiness(null);
+        if (!options?.preserveStatus) {
+          setOpeningPilotStatus("当前项目暂无开工条件核查任务，请先上传待核查文件。");
+        }
+        return;
+      }
       const taskResult = await fetchOpeningConditionPilotTask(resolvedTaskId).catch(() => null);
       if (!taskResult?.ok || !taskResult.task) {
         setOpeningPilotTask(null);
@@ -716,10 +725,59 @@ export function App() {
       if (result.blockingCount && result.blockingCount > 0) {
         setOpeningPilotStatus("Human-review decision recorded; " + result.blockingCount + " blocker(s) remain.");
       } else {
-        setOpeningPilotStatus("Human-review blockers cleared; report generation can continue.");
+        setOpeningPilotStatus("人工复核项已全部形成结论，请点击“完成人工复核并生成报告”继续工作流。");
       }
     } catch (error) {
       setOpeningPilotStatus(error instanceof Error ? error.message : "浜哄伐澶嶆牳鍐崇瓥鎻愪氦澶辫触");
+    } finally {
+      setOpeningPilotBusy(false);
+    }
+  }
+
+  async function completeOpeningPilotHumanReviewAndGenerateReport() {
+    if (!openingPilotTask) {
+      setOpeningPilotStatus("当前没有可完成人工复核的任务。");
+      return;
+    }
+    if (openingPilotTask.state === "archived") {
+      setOpeningPilotStatus("当前任务已归档，不能继续生成报告；请初始化新的试点 run。");
+      return;
+    }
+
+    const blockingCount = openingPilotTask.humanReviewQueue.filter(
+      (item) => item.status === "open" || item.status === "deferred",
+    ).length;
+    if (blockingCount > 0) {
+      setOpeningPilotStatus(`仍有 ${blockingCount} 项待处理或延期的人工复核项，不能进入最终报告生成。`);
+      return;
+    }
+
+    const taskId = openingPilotTask.id;
+    setOpeningPilotBusy(true);
+    try {
+      const completed = await completeOpeningConditionPilotHumanReview(
+        taskId,
+        session?.username ?? "pilot-user",
+        "人工复核列表已由用户显式提交完成，进入最终报告生成节点。",
+      );
+      if (!completed.ok || !completed.task) {
+        setOpeningPilotStatus(completed.message ?? "完成人工复核失败");
+        return;
+      }
+
+      const report = await generateOpeningConditionPilotReport(taskId);
+      if (!report.ok || !report.task) {
+        setOpeningPilotTask(completed.task);
+        setOpeningPilotStatus(report.message ?? "人工复核已完成，但最终报告生成失败");
+        return;
+      }
+
+      const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
+      setOpeningPilotTask(report.task);
+      setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
+      setOpeningPilotStatus("人工复核已完成，最终报告已生成。");
+    } catch (error) {
+      setOpeningPilotStatus(error instanceof Error ? error.message : "完成人工复核失败");
     } finally {
       setOpeningPilotBusy(false);
     }
@@ -960,7 +1018,7 @@ export function App() {
 
   function handleOpeningTrialBootstrapComplete(result: OpeningConditionPilotIntakeInitResult) {
     if (!result.task) {
-      setOpeningPilotStatus(result.message ?? "鐪熷疄璇曠偣浠诲姟鍒濆鍖栧け璐?");
+      setOpeningPilotStatus(result.message ?? "真实试点任务初始化失败");
       return;
     }
 
@@ -979,9 +1037,11 @@ export function App() {
         : null,
     );
     setOpeningPilotStatus(
-      "Pilot task initialized; manifest " + (result.packet?.inventoryEntries.length ?? 0) + "; state " + result.task.state,
+      `核查任务已创建：资料清单 ${result.packet?.inventoryEntries.length ?? 0} 项，当前状态 ${result.task.state}`,
     );
     void refreshOpeningWorkspaceFacts(result.task.context.workspaceId);
+    void refreshOpeningWorkspaceTasks(result.task.context.workspaceId);
+    void refreshOpeningWorkspaceAssetRegistry();
   }
 
   if (!session) {
@@ -1053,6 +1113,7 @@ export function App() {
       onRunPilotMatch={() => void runOpeningPilotFormalMatch()}
       onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
       onReviewDecision={(reviewId, decision) => void decideOpeningPilotHumanReview(reviewId, decision)}
+      onCompleteHumanReview={() => void completeOpeningPilotHumanReviewAndGenerateReport()}
       onGenerateReport={() => void generateOpeningPilotReport()}
       onExportReport={(taskId) => void exportOpeningPilotReportDocx(taskId)}
       onArchivePilotTask={() => void archiveOpeningPilotTask()}

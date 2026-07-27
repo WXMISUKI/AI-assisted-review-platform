@@ -383,89 +383,12 @@ The review workbench SHALL persist issue decisions through the review session se
 - **WHEN** a user leaves and reopens a task
 - **THEN** previously resolved issue decisions are restored in the workbench
 
-### Requirement: Section-aware outline navigation
-The review workbench SHALL render the document outline from recovered sections when available.
-
-#### Scenario: Recovered sections exist
-- **WHEN** the task includes a recovered document structure with sections
-- **THEN** the outline panel shows section titles and paragraph counts instead of repeating each paragraph's section label
-
-#### Scenario: No recovered sections exist
-- **WHEN** the task does not yet have recovered sections
-- **THEN** the outline can fall back to the existing paragraph-based structure without blocking the workbench
-
-### Requirement: Current section visibility
-The review workbench SHALL surface the current section and current paragraph location in the detail context.
-
-#### Scenario: Current section is known
-- **WHEN** the recovered structure or stream snapshot includes a current section
-- **THEN** the workbench displays that section as the active reading location
-
-#### Scenario: Current paragraph is known
-- **WHEN** the recovered structure or stream snapshot includes a current paragraph id
-- **THEN** the workbench can expose that paragraph as the current processing anchor
-
-### Requirement: Section-linked issue grouping
-The review workbench SHALL group issues in the side panel by their document section when section information is available.
-
-#### Scenario: Issues belong to sections
-- **WHEN** the workbench has recovered sections or paragraph section labels
-- **THEN** the issue panel shows section headers with the issue cards belonging to each section
-
-#### Scenario: Section data is unavailable
-- **WHEN** the workbench cannot determine section boundaries
-- **THEN** the issue panel can fall back to the existing flat list without blocking review actions
-
-### Requirement: Current section synchronization
-The review workbench SHALL keep the active section synchronized between outline navigation, document focus, and issue panel context.
-
-#### Scenario: User clicks a section
-- **WHEN** the user selects a section in the outline
-- **THEN** the workbench updates the active section context and keeps the matching issue group visually emphasized
-
-#### Scenario: User focuses an issue
-- **WHEN** the user clicks an issue card or highlighted text
-- **THEN** the workbench can promote that issue's section to the active section context
-
 ### Requirement: Recovered structure summary on workbench
 The review workbench SHALL show a compact summary of the hydrated recovered structure when available.
 
 #### Scenario: Workbench opens with recovered structure
 - **WHEN** a ready review task includes recovered sections and paragraphs
 - **THEN** the workbench displays the source format, section count, paragraph count, current section, and recovery time in the detail summary area
-
-### Requirement: Scroll-driven section synchronization
-The review workbench SHALL update the active section context from the current scroll position inside the document view.
-
-#### Scenario: User scrolls the document
-- **WHEN** the user scrolls through the document body
-- **THEN** the workbench updates the active section to the section that contains the currently visible paragraph
-
-#### Scenario: User jumps to a paragraph
-- **WHEN** the user clicks a section or issue and the document scrolls to a paragraph
-- **THEN** the active section context follows the target paragraph after scrolling settles
-
-### Requirement: Paragraph anchor focus synchronization
-The review workbench SHALL maintain a current paragraph anchor that follows scroll position and direct user focus actions.
-
-#### Scenario: User scrolls the document
-- **WHEN** the user scrolls through the document body
-- **THEN** the workbench updates the current paragraph anchor to the visible paragraph closest to the reading focus
-
-#### Scenario: User clicks a section or issue
-- **WHEN** the user clicks a section, an issue card, or a highlighted issue in the document
-- **THEN** the workbench updates the current paragraph anchor to the targeted paragraph
-
-### Requirement: Paragraph, section, and issue focus relation
-The review workbench SHALL keep the active paragraph anchor, active section, and active issue context aligned when one of them changes.
-
-#### Scenario: Focus changes by paragraph
-- **WHEN** the current paragraph anchor changes
-- **THEN** the corresponding section and related issue group can be promoted to the active context
-
-#### Scenario: Focus changes by issue
-- **WHEN** the user focuses an issue
-- **THEN** the issue's anchor paragraph becomes the current paragraph anchor
 
 ### Requirement: Loading flow prefers backend generation run bridge
 The review-loading flow SHALL prefer a backend generation run bridge when it has enough recovered document context.
@@ -555,22 +478,15 @@ The review workbench SHALL remain a focused task/detail surface entered from con
 - **THEN** the workbench receives the selected document, role-based modes, recovered structure, issues, and task callbacks from the construction-plan product component
 
 ### Requirement: Viewer-first DOCX review detail
-The construction-plan review workbench SHALL use the source-faithful DOCX viewer as the primary document-reading surface for ready `.docx` tasks.
+The construction-plan review workbench SHALL use the source-faithful DOCX viewer and issue list as the primary detail-page review surface for ready `.docx` tasks.
 
 #### Scenario: Ready DOCX task opens
 - **WHEN** the workbench opens for a task with a previewable `.docx` source object
-- **THEN** the viewer is shown as the main detail reading surface and issue handling remains available alongside it
+- **THEN** the page shows the source-faithful viewer beside the issue workflow without a paragraph fallback panel or heuristic chapter outline panel
 
 #### Scenario: Previewable source is unavailable
 - **WHEN** the task has no previewable `.docx` source object or preview loading fails
-- **THEN** the workbench can fall back to the existing paragraph-based document surface without blocking review actions
-
-### Requirement: Paragraph surface is secondary for viewer-first tasks
-The workbench SHALL demote the old paragraph-rendered document surface for viewer-first tasks.
-
-#### Scenario: Viewer is available
-- **WHEN** the source-faithful viewer is ready
-- **THEN** the paragraph-rendered document surface is presented only as a secondary fallback or debug aid rather than the primary operator surface
+- **THEN** the issue workflow remains usable and the page does not require the removed paragraph fallback panel to render
 
 ### Requirement: Viewer-focused issue landing
 The review workbench SHALL land the active issue in a visible matched region inside the source-faithful viewer.
@@ -593,6 +509,24 @@ The review workbench SHALL allow manual issue creation from text selected direct
 #### Scenario: User submits a viewer-side annotation
 - **WHEN** the user submits the manual annotation form from a viewer selection
 - **THEN** the workbench adds a pending manual issue and keeps the existing issue decision workflow unchanged
+
+### Requirement: Viewer selection does not restore stale issue focus
+The review workbench SHALL keep a new viewer selection independent from the previously active issue until a new manual issue is created.
+
+#### Scenario: User selects viewer text
+- **WHEN** the user selects text in the source-faithful viewer
+- **THEN** the workbench records section/paragraph context for the selection, clears stale active issue focus, and does not scroll to the previous issue
+
+#### Scenario: User submits viewer annotation
+- **WHEN** the user submits the manual annotation form
+- **THEN** the newly created manual issue becomes active without automatically scrolling the page away from the selected viewer location
+
+### Requirement: Internal recovered structure remains compatible
+The review system SHALL retain recovered sections and paragraphs for review generation, issue anchors, persistence, and legacy task compatibility even though the detail UI no longer renders them as a chapter outline or paragraph fallback panel.
+
+#### Scenario: Existing task is reopened
+- **WHEN** an existing task contains recovered structure or paragraph anchors
+- **THEN** the task remains loadable and issue actions remain available without requiring visible paragraph navigation UI
 
 ### Requirement: Cover and TOC interference is reduced
 The review workbench SHALL reduce user-visible interference from cover and table-of-contents paragraph artifacts in the primary viewer-first detail flow.

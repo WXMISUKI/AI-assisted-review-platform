@@ -42,6 +42,7 @@ import {
 import {
   archiveOpeningConditionPilotTask,
   bootstrapOpeningConditionPilotTrial,
+  completeOpeningConditionPilotHumanReview,
   decideOpeningConditionPilotBasisPreview,
   decideOpeningConditionPilotMasterDataRecord,
   decideOpeningConditionPilotHumanReviewItem,
@@ -717,6 +718,20 @@ export function createBackendServer(options = {}) {
       const result = await decideOpeningConditionPilotHumanReviewItem(
         decodeURIComponent(openingConditionPilotHumanReviewDecisionMatch[1]),
         decodeURIComponent(openingConditionPilotHumanReviewDecisionMatch[2]),
+        body,
+        openingConditionStoreOptions,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotHumanReviewCompleteMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/human-review\/complete$/,
+    );
+    if (request.method === "POST" && openingConditionPilotHumanReviewCompleteMatch) {
+      const body = await readJson(request);
+      const result = await completeOpeningConditionPilotHumanReview(
+        decodeURIComponent(openingConditionPilotHumanReviewCompleteMatch[1]),
         body,
         openingConditionStoreOptions,
       );

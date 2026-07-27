@@ -247,9 +247,11 @@ export interface OpeningConditionPilotChecklistDefinitionItem {
   subCategory?: string;
   name: string;
   required: boolean;
+  isAsNeeded?: boolean;
   expectedEvidenceHints: string[];
   basisVersionId: string;
   masterDataIds: string[];
+  rowIndex?: number;
   scopeStatus?: OpeningConditionPilotScopeStatus;
   visualAssertions?: OpeningConditionPilotVisualAssertion[];
   issueTypeId?: string;
@@ -321,6 +323,7 @@ export interface OpeningConditionPilotReportAsset {
   };
   objectRef?: OpeningConditionObjectRef;
   packageDiagnostics?: OpeningConditionPilotReportPackageDiagnostics;
+  markdownContent?: string;
   disclaimer: string;
   createdAt: string;
 }

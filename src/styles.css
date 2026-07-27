@@ -2241,80 +2241,6 @@ h4 {
   color: var(--button-foreground);
 }
 
-.document-paragraph {
-  position: relative;
-  border-left: 4px solid transparent;
-  padding: 15px 16px;
-  transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
-}
-
-.document-paragraph + .document-paragraph {
-  border-top: 1px solid #e8edf1;
-}
-
-.document-paragraph.active {
-  border-left-color: #0f766e;
-  background: linear-gradient(90deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.02));
-  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.12) inset;
-  transform: translateX(2px);
-}
-
-.document-paragraph.active::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  left: -4px;
-  width: 4px;
-  height: calc(100% - 28px);
-  border-radius: 999px;
-  background: linear-gradient(180deg, #0f766e, rgba(15, 118, 110, 0.24));
-}
-
-.document-paragraph h3 {
-  margin-bottom: 8px;
-  color: #203248;
-}
-
-.document-paragraph p {
-  color: #26384b;
-  font-size: 16px;
-  line-height: 2;
-}
-
-.inline-issue {
-  display: inline;
-  border: 0;
-  border-bottom: 3px wavy #cf3f2f;
-  border-radius: 3px;
-  padding: 1px 2px;
-  background: #fff1ee;
-  color: #8f1f12;
-  line-height: inherit;
-  text-align: left;
-}
-
-.inline-issue.active {
-  outline: 2px solid #0f766e;
-  outline-offset: 2px;
-}
-
-.inline-issue.accepted,
-.inline-issue.modified {
-  border-bottom-color: #177245;
-  background: #eaf8f0;
-  color: #17613e;
-}
-
-.inline-issue.rejected {
-  border-bottom-color: #7b8794;
-  background: #f2f4f7;
-  color: #53606d;
-}
-
 .issues-panel {
   overflow: hidden;
 }
@@ -3197,8 +3123,7 @@ body {
   color: var(--ink);
 }
 
-.shell-nav-item:hover,
-.outline-item:hover {
+.shell-nav-item:hover {
   background: var(--primary-soft);
   color: var(--primary-hover);
 }
@@ -3328,7 +3253,6 @@ body {
 .selected-text,
 .manual-popover,
 .dialog-anchor,
-.document-paragraph.active,
 .manual-selection.active,
 .table-row,
 .history-item {
@@ -3430,10 +3354,8 @@ body {
 }
 
 :root[data-theme="dark"] .shell-nav-item:hover,
-:root[data-theme="dark"] .outline-item:hover,
 :root[data-theme="dark"] .upload-dropzone.dragging,
-:root[data-theme="dark"] .manual-selection.active,
-:root[data-theme="dark"] .document-paragraph.active {
+:root[data-theme="dark"] .manual-selection.active {
   background: rgba(49, 214, 199, 0.12);
 }
 
@@ -3517,7 +3439,6 @@ body {
 :root[data-theme="dark"] .selected-text,
 :root[data-theme="dark"] .manual-popover,
 :root[data-theme="dark"] .dialog-anchor,
-:root[data-theme="dark"] .document-paragraph.active,
 :root[data-theme="dark"] .manual-selection.active {
   background: rgba(18, 27, 41, 0.96);
   border-color: var(--border);
@@ -3528,7 +3449,6 @@ body {
 :root[data-theme="dark"] .preview-paragraph,
 :root[data-theme="dark"] .issue-card,
 :root[data-theme="dark"] .preview-document,
-:root[data-theme="dark"] .document-paragraph,
 :root[data-theme="dark"] .manual-form input,
 :root[data-theme="dark"] .manual-form textarea,
 :root[data-theme="dark"] .upload-form-row input {
@@ -3558,11 +3478,6 @@ body {
   background: rgba(18, 27, 41, 0.96);
   border-color: var(--border);
   color: var(--ink);
-}
-
-:root[data-theme="dark"] .document-paragraph.active {
-  background: linear-gradient(90deg, rgba(49, 214, 199, 0.12), rgba(49, 214, 199, 0.03));
-  box-shadow: 0 0 0 1px rgba(49, 214, 199, 0.16) inset;
 }
 
 :root[data-theme="dark"] .issue-card.current-paragraph {
@@ -3728,7 +3643,6 @@ body {
 :root[data-theme="dark"] .platform-shell :is(
     .upload-dropzone,
     .manual-selection.active,
-    .document-paragraph.active,
     .preview-document
   ) {
   background: var(--surface-muted) !important;
@@ -3868,10 +3782,6 @@ body {
 }
 
 :root[data-theme="dark"] .platform-shell :is(
-    .inline-issue,
-    .inline-issue.accepted,
-    .inline-issue.modified,
-    .inline-issue.rejected,
     .anchor-text,
     .selected-text,
     .dialog-anchor,
@@ -4042,18 +3952,12 @@ body {
     .role-button.active,
     .filter.active,
     .action-row button.selected,
-    .action-row button.reject.selected,
-    .inline-issue.accepted,
-    .inline-issue.modified
+    .action-row button.reject.selected
   ) {
   color: var(--text-on-accent) !important;
 }
 
 :root[data-theme="dark"] .app-shell :is(
-    .inline-issue,
-    .inline-issue.accepted,
-    .inline-issue.modified,
-    .inline-issue.rejected,
     .anchor-text,
     .dialog-anchor,
     .selected-text,

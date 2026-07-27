@@ -1320,11 +1320,15 @@ function normalizeChecklistItem(value, index = 0) {
     subCategory: normalizeString(source.subCategory, "", 120),
     name,
     required: source.required !== false && source.mandatory !== false,
+    isAsNeeded: Boolean(source.isAsNeeded ?? source.is_as_needed),
     expectedEvidenceHints: hints.length > 0 ? hints : [name],
     basisVersionId: normalizeString(source.basisVersionId, "", 180),
     masterDataIds: Array.isArray(source.masterDataIds)
       ? source.masterDataIds.map((item) => normalizeString(item, "", 180)).filter(Boolean).slice(0, 50)
       : [],
+    rowIndex: Number.isFinite(Number(source.rowIndex ?? source.row_index))
+      ? Number(source.rowIndex ?? source.row_index)
+      : undefined,
     scopeStatus: scopeStatusValues.has(source.scopeStatus) ? source.scopeStatus : undefined,
     visualAssertions: Array.isArray(source.visualAssertions)
       ? source.visualAssertions.map((item) => normalizeVisualAssertion(item)).filter(Boolean).slice(0, 20)
@@ -1604,6 +1608,7 @@ function normalizeReportAsset(value, taskId) {
     },
     objectRef: normalizeObjectRef(value.objectRef) ?? undefined,
     packageDiagnostics: normalizeReportPackageDiagnostics(value.packageDiagnostics),
+    markdownContent: normalizeString(value.markdownContent, "", 20000) || undefined,
     disclaimer: normalizeString(
       value.disclaimer,
       "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
@@ -4732,8 +4737,27 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
     options,
   );
 
+  if (!intake.ok) {
+    return intake;
+  }
+
+  const orchestration = await runOpeningConditionPilotChecklistMatch(taskId, {}, options);
+  const task = orchestration.ok ? orchestration.task : intake.task;
+
   return {
     ...intake,
+    task,
+    packet: task.packet,
+    preflightReadiness: task.preflightReadiness ?? intake.preflightReadiness,
+    orchestration: sanitizeOpeningConditionPilotValue({
+      ok: Boolean(orchestration.ok),
+      status: orchestration.status,
+      message: orchestration.message,
+      checkItemCount: orchestration.task?.checkItems?.length ?? 0,
+      evidenceCount: orchestration.task?.evidence?.length ?? 0,
+      humanReviewCount: orchestration.task?.humanReviewQueue?.length ?? 0,
+      finalState: orchestration.task?.state ?? intake.task?.state,
+    }),
     bootstrap: sanitizeOpeningConditionPilotValue({
       taskId,
       workspaceId: context.workspaceId,
@@ -4744,7 +4768,9 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
       providerRefCount: providerRefs.length,
       reviewScope: normalizeReviewScope(input.reviewScope),
       knowledgeBaseResolution: reusableKnowledgeBase ? "reused_ready_workspace_kb" : "upserted_trial_kb",
-      nextHandoff: "OCR Worker batch ingestion and MaxKB retrieval-check can be attached to this task in the next slice.",
+      nextHandoff: orchestration.ok
+        ? "Platform deterministic orchestration has produced checklist facts; provider retrieval can be attached as evidence enrichment later."
+        : "Packet intake is complete, but deterministic orchestration could not run. Inspect orchestration diagnostics before provider handoff.",
     }),
   };
 }
@@ -5292,19 +5318,18 @@ export async function decideOpeningConditionPilotHumanReviewItem(taskId, reviewI
         : item,
     );
     const blockingCount = nextQueue.filter((item) => isBlockingHumanReviewStatus(item.status)).length;
-    const nextState =
-      existingTask.state === "awaiting_human_review" && blockingCount === 0 ? "report_ready" : existingTask.state;
+    const nextState = existingTask.state;
     const sequence = existingTask.events.length + 1;
     const event = normalizeEvent(
       {
         id: `oc-event-${taskId}-${sequence}`,
         taskId,
         sequence,
-        type: blockingCount === 0 ? "report.ready" : "human_review.waiting",
+        type: "human_review.waiting",
         state: nextState,
         occurredAt: now,
-        message: blockingCount === 0 ? "阻塞人工复核项已处理，报告可生成。" : "人工复核决策已记录。",
-        progress: blockingCount === 0 ? 85 : 75,
+        message: blockingCount === 0 ? "人工复核决策已记录，等待用户提交完成人工复核。" : "人工复核决策已记录。",
+        progress: blockingCount === 0 ? 82 : 75,
         safeDiagnostics: {
           reviewId,
           decision,
@@ -5340,6 +5365,90 @@ export async function decideOpeningConditionPilotHumanReviewItem(taskId, reviewI
   }, options.storePath);
 }
 
+export async function completeOpeningConditionPilotHumanReview(taskId, input = {}, options = {}) {
+  return mutateSnapshot((snapshot) => {
+    const taskIndex = snapshot.tasks.findIndex((task) => task.id === taskId);
+    if (taskIndex < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition pilot task not found.",
+        },
+      };
+    }
+
+    const existingTask = snapshot.tasks[taskIndex];
+    const blockingCount = existingTask.humanReviewQueue.filter((item) => isBlockingHumanReviewStatus(item.status)).length;
+    if (blockingCount > 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "human_review_blocking",
+          message: "All open or deferred human-review items must be resolved before completing human review.",
+          blockingCount,
+        },
+      };
+    }
+
+    if (!["awaiting_human_review", "matching", "report_ready"].includes(existingTask.state)) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "invalid_state",
+          message: `Cannot complete human review while task is ${existingTask.state}.`,
+        },
+      };
+    }
+
+    const now = new Date().toISOString();
+    const sequence = existingTask.events.length + 1;
+    const event = normalizeEvent(
+      {
+        id: `oc-event-${taskId}-${sequence}`,
+        taskId,
+        sequence,
+        type: "report.ready",
+        state: "report_ready",
+        occurredAt: now,
+        message: input.message ?? "人工复核已完成，进入最终报告生成节点。",
+        progress: 85,
+        safeDiagnostics: {
+          actorId: input.actorId,
+          resolvedHumanReviewCount: existingTask.humanReviewQueue.length,
+          blockingCount,
+        },
+      },
+      taskId,
+      sequence,
+    );
+    const nextTask = normalizeOpeningConditionPilotTask({
+      ...existingTask,
+      state: "report_ready",
+      updatedAt: now,
+      events: [...existingTask.events, event],
+    });
+    const nextTasks = [...snapshot.tasks];
+    nextTasks[taskIndex] = nextTask;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        tasks: nextTasks,
+      },
+      value: {
+        ok: true,
+        task: nextTask,
+        blockingCount,
+        event,
+      },
+    };
+  }, options.storePath);
+}
+
 function summarizePilotCheckItems(checkItems) {
   return checkItems.reduce(
     (summary, item) => {
@@ -5358,6 +5467,59 @@ function summarizePilotCheckItems(checkItems) {
       humanReview: 0,
     },
   );
+}
+
+function buildOpeningConditionPilotReportMarkdown(task, summary, now) {
+  const nonCompliantItems = task.checkItems.filter((item) => item.verdict !== "pass" && item.finalDisposition !== "not_applicable");
+  const seriousFailures = nonCompliantItems.filter((item) => item.required).length;
+  const generalFailures = Math.max(0, nonCompliantItems.length - seriousFailures);
+  const allowConstruction = nonCompliantItems.length === 0;
+  const reportDate = now.slice(0, 10);
+  const projectName = task.context.projectId || "暂无";
+  const reviewObjectName = task.context.reviewObjectId || "暂无";
+  const rows = nonCompliantItems.map((item, index) => {
+    const risk = item.required ? "🔴严重" : "🟡一般";
+    const basis =
+      item.legalBasis?.map((basisItem) => [basisItem.title, basisItem.clause].filter(Boolean).join("")).join("、") ||
+      "平台内置开工条件核查规则";
+    const issue = item.verdict === "needs_human_review" || item.verdict === "blocked"
+      ? "资料缺失、匹配不稳定或需人工复核确认"
+      : item.ruleExplanation;
+    const rectification = item.required
+      ? `立即补充或复核“${item.name.replace(/★/g, "")}”对应资料，核实真实性、有效性和合规性，并在3日内完成整改反馈`
+      : `补充或复核“${item.name.replace(/★/g, "")}”对应资料，并在3日内完善报审记录`;
+    return `| ${index + 1} | ${item.category}${item.subCategory ? `-${item.subCategory}` : ""}${item.required ? "★" : ""} | ${issue} | ${risk} | ${basis} | ${rectification} |`;
+  });
+
+  return [
+    `## 施工条件核查报告 ${allowConstruction ? "🟢 允许施工" : "🔴 不允许施工"}`,
+    "*智能体自动生成 · 仅供参考*",
+    "",
+    `**工程名称：**${projectName}`,
+    `**核查部位：**${reviewObjectName}`,
+    `**申报日期：**${reportDate}`,
+    "",
+    "### 一、核查总体情况",
+    `本次共核查 ${summary.total} 项内容，其中符合 ${summary.passed} 项，不符合 ${nonCompliantItems.length} 项（含严重不符合 ${seriousFailures} 项）。`,
+    "",
+    "**统计概览：**",
+    `- 总核查项：**${summary.total}**`,
+    `- 符合项：**${summary.passed}**`,
+    `- 一般不符合：**${generalFailures}**`,
+    `- 严重不符合：**${seriousFailures}**`,
+    "",
+    "### 二、不符合项清单",
+    "| 序号 | 核查项目 | 问题描述 | 风险等级 | 法规依据 | 整改要求 |",
+    "|------|----------|----------|----------|----------|----------|",
+    ...(rows.length > 0 ? rows : ["| - | - | 未发现不符合项 | - | - | - |"]),
+    "",
+    "### 三、整改要求",
+    allowConstruction
+      ? "当前未发现阻断施工的不符合项，建议提交监理工程师进行最终审核。"
+      : "请施工单位在限定时间内完成所有问题整改并重新上报。整改完成后，平台智能体将自动进行复核，复核通过后提交监理工程师最终审核。",
+    "",
+    "**AI评判结果：** 平台已生成内部辅助核查报告资产。",
+  ].join("\n");
 }
 
 export async function generateOpeningConditionPilotReport(taskId, input = {}, options = {}) {
@@ -5402,6 +5564,8 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
     const now = new Date().toISOString();
     const reportTask = normalizeOpeningConditionPilotTask(existingTask) ?? existingTask;
     const summary = summarizePilotCheckItems(reportTask.checkItems);
+    const markdownContent =
+      input.markdownContent ?? buildOpeningConditionPilotReportMarkdown(reportTask, summary, now);
     const reportAsset = normalizeReportAsset(
       {
         id: input.id ?? `report-${taskId}`,
@@ -5411,6 +5575,7 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
         summary,
         objectRef: input.objectRef,
         packageDiagnostics: input.packageDiagnostics ?? deriveReportPackageDiagnostics(reportTask, summary, "ready"),
+        markdownContent,
         disclaimer:
           input.disclaimer ??
           "本结果为平台智能辅助审查意见，不替代施工单位、监理单位及相关责任人的最终审核责任。",
