@@ -698,13 +698,14 @@ export function App() {
   async function decideOpeningPilotHumanReview(
     reviewId: string,
     decision: "confirm" | "correct" | "reject" | "defer",
+    safeNote?: string,
   ) {
     if (!openingPilotTask) {
-      setOpeningPilotStatus("褰撳墠娌℃湁鍙鐞嗙殑浜哄伐澶嶆牳浠诲姟銆?");
+      setOpeningPilotStatus("当前没有可处理的人工复核任务。");
       return;
     }
     if (openingPilotTask.state === "archived") {
-      setOpeningPilotStatus("褰撳墠浠诲姟宸插綊妗ｏ紝浠呭彲鏌ョ湅鍘嗗彶澶嶆牳璁板綍锛涘闇€缁х画澶勭悊锛岃鍒濆鍖栨柊鐨勮瘯鐐?run銆?");
+      setOpeningPilotStatus("当前任务已归档，仅可查看历史复核记录；如需继续处理，请初始化新的试点 run。");
       return;
     }
 
@@ -717,10 +718,10 @@ export function App() {
         reviewId,
         decision,
         session?.username ?? "pilot-user",
-        "骞冲彴璇曠偣闂幆鎿嶄綔鍙拌褰曠殑浜哄伐澶嶆牳鍐崇瓥銆?",
+        safeNote ?? "平台试点闭环工作台记录的人工复核决策。",
       );
       if (!result.ok || !result.task) {
-        setOpeningPilotStatus(result.message ?? "浜哄伐澶嶆牳鍐崇瓥鎻愪氦澶辫触");
+        setOpeningPilotStatus(result.message ?? "人工复核决策提交失败");
         return;
       }
 
@@ -733,13 +734,13 @@ export function App() {
         setOpeningPilotStatus("人工复核项已全部形成结论，请点击“完成人工复核并生成报告”继续工作流。");
       }
     } catch (error) {
-      setOpeningPilotStatus(error instanceof Error ? error.message : "浜哄伐澶嶆牳鍐崇瓥鎻愪氦澶辫触");
+      setOpeningPilotStatus(error instanceof Error ? error.message : "人工复核决策提交失败");
     } finally {
       setOpeningPilotBusy(false);
     }
   }
 
-  async function completeOpeningPilotHumanReviewAndGenerateReport() {
+  async function completeOpeningPilotHumanReviewAndGenerateReport(safeNote?: string) {
     if (!openingPilotTask) {
       setOpeningPilotStatus("当前没有可完成人工复核的任务。");
       return;
@@ -763,7 +764,7 @@ export function App() {
       const completed = await completeOpeningConditionPilotHumanReview(
         taskId,
         session?.username ?? "pilot-user",
-        "人工复核列表已由用户显式提交完成，进入最终报告生成节点。",
+        safeNote ?? "人工复核列表已由用户显式提交完成，进入最终报告生成节点。",
       );
       if (!completed.ok || !completed.task) {
         setOpeningPilotStatus(completed.message ?? "完成人工复核失败");
@@ -1144,8 +1145,8 @@ export function App() {
       }
       onRunPilotMatch={() => void runOpeningPilotFormalMatch()}
       onEnsureKnowledgeBase={() => void ensureOpeningDefaultKnowledgeBase()}
-      onReviewDecision={(reviewId, decision) => void decideOpeningPilotHumanReview(reviewId, decision)}
-      onCompleteHumanReview={() => void completeOpeningPilotHumanReviewAndGenerateReport()}
+      onReviewDecision={(reviewId, decision, safeNote) => void decideOpeningPilotHumanReview(reviewId, decision, safeNote)}
+      onCompleteHumanReview={(safeNote) => void completeOpeningPilotHumanReviewAndGenerateReport(safeNote)}
       onGenerateReport={() => void generateOpeningPilotReport()}
       onExportReport={(taskId) => void exportOpeningPilotReportDocx(taskId)}
       onArchivePilotTask={() => void archiveOpeningPilotTask()}

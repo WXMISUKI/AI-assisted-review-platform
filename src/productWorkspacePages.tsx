@@ -1198,6 +1198,11 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
 }
 
 type OpeningConditionAgentMaterialFile = ReturnType<typeof buildOpeningConditionAgentMaterialFiles>[number];
+type OpeningConditionAgentReviewItem = ReturnType<typeof buildOpeningConditionAgentReviewItems>[number];
+type OpeningConditionAgentWorkbenchMode =
+  | { kind: "list" }
+  | { kind: "preview"; fileId: string }
+  | { kind: "review"; checkItemId: string };
 
 function isDocxAgentMaterialFile(file: OpeningConditionAgentMaterialFile) {
   const fileName = file.fileName.toLowerCase();
@@ -1313,6 +1318,12 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
             )}
           </div>
           <p className={`source-faithful-preview-status ${status}`}>{message}</p>
+          {status === "loading" ? (
+            <div className="opening-agent-preview-loading" aria-live="polite">
+              <span className="opening-agent-preview-spinner" aria-hidden="true" />
+              <span>正在加载文件预览…</span>
+            </div>
+          ) : null}
           <div ref={containerRef} className="docx-preview-shell opening-agent-docx-preview" />
         </>
       ) : (
@@ -1328,10 +1339,8 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
   }
 
   const evidenceById = new Map(task.evidence.map((item) => [item.id, item]));
-  const openHumanReviewByTargetId = new Map(
-    task.humanReviewQueue
-      .filter((item) => item.targetType === "check_item" && (item.status === "open" || item.status === "deferred"))
-      .map((item) => [item.targetId, item]),
+  const latestHumanReviewByTargetId = buildLatestHumanReviewMap(
+    task.humanReviewQueue.filter((item) => item.targetType === "check_item"),
   );
   const checkItems =
     task.checkItems.length > 0
@@ -1347,14 +1356,16 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
         }));
 
   return checkItems.map((item) => {
-    const openReview = openHumanReviewByTargetId.get(item.id);
+    const latestReview = latestHumanReviewByTargetId.get(item.id);
     const matchedEvidence = item.evidenceIds.map((evidenceId) => evidenceById.get(evidenceId)).filter(Boolean);
-    const status = openReview
-      ? "待人工审核"
+    const status = latestReview && (latestReview.status === "open" || latestReview.status === "deferred")
+      ? "待人工复核"
+      : latestReview
+        ? "已核查"
       : matchedEvidence.length > 0 || item.verdict === "pass"
         ? "已匹配"
         : "未匹配";
-    const tone = status === "已匹配" ? "success" : status === "待人工审核" ? "warning" : "danger";
+    const tone = status === "已匹配" || status === "已核查" ? "success" : status === "待人工复核" ? "warning" : "danger";
 
     return {
       id: item.id,
@@ -1366,9 +1377,32 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
         matchedEvidence.length > 0
           ? matchedEvidence.map((evidence) => evidence?.objectRef.fileName).filter(Boolean).join(" / ")
           : item.ruleExplanation,
-      humanReviewId: openReview?.id ?? item.humanReviewIds[0],
+      humanReviewId: latestReview?.id ?? item.humanReviewIds[0],
+      evidenceIds: item.evidenceIds,
     };
   });
+}
+
+function findOpeningConditionAgentPreviewFile(
+  files: OpeningConditionAgentMaterialFile[],
+  reviewItem: OpeningConditionAgentReviewItem | null,
+  task?: OpeningConditionPilotTask | null,
+) {
+  if (!reviewItem || !task) {
+    return null;
+  }
+  const evidenceById = new Map(task.evidence.map((item) => [item.id, item]));
+  for (const evidenceId of reviewItem.evidenceIds ?? []) {
+    const evidence = evidenceById.get(evidenceId);
+    if (!evidence) {
+      continue;
+    }
+    const matchedFile = files.find((file) => file.fileName === evidence.objectRef.fileName);
+    if (matchedFile) {
+      return matchedFile;
+    }
+  }
+  return files[0] ?? null;
 }
 
 function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTask | null) {
@@ -1421,8 +1455,8 @@ function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTas
   if (task.state === "awaiting_human_review" && !eventSteps.some((step) => step.operatorRequired)) {
     eventSteps.push({
       key: "human-review-pause",
-      label: "??????",
-      detail: "AI ?????????????????????????????????",
+      label: "进入人工复核",
+      detail: "AI 已完成自动核查，当前正在等待人工确认有争议或需补充判断的资料项。",
       progress: getOpeningConditionAgentTaskProgress(task),
       done: false,
       active: true,
@@ -2333,8 +2367,8 @@ export function OpeningConditionWorkspaceShell({
   ) => void;
   onRunPilotMatch?: () => void;
   onEnsureKnowledgeBase?: () => void;
-  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
-  onCompleteHumanReview?: () => void;
+  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer", safeNote?: string) => void;
+  onCompleteHumanReview?: (safeNote?: string) => void;
   onGenerateReport?: () => void;
   onExportReport?: (taskId: string) => void;
   onArchivePilotTask?: () => void;
@@ -2530,6 +2564,7 @@ export function OpeningConditionWorkspaceShell({
               allPilotTasks={allPilotTasks}
               workspaceAssetRegistry={workspaceAssetRegistry}
               pilotReadiness={pilotReadiness}
+              pilotBusy={pilotBusy}
               onSelectWorkspace={onSelectWorkspace}
               onGoToIntake={() => goToOpeningPage("material-intake")}
               onGoToPage={goToOpeningPage}
@@ -2543,6 +2578,8 @@ export function OpeningConditionWorkspaceShell({
               onCloseAgentTask={() => setSelectedAgentTaskId(null)}
               onFocusCheckItem={(checkItemId) => focusOpeningChecklistItem(checkItemId, "workspace-context")}
               onFocusHumanReview={(reviewId) => focusOpeningHumanReviewItem(reviewId, "workspace-context")}
+              onReviewDecision={onReviewDecision}
+              onCompleteHumanReview={onCompleteHumanReview}
             />
           )}
           {activePage === "material-intake" && (
@@ -2749,6 +2786,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   allPilotTasks,
   workspaceAssetRegistry,
   pilotReadiness,
+  pilotBusy,
   onSelectWorkspace,
   onGoToIntake,
   onGoToPage,
@@ -2759,6 +2797,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onCloseAgentTask,
   onFocusCheckItem,
   onFocusHumanReview,
+  onReviewDecision,
+  onCompleteHumanReview,
 }: {
   packet: OpeningConditionReviewPacket;
   workspaces: OpeningConditionWorkspace[];
@@ -2767,6 +2807,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   allPilotTasks?: OpeningConditionPilotTask[];
   workspaceAssetRegistry?: OpeningConditionWorkspaceAssetRegistrySummary[];
   pilotReadiness?: OpeningConditionPilotReadinessResult | null;
+  pilotBusy?: boolean;
   onSelectWorkspace: (workspaceId: string) => void;
   onGoToIntake: () => void;
   onGoToPage: (page: OpeningConditionPortalPage) => void;
@@ -2777,6 +2818,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onCloseAgentTask?: () => void;
   onFocusCheckItem?: (checkItemId: string) => void;
   onFocusHumanReview?: (reviewId: string) => void;
+  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer", safeNote?: string) => void;
+  onCompleteHumanReview?: (safeNote?: string) => void;
 }) {
   const verdictSummary = getOpeningConditionVerdictSummary(packet);
   const riskSummary = getOpeningConditionRiskSummary(packet);
@@ -2823,24 +2866,97 @@ function OpeningConditionObjectOverviewProductizedPage({
     () => buildOpeningConditionAgentMaterialFiles(selectedAgentTask),
     [selectedAgentTask],
   );
-  const [selectedAgentFileId, setSelectedAgentFileId] = useState<string | null>(agentMaterialFiles[0]?.id ?? null);
-  const selectedAgentFile =
-    agentMaterialFiles.find((file) => file.id === selectedAgentFileId) ?? agentMaterialFiles[0] ?? null;
   const agentReviewItems = useMemo(
     () => buildOpeningConditionAgentReviewItems(selectedAgentTask),
     [selectedAgentTask],
   );
+  const [workbenchMode, setWorkbenchMode] = useState<OpeningConditionAgentWorkbenchMode>({ kind: "list" });
+  const [agentReviewNote, setAgentReviewNote] = useState("");
 
   useEffect(() => {
-    if (!agentMaterialFiles.some((file) => file.id === selectedAgentFileId)) {
-      setSelectedAgentFileId(agentMaterialFiles[0]?.id ?? null);
+    setWorkbenchMode({ kind: "list" });
+    setAgentReviewNote("");
+  }, [selectedAgentTaskId]);
+
+  useEffect(() => {
+    if (workbenchMode.kind === "preview" && !agentMaterialFiles.some((file) => file.id === workbenchMode.fileId)) {
+      setWorkbenchMode({ kind: "list" });
     }
-  }, [agentMaterialFiles, selectedAgentFileId]);
+  }, [agentMaterialFiles, workbenchMode]);
+
+  useEffect(() => {
+    if (workbenchMode.kind === "review" && !agentReviewItems.some((item) => item.id === workbenchMode.checkItemId)) {
+      setWorkbenchMode({ kind: "list" });
+      setAgentReviewNote("");
+    }
+  }, [agentReviewItems, workbenchMode]);
 
   const agentProgress = getOpeningConditionAgentTaskProgress(selectedAgentTask);
   const agentSteps = buildOpeningConditionAgentProgressSteps(selectedAgentTask);
   const selectedAgentTaskTitle = selectedAgentTask ? getOpeningConditionAgentTaskTitle(selectedAgentTask) : "尚未创建审核任务";
   const selectedReviewScope = selectedAgentTask?.reviewScope ?? "completeness";
+  const activeReviewItem =
+    workbenchMode.kind === "review"
+      ? agentReviewItems.find((item) => item.id === workbenchMode.checkItemId) ?? null
+      : null;
+  const activePreviewFile =
+    workbenchMode.kind === "preview"
+      ? agentMaterialFiles.find((file) => file.id === workbenchMode.fileId) ?? null
+      : workbenchMode.kind === "review"
+        ? findOpeningConditionAgentPreviewFile(agentMaterialFiles, activeReviewItem, selectedAgentTask)
+        : null;
+  const latestReviewByTargetId = useMemo(
+    () =>
+      buildLatestHumanReviewMap(
+        (selectedAgentTask?.humanReviewQueue ?? []).filter((item) => item.targetType === "check_item"),
+      ),
+    [selectedAgentTask],
+  );
+  const activeReviewQueueItem =
+    activeReviewItem && activeReviewItem.humanReviewId
+      ? (selectedAgentTask?.humanReviewQueue ?? []).find((item) => item.id === activeReviewItem.humanReviewId) ??
+        latestReviewByTargetId.get(activeReviewItem.id) ??
+        null
+      : activeReviewItem
+        ? latestReviewByTargetId.get(activeReviewItem.id) ?? null
+        : null;
+  const blockingReviewCount =
+    selectedAgentTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
+  const canCompleteHumanReview = Boolean(
+    selectedAgentTask &&
+      selectedAgentTask.humanReviewQueue.length > 0 &&
+      blockingReviewCount === 0 &&
+      !pilotBusy,
+  );
+
+  function resetToListMode() {
+    setWorkbenchMode({ kind: "list" });
+    setAgentReviewNote("");
+  }
+
+  function openFilePreview(fileId: string) {
+    setWorkbenchMode({ kind: "preview", fileId });
+  }
+
+  function openReviewDetail(checkItemId: string) {
+    setWorkbenchMode({ kind: "review", checkItemId });
+  }
+
+  function submitWorkbenchReviewDecision(decision: "confirm" | "correct" | "reject" | "defer") {
+    if (!activeReviewQueueItem || !onReviewDecision) {
+      return;
+    }
+    onReviewDecision(activeReviewQueueItem.id, decision, agentReviewNote.trim() || undefined);
+    resetToListMode();
+  }
+
+  function completeWorkbenchHumanReview() {
+    if (!onCompleteHumanReview) {
+      return;
+    }
+    onCompleteHumanReview(agentReviewNote.trim() || undefined);
+    resetToListMode();
+  }
 
   if (!selectedAgentTask) {
     return (
@@ -2947,54 +3063,138 @@ function OpeningConditionObjectOverviewProductizedPage({
               </button>
             </div>
           </div>
-          <details className="opening-agent-file-group">
-            <summary>资料文档库</summary>
-            <div className="opening-agent-file-list">
-              {agentMaterialFiles.length === 0 ? (
-                <p className="opening-task-detail-empty">暂无已上传或已拆分的资料文件。</p>
-              ) : (
-                agentMaterialFiles.map((file) => (
-                  <button
-                    key={file.id}
-                    type="button"
-                    className={file.id === selectedAgentFile?.id ? "opening-agent-file-row active" : "opening-agent-file-row"}
-                    onClick={() => setSelectedAgentFileId(file.id)}
-                  >
-                    <strong>{file.label}</strong>
-                    <span>{file.fileName}</span>
-                  </button>
-                ))
-              )}
+          {workbenchMode.kind === "list" ? (
+            <div className="opening-agent-workbench-stack">
+              <details className="opening-agent-file-group">
+                <summary>资料文档库</summary>
+                <div className="opening-agent-file-list">
+                  {agentMaterialFiles.length === 0 ? (
+                    <p className="opening-task-detail-empty">暂无已上传或已拆分的资料文件。</p>
+                  ) : (
+                    agentMaterialFiles.map((file) => (
+                      <button
+                        key={file.id}
+                        type="button"
+                        className="opening-agent-file-row"
+                        onClick={() => openFilePreview(file.id)}
+                      >
+                        <strong>{file.label}</strong>
+                        <span>{file.fileName}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </details>
+              <details className="opening-agent-file-group">
+                <summary>待核查资料项</summary>
+                <div className="opening-agent-review-item-list">
+                  {agentReviewItems.length === 0 ? (
+                    <p className="opening-task-detail-empty">暂无待核查资料项，需先上传可识别的资料核查表。</p>
+                  ) : (
+                    agentReviewItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="opening-agent-review-item-row"
+                        onClick={() => openReviewDetail(item.id)}
+                      >
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.content}</small>
+                        </span>
+                        <em className={`opening-review-status tone-${item.tone}`}>{item.status}</em>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </details>
+              <div className="opening-agent-inline-actions">
+                <div>
+                  <strong>人工复核闭环</strong>
+                  <p>
+                    {blockingReviewCount > 0
+                      ? `仍有 ${blockingReviewCount} 项待人工复核，处理完成后才能进入最终报告生成。`
+                      : "所有阻塞复核项已关闭，可以继续完成人工复核并生成最终报告。"}
+                  </p>
+                </div>
+                <button type="button" className="primary" disabled={!canCompleteHumanReview} onClick={completeWorkbenchHumanReview}>
+                  完成人工复核并生成报告
+                </button>
+              </div>
             </div>
-          </details>
-          <details className="opening-agent-file-group">
-            <summary>待核查资料项</summary>
-            <div className="opening-agent-review-item-list">
-              {agentReviewItems.length === 0 ? (
-                <p className="opening-task-detail-empty">暂无待核查资料项，需先上传可识别的资料核查表。</p>
-              ) : (
-                agentReviewItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="opening-agent-review-item-row"
-                    onClick={() =>
-                      item.humanReviewId
-                        ? onFocusHumanReview?.(item.humanReviewId)
-                        : onFocusCheckItem?.(item.id)
-                    }
-                  >
-                    <span>
-                      <strong>{item.label}</strong>
-                      <small>{item.content}</small>
+          ) : workbenchMode.kind === "preview" ? (
+            <div className="opening-agent-mode-layout">
+              <div className="opening-agent-mode-header">
+                <div>
+                  <span className="eyebrow">资料预览</span>
+                  <h3>{activePreviewFile?.fileName ?? "未找到预览文件"}</h3>
+                </div>
+                <button type="button" className="secondary" onClick={resetToListMode}>
+                  返回任务列表
+                </button>
+              </div>
+              <OpeningConditionAgentDocumentPreview file={activePreviewFile} />
+            </div>
+          ) : (
+            <div className="opening-agent-review-layout">
+              <div className="opening-agent-review-detail-header">
+                <div>
+                  <span className="eyebrow">人工复核详情</span>
+                  <h3>{activeReviewItem?.label ?? "未找到核查项"}</h3>
+                  <p>{activeReviewItem?.content ?? "当前核查项上下文不可用。"}</p>
+                </div>
+                <button type="button" className="secondary" onClick={resetToListMode}>
+                  返回任务列表
+                </button>
+              </div>
+              <div className="opening-agent-review-layout-grid">
+                <div className="opening-agent-review-preview-pane">
+                  <OpeningConditionAgentDocumentPreview file={activePreviewFile} />
+                </div>
+                <div className="opening-agent-review-decision-pane">
+                  <div className="opening-agent-review-summary-card">
+                    <span className={`opening-review-status tone-${activeReviewItem?.tone ?? "warning"}`}>
+                      {activeReviewItem?.status ?? "待处理"}
                     </span>
-                    <em className={`opening-review-status tone-${item.tone}`}>{item.status}</em>
-                  </button>
-                ))
-              )}
+                    <p>{activeReviewItem?.evidenceText ?? "当前暂无关联证据，需人工结合资料判断。"}</p>
+                    {activeReviewQueueItem?.ruleExplanation ? <small>核查规则：{activeReviewQueueItem.ruleExplanation}</small> : null}
+                    {activeReviewQueueItem?.expectedEvidenceHints?.length ? (
+                      <small>期望资料：{activeReviewQueueItem.expectedEvidenceHints.join(" / ")}</small>
+                    ) : null}
+                    {activeReviewQueueItem?.safeNote ? <small>当前记录：{activeReviewQueueItem.safeNote}</small> : null}
+                  </div>
+                  <label className="opening-agent-review-note">
+                    <span>人工补充说明</span>
+                    <textarea
+                      value={agentReviewNote}
+                      onChange={(event) => setAgentReviewNote(event.target.value)}
+                      placeholder="可补充接受/拒绝原因、修正意见或需要继续跟进的说明。"
+                    />
+                  </label>
+                  <div className="opening-agent-review-action-grid">
+                    <button type="button" className="primary" onClick={() => submitWorkbenchReviewDecision("confirm")} disabled={!activeReviewQueueItem || pilotBusy}>
+                      接受
+                    </button>
+                    <button type="button" className="secondary" onClick={() => submitWorkbenchReviewDecision("correct")} disabled={!activeReviewQueueItem || pilotBusy}>
+                      修正后接受
+                    </button>
+                    <button type="button" className="secondary" onClick={() => submitWorkbenchReviewDecision("defer")} disabled={!activeReviewQueueItem || pilotBusy}>
+                      延后处理
+                    </button>
+                    <button type="button" className="danger subtle" onClick={() => submitWorkbenchReviewDecision("reject")} disabled={!activeReviewQueueItem || pilotBusy}>
+                      拒绝
+                    </button>
+                  </div>
+                  {!activeReviewQueueItem ? (
+                    <div className="opening-agent-review-summary-card muted">
+                      <strong>当前项无需新的人工决策</strong>
+                      <p>该核查项已经有结论，或当前没有待处理的人审阻塞项。你仍可以返回列表继续查看其他项。</p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
-          </details>
-          <OpeningConditionAgentDocumentPreview file={selectedAgentFile} />
+          )}
         </div>
         <div className="opening-agent-progress-pane">
           <div className="opening-agent-pane-header">
@@ -3023,7 +3223,7 @@ function OpeningConditionObjectOverviewProductizedPage({
                 ].filter(Boolean).join(" ")}
               >
                 <strong>{step.label}</strong>
-                <span>{step.operatorRequired ? "??????" : step.done ? "????" : "???"}</span>
+                <span>{step.operatorRequired ? "待人工处理" : step.done ? "已完成" : "进行中"}</span>
                 <small>{step.detail}</small>
                 {step.occurredAt && <small>{step.occurredAt}</small>}
               </div>
@@ -4782,8 +4982,8 @@ function OpeningConditionHumanReviewQueuePage({
   packet: OpeningConditionReviewPacket;
   pilotTask?: OpeningConditionPilotTask | null;
   pilotBusy?: boolean;
-  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer") => void;
-  onCompleteHumanReview?: () => void;
+  onReviewDecision?: (reviewId: string, decision: "confirm" | "correct" | "reject" | "defer", safeNote?: string) => void;
+  onCompleteHumanReview?: (safeNote?: string) => void;
   onGoToPage?: (page: OpeningConditionPortalPage) => void;
   focusedHumanReviewId?: string | null;
   onClearFocusedHumanReview?: () => void;
