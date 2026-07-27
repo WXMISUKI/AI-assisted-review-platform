@@ -1218,6 +1218,21 @@ function isDocxAgentMaterialFile(file: OpeningConditionAgentMaterialFile) {
   return fileName.endsWith(".docx") || contentType.includes("wordprocessingml.document");
 }
 
+function isPdfAgentMaterialFile(file: OpeningConditionAgentMaterialFile) {
+  const fileName = file.fileName.toLowerCase();
+  const contentType = (file.contentType ?? "").toLowerCase();
+  return fileName.endsWith(".pdf") || contentType.includes("application/pdf");
+}
+
+function isImageAgentMaterialFile(file: OpeningConditionAgentMaterialFile) {
+  const fileName = file.fileName.toLowerCase();
+  const contentType = (file.contentType ?? "").toLowerCase();
+  return (
+    contentType.startsWith("image/") ||
+    [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"].some((extension) => fileName.endsWith(extension))
+  );
+}
+
 function renderOpeningMarkdownInline(text: string) {
   const nodes: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\(([^)]+)\))/g;
@@ -1431,9 +1446,33 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
         }
         setOpenUrl(previewUrl);
 
+        if (isPdfAgentMaterialFile(previewFile)) {
+          previewContainer.innerHTML = "";
+          const frame = document.createElement("iframe");
+          frame.className = "opening-agent-inline-frame";
+          frame.src = previewUrl;
+          frame.title = previewFile.fileName;
+          previewContainer.appendChild(frame);
+          setStatus("ready");
+          setMessage("PDF 预览已加载。");
+          return;
+        }
+
+        if (isImageAgentMaterialFile(previewFile)) {
+          previewContainer.innerHTML = "";
+          const image = document.createElement("img");
+          image.className = "opening-agent-inline-image";
+          image.src = previewUrl;
+          image.alt = previewFile.fileName;
+          previewContainer.appendChild(image);
+          setStatus("ready");
+          setMessage("图片预览已加载。");
+          return;
+        }
+
         if (!isDocxAgentMaterialFile(previewFile)) {
           setStatus("fallback");
-          setMessage("当前内联预览优先支持 DOCX。你可以直接打开原文件查看。");
+          setMessage("当前内联预览已支持 DOCX、PDF 和图片。该文件类型请直接打开原文件查看。");
           return;
         }
 
@@ -1486,11 +1525,11 @@ function OpeningConditionAgentDocumentPreview({ file }: { file: OpeningCondition
               <p>{file.summary}</p>
             </div>
             {openUrl && (
-                <a className="secondary opening-agent-preview-link" href={openUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink size={14} />
-                  打开原文件
-                </a>
-              )}
+              <a className="secondary opening-agent-preview-link" href={openUrl} target="_blank" rel="noreferrer">
+                <ExternalLink size={14} />
+                打开原文件
+              </a>
+            )}
           </div>
           <p className={`source-faithful-preview-status ${status}`}>{message}</p>
           {status === "loading" ? (

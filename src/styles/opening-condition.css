@@ -804,6 +804,91 @@
   gap: 10px;
 }
 
+.opening-agent-review-action-grid button,
+.opening-agent-preview-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  border: 1px solid var(--button-border);
+  border-radius: 8px;
+  padding: 0 14px;
+  background: var(--button-bg);
+  color: var(--button-foreground);
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+  box-sizing: border-box;
+}
+
+.opening-agent-review-action-grid button:hover,
+.opening-agent-preview-link:hover {
+  border-color: var(--primary);
+  background: var(--button-bg-hover);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.opening-agent-review-action-grid button:focus-visible,
+.opening-agent-preview-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.opening-agent-review-action-grid button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.opening-agent-review-action-grid button.primary {
+  border-color: var(--button-primary-bg);
+  background: var(--button-primary-bg);
+  color: var(--button-primary-foreground);
+}
+
+.opening-agent-review-action-grid button.primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--button-primary-bg) 88%, black);
+  background: color-mix(in srgb, var(--button-primary-bg) 90%, black);
+  color: var(--button-primary-foreground);
+}
+
+.opening-agent-review-action-grid button.danger,
+.opening-agent-review-action-grid button.danger.subtle {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--button-border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--danger);
+}
+
+.opening-agent-review-action-grid button.danger:hover:not(:disabled),
+.opening-agent-review-action-grid button.danger.subtle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 52%, var(--button-border));
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.opening-agent-inline-frame,
+.opening-agent-inline-image {
+  width: 100%;
+  min-height: min(62vh, 680px);
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.opening-agent-inline-image {
+  display: block;
+  object-fit: contain;
+  padding: 8px;
+}
+
 @keyframes opening-agent-spin {
   from {
     transform: rotate(0deg);
