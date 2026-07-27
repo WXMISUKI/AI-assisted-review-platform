@@ -4,6 +4,7 @@ import { readDocumentObjectBuffer, uploadDocumentObject } from "./minioClient.mj
 import {
   deriveOpeningConditionPilotChecklistDefinition,
   extractOpeningConditionChecklistDefinitionFromDocxBuffer,
+  normalizeExtractedOpeningConditionChecklistItems,
 } from "./openingConditionChecklistAdapter.mjs";
 import {
   extractOpeningConditionZipManifestEntries,
@@ -2047,6 +2048,11 @@ function normalizeTrialPackageSummary(value) {
     diagnostics: {
       checklistDefinitionResolution: normalizeString(value.diagnostics?.checklistDefinitionResolution, "", 120) || undefined,
       checklistDefinitionCount: normalizeNumber(value.diagnostics?.checklistDefinitionCount, 0, MAX_CHECKLIST_ITEMS),
+      checklistRequiredCount: normalizeNumber(value.diagnostics?.checklistRequiredCount, 0, MAX_CHECKLIST_ITEMS),
+      checklistAsNeededCount: normalizeNumber(value.diagnostics?.checklistAsNeededCount, 0, MAX_CHECKLIST_ITEMS),
+      checklistCategories: normalizeStringList(value.diagnostics?.checklistCategories, 20, 120),
+      checklistSubCategories: normalizeStringList(value.diagnostics?.checklistSubCategories, 30, 120),
+      checklistSampleNames: normalizeStringList(value.diagnostics?.checklistSampleNames, 20, 240),
       inventoryResolution: normalizeString(value.diagnostics?.inventoryResolution, "", 120) || undefined,
       inventoryEntryCount: normalizeNumber(value.diagnostics?.inventoryEntryCount, 0, MAX_PACKET_INVENTORY_ENTRIES),
       inventoryFallbackReason: normalizeString(value.diagnostics?.inventoryFallbackReason, "", 160) || undefined,
@@ -2250,6 +2256,40 @@ function deriveTrialPackageProviderReadiness(task) {
   });
 }
 
+function summarizeChecklistDefinitionFacts(checklistDefinition = []) {
+  const items = Array.isArray(checklistDefinition) ? checklistDefinition : [];
+  const categories = new Set();
+  const subCategories = new Set();
+  let requiredCount = 0;
+  let asNeededCount = 0;
+
+  for (const item of items) {
+    if (!item) {
+      continue;
+    }
+    if (item.required) {
+      requiredCount += 1;
+    }
+    if (item.isAsNeeded) {
+      asNeededCount += 1;
+    }
+    if (item.category) {
+      categories.add(item.category);
+    }
+    if (item.subCategory) {
+      subCategories.add(item.subCategory);
+    }
+  }
+
+  return {
+    checklistRequiredCount: requiredCount,
+    checklistAsNeededCount: asNeededCount,
+    checklistCategories: Array.from(categories).slice(0, 20),
+    checklistSubCategories: Array.from(subCategories).slice(0, 30),
+    checklistSampleNames: items.map((item) => item?.name).filter(Boolean).slice(0, 20),
+  };
+}
+
 function deriveTrialPackageSummary(task) {
   const intakeDiagnostics = findLatestEventDiagnostics(task, "task.intake_initialized");
   const createdDiagnostics = findLatestEventDiagnostics(task, "task.created");
@@ -2262,6 +2302,7 @@ function deriveTrialPackageSummary(task) {
   const matching = summarizePilotCheckItems(task.checkItems ?? []);
   const humanReview = summarizeHumanReviewQueue(task.humanReviewQueue ?? []);
   const preflightReadiness = task.preflightReadiness ?? deriveOpeningConditionPilotPreflightReadiness(task);
+  const checklistFacts = summarizeChecklistDefinitionFacts(task.checklistDefinition ?? []);
 
   return normalizeTrialPackageSummary({
     taskId: task.id,
@@ -2277,6 +2318,7 @@ function deriveTrialPackageSummary(task) {
     diagnostics: {
       checklistDefinitionResolution: diagnosticsSource.checklistDefinitionResolution,
       checklistDefinitionCount: diagnosticsSource.checklistDefinitionCount ?? task.checklistDefinition?.length ?? 0,
+      ...checklistFacts,
       inventoryResolution: diagnosticsSource.inventoryResolution,
       inventoryEntryCount: diagnosticsSource.inventoryEntryCount ?? task.packet?.inventoryEntries?.length ?? 0,
       inventoryFallbackReason: diagnosticsSource.inventoryFallbackReason,
@@ -4292,10 +4334,12 @@ async function resolveChecklistDefinitionForIntake(input, packet, basisVersion, 
   if (packet?.checklistObject?.storageKey) {
     try {
       const loadedObject = await readObjectBuffer(packet.checklistObject.storageKey);
-      const extractedChecklistDefinition = (await extractChecklistDefinitionFromBuffer(loadedObject.buffer, {
-        basisVersionId: basisVersion?.id ?? "",
-        requiredMasterData,
-      }))
+      const extractedChecklistDefinition = normalizeExtractedOpeningConditionChecklistItems(
+        await extractChecklistDefinitionFromBuffer(loadedObject.buffer, {
+          basisVersionId: basisVersion?.id ?? "",
+          requiredMasterData,
+        }),
+      )
         .map((item, index) => normalizeChecklistItem(item, index))
         .filter(Boolean)
         .slice(0, MAX_CHECKLIST_ITEMS);
@@ -4634,6 +4678,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       options,
     );
     const checklistDefinition = checklistResolution.checklistDefinition;
+    const checklistFacts = summarizeChecklistDefinitionFacts(checklistDefinition);
     const inventoryResolution = packetResolution?.inventoryResolution ?? "derived_from_source_objects";
     const inventoryFallbackReason = packetResolution?.inventoryFallbackReason;
 
@@ -4668,6 +4713,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
       inventoryEntryCount: packet.inventoryEntries.length,
       inventoryFallbackReason,
       checklistDefinitionCount: checklistDefinition.length,
+      ...checklistFacts,
       checklistDefinitionResolution: checklistResolution.resolution,
       selectedChecklistTemplateId: checklistResolution.templateId,
     };
@@ -4687,6 +4733,7 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         inventoryEntryCount: packet.inventoryEntries.length,
         inventoryFallbackReason,
         checklistDefinitionCount: checklistDefinition.length,
+        ...checklistFacts,
         checklistDefinitionResolution: checklistResolution.resolution,
         checklistTemplateId: checklistResolution.templateId,
       },
@@ -4704,6 +4751,8 @@ export async function initializeOpeningConditionPilotTaskIntake(input = {}, opti
         inventoryResolution,
         inventoryEntryCount: packet.inventoryEntries.length,
         inventoryFallbackReason,
+        checklistDefinitionCount: checklistDefinition.length,
+        ...checklistFacts,
         inventoryFileNames: packet.inventoryEntries.map((item) => item.fileName).slice(0, 30),
         sourceFileNames: packet.sourceObjects.map((item) => item.fileName).slice(0, 30),
       },
@@ -5074,6 +5123,7 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
     const packet = packetResolution.packet;
     const inventoryResolution = packetResolution.inventoryResolution;
     const inventoryFallbackReason = packetResolution.inventoryFallbackReason;
+    const checklistFacts = summarizeChecklistDefinitionFacts(existingTask.checklistDefinition ?? []);
     if (!packet) {
       return {
         snapshot,
@@ -5114,6 +5164,8 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
           inventoryResolution,
           inventoryEntryCount: packet.inventoryEntries.length,
           inventoryFallbackReason,
+          checklistDefinitionCount: existingTask.checklistDefinition.length,
+          ...checklistFacts,
           inventoryFileNames: packet.inventoryEntries.map((item) => item.fileName).slice(0, 30),
           sourceFileNames: packet.sourceObjects.map((item) => item.fileName).slice(0, 30),
         },

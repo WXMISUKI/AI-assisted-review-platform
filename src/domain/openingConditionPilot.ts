@@ -348,6 +348,11 @@ export interface OpeningConditionPilotTrialPackageInputObjects {
 export interface OpeningConditionPilotTrialPackageDiagnostics {
   checklistDefinitionResolution?: string;
   checklistDefinitionCount: number;
+  checklistRequiredCount?: number;
+  checklistAsNeededCount?: number;
+  checklistCategories?: string[];
+  checklistSubCategories?: string[];
+  checklistSampleNames?: string[];
   inventoryResolution?: string;
   inventoryEntryCount: number;
   inventoryFallbackReason?: string;

@@ -1,4 +1,5 @@
 .opening-workspace-content {
+  display: flex;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -6,15 +7,23 @@
   padding-right: 2px;
 }
 
+.opening-portal-shell .shell-topbar {
+  display: none;
+}
+
 .opening-agent-console {
+  display: grid;
   gap: 16px;
   min-height: 100%;
+  height: 100%;
+  min-width: 0;
 }
 
 .opening-agent-chat-page {
   min-height: 100%;
   display: grid;
   place-items: center;
+  align-content: center;
   padding: 24px 20px 40px;
 }
 
@@ -23,6 +32,7 @@
   justify-items: center;
   gap: 18px;
   width: min(820px, 100%);
+  min-width: 0;
   text-align: center;
 }
 
@@ -168,9 +178,9 @@
 }
 
 .opening-sidebar-task {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 8px;
   width: 100%;
   min-width: 0;
@@ -192,6 +202,7 @@
 
 .opening-sidebar-task-main {
   display: flex;
+  width: 100%;
   min-width: 0;
   flex: 1 1 auto;
   align-items: center;
@@ -203,6 +214,7 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .opening-sidebar-task-delete {
@@ -217,6 +229,7 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  align-self: center;
 }
 
 .opening-sidebar-task-delete:hover,
@@ -459,7 +472,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
   gap: 0;
-  min-height: min(760px, calc(100vh - 150px));
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -477,7 +491,7 @@
 
 .opening-agent-file-pane {
   border-right: 1px solid var(--border);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .opening-agent-pane-header {
@@ -516,6 +530,10 @@
 }
 
 .opening-agent-file-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
   color: var(--text-primary);
   cursor: pointer;
   font-weight: 800;
@@ -687,8 +705,9 @@
 
 .opening-agent-inline-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   border: 1px solid var(--border-soft);
   border-radius: 9px;
@@ -704,6 +723,10 @@
 .opening-agent-inline-actions p {
   margin-top: 6px;
   color: var(--text-secondary);
+}
+
+.opening-agent-primary-action {
+  min-width: 220px;
 }
 
 .opening-agent-mode-layout,
@@ -918,6 +941,73 @@
   overflow: hidden;
   border-radius: 999px;
   background: var(--border-soft);
+}
+
+.opening-agent-timeline-section,
+.opening-agent-report-handoff,
+.opening-agent-secondary-diagnostics {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.opening-agent-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.opening-agent-section-heading strong,
+.opening-agent-section-heading span {
+  min-width: 0;
+}
+
+.opening-agent-section-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.opening-agent-report-handoff > .opening-agent-section-heading + strong {
+  display: none;
+}
+
+.opening-agent-report-placeholder {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--surface-muted);
+}
+
+.opening-agent-report-placeholder strong,
+.opening-agent-report-placeholder p {
+  margin: 0;
+}
+
+.opening-agent-secondary-diagnostics {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--surface-muted) 70%, var(--surface));
+}
+
+.opening-agent-secondary-diagnostics summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.opening-agent-secondary-diagnostics-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .opening-agent-progress-bar span {

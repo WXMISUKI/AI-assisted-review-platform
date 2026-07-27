@@ -1690,7 +1690,7 @@ function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTas
     {
       key: "state-fallback",
       label: openingConditionPilotStateLabels[task.state] ?? task.state,
-      detail: "?????????????????",
+      detail: "The task is still moving through the platform-owned workflow. Follow the timeline and human-review guidance on the right.",
       progress: getOpeningConditionAgentTaskProgress(task),
       done: task.state === "report_ready" || task.state === "archived",
       active: task.state !== "report_ready" && task.state !== "archived",
@@ -3096,6 +3096,12 @@ function OpeningConditionObjectOverviewProductizedPage({
   }, [selectedAgentTaskId]);
 
   useEffect(() => {
+    if (selectedAgentTaskId && !agentTasks.some((task) => task.id === selectedAgentTaskId)) {
+      onCloseAgentTask?.();
+    }
+  }, [agentTasks, onCloseAgentTask, selectedAgentTaskId]);
+
+  useEffect(() => {
     if (workbenchMode.kind === "preview" && !agentMaterialFiles.some((file) => file.id === workbenchMode.fileId)) {
       setWorkbenchMode({ kind: "list" });
     }
@@ -3172,7 +3178,6 @@ function OpeningConditionObjectOverviewProductizedPage({
       return;
     }
     onCompleteHumanReview(agentReviewNote.trim() || undefined);
-    resetToListMode();
   }
 
   if (!selectedAgentTask) {
@@ -3334,7 +3339,12 @@ function OpeningConditionObjectOverviewProductizedPage({
                       : "所有阻塞复核项已关闭，可以继续完成人工复核并生成最终报告。"}
                   </p>
                 </div>
-                <button type="button" className="primary" disabled={!canCompleteHumanReview} onClick={completeWorkbenchHumanReview}>
+                <button
+                  type="button"
+                  className="primary opening-agent-primary-action"
+                  disabled={!canCompleteHumanReview}
+                  onClick={completeWorkbenchHumanReview}
+                >
                   完成人工复核并生成报告
                 </button>
               </div>
@@ -3428,6 +3438,11 @@ function OpeningConditionObjectOverviewProductizedPage({
           <div className="opening-agent-progress-bar">
             <span style={{ width: `${agentProgress}%` }} />
           </div>
+          <section className="opening-agent-timeline-section">
+            <div className="opening-agent-section-heading">
+              <strong>执行时间线</strong>
+              <span>{agentSteps.length} steps</span>
+            </div>
           <div className="opening-agent-step-list">
             {agentSteps.map((step) => (
               <div
@@ -3446,7 +3461,18 @@ function OpeningConditionObjectOverviewProductizedPage({
               </div>
             ))}
           </div>
+          </section>
           <div className="opening-agent-report-handoff">
+            <div className="opening-agent-section-heading">
+              <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "Final report"}</strong>
+              <span>
+                {selectedAgentTask?.reportAsset?.markdownContent
+                  ? "ready"
+                  : selectedAgentTask.state === "awaiting_human_review"
+                    ? "waiting for human review"
+                    : "running"}
+              </span>
+            </div>
             <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "最终报告将在核查完成后生成"}</strong>
             <p>
               {selectedReviewScope === "completeness_and_compliance"
@@ -3455,8 +3481,30 @@ function OpeningConditionObjectOverviewProductizedPage({
             </p>
             {selectedAgentTask?.reportAsset?.markdownContent ? (
               <OpeningConditionMarkdownReport markdown={selectedAgentTask.reportAsset.markdownContent} />
-            ) : null}
+            ) : (
+              <div className="opening-agent-report-placeholder">
+                <strong>
+                  {blockingReviewCount > 0
+                    ? `${blockingReviewCount} review item(s) still need human confirmation`
+                    : "The platform is preparing the final Markdown report"}
+                </strong>
+                <p>
+                  {blockingReviewCount > 0
+                    ? "Finish the remaining human-review items on the left, then the workflow can continue into report generation."
+                    : "When the automatic nodes finish, this area will render the final Markdown report directly."}
+                </p>
+              </div>
+            )}
           </div>
+          <details className="opening-agent-secondary-diagnostics">
+            <summary>Supporting diagnostics</summary>
+            <div className="opening-agent-secondary-diagnostics-body">
+              <span>Material files: {agentMaterialFiles.length}</span>
+              <span>Checklist items: {agentReviewItems.length}</span>
+              <span>Human-review queue: {selectedAgentTask?.humanReviewQueue.length ?? 0}</span>
+              <span>Evidence records: {selectedAgentTask?.evidence.length ?? 0}</span>
+            </div>
+          </details>
         </div>
       </section>
 

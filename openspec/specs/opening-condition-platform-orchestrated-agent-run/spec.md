@@ -13,24 +13,35 @@ The platform SHALL own the opening-condition agent run state after the operator 
 - **AND** the browser does not need to call Dify, OCR Worker, or MaxKB directly
 
 ### Requirement: Checklist extraction follows the Dify check_items schema
-The platform SHALL normalize checklist-derived review items using the Dify workflow's `check_items` contract as the schema reference.
+The platform SHALL normalize checklist-derived review items using the Dify workflow's `check_items` contract as the schema reference, while persisting them as platform-owned facts.
 
-#### Scenario: Known checklist template is uploaded
-- **WHEN** the checklist filename or known adapter identifies the 承台施工条件核查表 template
+#### Scenario: Uploaded checklist content is available
+- **WHEN** the uploaded checklist document can be parsed into `资料核查` rows
 - **THEN** the platform creates checklist/check item records containing item id, category, sub-category, content, mandatory flag, as-needed flag, expected material names, pass state, match files, remark, and row index
 - **AND** the extracted items are persisted on the task as platform facts
 
-#### Scenario: Checklist template cannot be recognized
-- **WHEN** the platform cannot derive checklist items from the uploaded checklist
+#### Scenario: Checklist template fallback is required
+- **WHEN** the platform cannot derive checklist items from the uploaded checklist content but the checklist filename matches a known controlled adapter
+- **THEN** the platform uses the controlled template as a bounded fallback
+- **AND** it records a safe diagnostic indicating that uploaded content extraction did not supply the formal checklist items
+
+#### Scenario: Checklist cannot be derived
+- **WHEN** the platform cannot derive checklist items from either uploaded content or a controlled template
 - **THEN** the task records a safe diagnostic explaining that checklist definition needs human input
 - **AND** it does not invent formal review items
 
 ### Requirement: Material matching produces review statuses
-The platform SHALL match checklist item material names against the task material inventory and derive review-item status.
+The platform SHALL match checklist item material names against task packet entries and derived packet file assets to produce review-item status.
 
-#### Scenario: Required material has matching files
-- **WHEN** a checklist item's expected material names are represented in the packet inventory
-- **THEN** the task records matched evidence and marks the item as matched unless a visual or ambiguity rule requires human review
+#### Scenario: Required material has matching derived files
+- **WHEN** a checklist item's expected material names are represented by packet inventory entries that have derived file assets
+- **THEN** the task records matched evidence against those derived file assets
+- **AND** the item is marked as matched unless a visual or ambiguity rule requires human review
+
+#### Scenario: Required material is only represented by manifest-only entries
+- **WHEN** a checklist item's expected material names can only be matched to manifest-only packet inventory entries
+- **THEN** the task records the manifest-level match as bounded evidence context
+- **AND** it may still route the item to human review if stable preview or downstream verification is unavailable
 
 #### Scenario: Required material is missing or ambiguous
 - **WHEN** a checklist item has no stable material match or requires visual/manual judgement
@@ -63,7 +74,7 @@ The platform SHALL prefer checklist items extracted from the uploaded checklist 
 - **THEN** the platform extracts checklist items from those rows
 - **AND** it persists item id, category, sub-category, content, mandatory flag, as-needed flag, expected material names, and row index as platform facts
 
-#### Scenario: Uploaded checklist contains现场核查 rows
+#### Scenario: Uploaded checklist contains `现场核查` rows
 - **WHEN** a parsed checklist row belongs to `现场核查`
 - **THEN** the platform excludes that row from the current MVP material-review checklist
 - **AND** it does not create a pending material-review item for that row

@@ -143,6 +143,58 @@ function deriveSubCategory(cells = [], content = "") {
   return known.find((item) => cells.includes(item) || content.includes(item)) ?? "";
 }
 
+function isMaterialChecklistRow(rowText = "", content = "") {
+  const normalizedRowText = String(rowText ?? "");
+  const normalizedContent = String(content ?? "");
+  if (!normalizedRowText || !normalizedContent) {
+    return false;
+  }
+
+  if (normalizedRowText.includes("现场核查") || normalizedContent.includes("现场核查")) {
+    return false;
+  }
+
+  if (/[现地现场巡视旁站验槽测量复核]/.test(normalizedContent) && !/[资料报审证书合同台账报告方案许可]/.test(normalizedContent)) {
+    return false;
+  }
+
+  if (normalizedRowText.includes("资料核查")) {
+    return true;
+  }
+
+  return /(资料|报审|证书|记录|合同|方案|许可|台账|报告|影像|附件)/.test(normalizedContent);
+}
+
+export function normalizeExtractedOpeningConditionChecklistItems(items = []) {
+  const seenKeys = new Set();
+  const normalizedItems = [];
+
+  for (const item of items) {
+    if (!item || item.category !== "资料核查") {
+      continue;
+    }
+
+    const safeName = String(item.name ?? "").replace(/[★*]/g, "").trim();
+    if (!safeName || safeName.includes("现场核查")) {
+      continue;
+    }
+
+    const dedupeKey = `${item.rowIndex ?? ""}:${item.id ?? ""}:${safeName}`;
+    if (seenKeys.has(dedupeKey)) {
+      continue;
+    }
+    seenKeys.add(dedupeKey);
+
+    normalizedItems.push({
+      ...item,
+      name: String(item.name ?? "").trim(),
+      expectedEvidenceHints: Array.from(new Set(item.expectedEvidenceHints ?? [])).filter(Boolean).slice(0, 20),
+    });
+  }
+
+  return normalizedItems;
+}
+
 export async function extractOpeningConditionChecklistDefinitionFromDocxBuffer(
   buffer,
   { basisVersionId = "", requiredMasterData = [] } = {},
@@ -159,15 +211,15 @@ export async function extractOpeningConditionChecklistDefinitionFromDocxBuffer(
     if (!rowText || rowText.includes("现场核查")) {
       continue;
     }
-    if (!rowText.includes("资料核查") && !/(资料|报审|证书|记录|合同|方案|许可|台账|报告)/.test(rowText)) {
-      continue;
-    }
     if (/(核查项目|核查内容|检查内容|序号|类别)/.test(rowText) && rowText.length < 80) {
       continue;
     }
 
     const content = pickChecklistContentCell(row.cells);
     if (!content || content.length < 6) {
+      continue;
+    }
+    if (!isMaterialChecklistRow(rowText, content)) {
       continue;
     }
 
@@ -190,7 +242,7 @@ export async function extractOpeningConditionChecklistDefinitionFromDocxBuffer(
     });
   }
 
-  return items;
+  return normalizeExtractedOpeningConditionChecklistItems(items);
 }
 
 const pilotChecklistTemplates = [
