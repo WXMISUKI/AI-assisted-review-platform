@@ -1596,7 +1596,7 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
           humanReviewIds: [],
         }));
 
-  return checkItems.map((item) => {
+  return checkItems.map((item, index) => {
     const latestReview = latestHumanReviewByTargetId.get(item.id);
     const matchedEvidence = item.evidenceIds.map((evidenceId) => evidenceById.get(evidenceId)).filter(Boolean);
     const status = latestReview && (latestReview.status === "open" || latestReview.status === "deferred")
@@ -1609,7 +1609,11 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
     const tone = status === "已匹配" || status === "已核查" ? "success" : status === "待人工复核" ? "warning" : "danger";
 
     return {
-      id: item.id,
+      id: [task.id, item.id, item.category, item.subCategory, item.name, index]
+        .filter((part) => part !== undefined && part !== null && part !== "")
+        .map(String)
+        .join("::"),
+      targetId: item.id,
       label: `${item.category}${item.subCategory ? `-${item.subCategory}` : ""}${item.required ? "★" : ""}`,
       content: item.name,
       status,
@@ -3187,11 +3191,11 @@ function OpeningConditionObjectOverviewProductizedPage({
             item.id === activeReviewItem.humanReviewId &&
             (item.status === "open" || item.status === "deferred"),
         ) ??
-        openReviewByTargetId.get(activeReviewItem.id) ??
-        latestReviewByTargetId.get(activeReviewItem.id) ??
+        openReviewByTargetId.get(activeReviewItem.targetId) ??
+        latestReviewByTargetId.get(activeReviewItem.targetId) ??
         null
       : activeReviewItem
-        ? openReviewByTargetId.get(activeReviewItem.id) ?? latestReviewByTargetId.get(activeReviewItem.id) ?? null
+        ? openReviewByTargetId.get(activeReviewItem.targetId) ?? latestReviewByTargetId.get(activeReviewItem.targetId) ?? null
         : null;
   const blockingReviewCount =
     selectedAgentTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
@@ -6983,10 +6987,7 @@ function OpeningConditionRealTrialIntakePanel({
       }
 
       const workspace = packet.workspaceContext;
-      const taskId =
-        portalState.archivedTask
-          ? (getNextOpeningPilotRunTaskId?.() ?? `oc-pilot-${packet.workspaceId}-run-${Date.now()}`)
-          : (pilotTask?.id ?? `oc-pilot-${packet.workspaceId}`);
+      const taskId = getNextOpeningPilotRunTaskId?.() ?? `oc-pilot-${packet.workspaceId}-run-${Date.now()}`;
 
       const result = await bootstrapOpeningConditionPilotTrial({
         taskId,

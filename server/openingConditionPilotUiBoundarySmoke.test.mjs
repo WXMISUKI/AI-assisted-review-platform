@@ -7,6 +7,7 @@ const workspacePagesSourcePath = new URL("../src/productWorkspacePages.tsx", imp
 const runSnapshotSourcePath = new URL("../src/openingConditionRunSnapshot.ts", import.meta.url);
 const appSourcePath = new URL("../src/App.tsx", import.meta.url);
 const cleanReviewSourcePath = new URL("../src/domain/openingConditionReviewClean.ts", import.meta.url);
+const pilotStoreSourcePath = new URL("./openingConditionPilotStore.mjs", import.meta.url);
 
 test("UI smoke keeps archived opening-condition runs read-only in the shared portal state", async () => {
   const source = await readFile(portalStateSourcePath, "utf8");
@@ -265,8 +266,14 @@ test("UI smoke keeps history delete, old inventory preview fallback, and markdow
 
 test("UI smoke keeps opening-condition task creation and deletion aligned with current-run refresh", async () => {
   const appSource = await readFile(appSourcePath, "utf8");
+  const source = await readFile(workspacePagesSourcePath, "utf8");
 
   assert.match(appSource, /function handleOpeningTrialBootstrapComplete/);
+  assert.match(appSource, /if \(workspaceTasks\.length === 0\) \{\s+return null;\s+\}/);
+  assert.match(appSource, /const fallbackTaskId = getOpeningPilotTaskId\(openingPacket\);/);
+  assert.match(appSource, /resolvedTaskId === fallbackTaskId && !workspaceTasks\.some\(\(task\) => task\.id === resolvedTaskId\)/);
+  assert.match(source, /const taskId = getNextOpeningPilotRunTaskId\?\.\(\) \?\? `oc-pilot-\$\{packet\.workspaceId\}-run-\$\{Date\.now\(\)\}`;/);
+  assert.doesNotMatch(source, /pilotTask\?\.id \?\? `oc-pilot-\$\{packet\.workspaceId\}`/);
   assert.match(appSource, /setOpeningPage\("workspace-context"\);/);
   assert.match(appSource, /setOpeningPilotTask\(createdTask\);/);
   assert.match(appSource, /setOpeningPilotAllTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, createdTask\)\);/);
@@ -274,6 +281,26 @@ test("UI smoke keeps opening-condition task creation and deletion aligned with c
   assert.match(appSource, /void refreshOpeningPilotTask\(createdTask\.id, \{ preserveStatus: true \}\);/);
   assert.match(appSource, /async function deleteOpeningPilotHistoryTask/);
   assert.match(appSource, /await refreshOpeningPilotTask\(undefined, \{ resolveCurrentRun: true, preserveStatus: true \}\);/);
+});
+
+test("UI smoke keeps duplicate checklist ids from becoming review row identity", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /return checkItems\.map\(\(item, index\) => \{/);
+  assert.match(source, /\[task\.id, item\.id, item\.category, item\.subCategory, item\.name, index\]/);
+  assert.match(source, /targetId: item\.id/);
+  assert.match(source, /openReviewByTargetId\.get\(activeReviewItem\.targetId\)/);
+  assert.match(source, /latestReviewByTargetId\.get\(activeReviewItem\.targetId\)/);
+});
+
+test("UI smoke keeps basis as context and packet files as evidence candidates", async () => {
+  const storeSource = await readFile(pilotStoreSourcePath, "utf8");
+
+  assert.match(storeSource, /const basisObject = normalizeObjectRef\(input\.basisObject\);/);
+  assert.match(storeSource, /const sourceObjects = Array\.isArray\(input\.sourceObjects\)/);
+  assert.match(storeSource, /sourceObject: basisObject/);
+  assert.match(storeSource, /sourceObjects,/);
+  assert.doesNotMatch(storeSource, /sourceObjects:\s*\[basisObject/);
 });
 
 test("UI smoke keeps the cloud-case shell clean when no backend task exists", async () => {

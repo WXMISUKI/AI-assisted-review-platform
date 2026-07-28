@@ -276,7 +276,7 @@ export function App() {
     const workspaceTasks = await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
 
     if (workspaceTasks.length === 0) {
-      return preferredTaskId ?? null;
+      return null;
     }
 
     const preferredTask = preferredTaskId ? workspaceTasks.find((task) => task.id === preferredTaskId) : null;
@@ -304,9 +304,18 @@ export function App() {
 
     try {
       await refreshOpeningWorkspaceFacts(openingPacket.workspaceId);
-      await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
+      const workspaceTasks = await refreshOpeningWorkspaceTasks(openingPacket.workspaceId);
       await refreshOpeningWorkspaceAssetRegistry();
       if (!resolvedTaskId) {
+        setOpeningPilotTask(null);
+        setOpeningPilotReadiness(null);
+        if (!options?.preserveStatus) {
+          setOpeningPilotStatus("当前项目暂无开工条件核查任务，请先上传待核查文件。");
+        }
+        return;
+      }
+      const fallbackTaskId = getOpeningPilotTaskId(openingPacket);
+      if (resolvedTaskId === fallbackTaskId && !workspaceTasks.some((task) => task.id === resolvedTaskId)) {
         setOpeningPilotTask(null);
         setOpeningPilotReadiness(null);
         if (!options?.preserveStatus) {
