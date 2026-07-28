@@ -227,6 +227,18 @@ test("UI smoke exposes the low-noise agent review console and source-bound compl
   assert.match(guidance, /资料合规性.*可选/);
 });
 
+test("UI smoke keeps packet inventory document rows keyed by UI-safe identity", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /function buildOpeningConditionAgentInventoryFileId/);
+  assert.match(source, /entry\.relativePath \?\? entry\.fileName/);
+  assert.match(source, /derivedObject\?\.storageKey/);
+  assert.match(source, /for \(const \[entryIndex, entry\] of \(task\.packet\?\.inventoryEntries \?\? \[\]\)\.entries\(\)\)/);
+  assert.match(source, /id: buildOpeningConditionAgentInventoryFileId\(entry, derivedObject, entryIndex\)/);
+  assert.match(source, /relativePath: entry\.relativePath/);
+  assert.doesNotMatch(source, /id: entry\.id,/);
+});
+
 test("UI smoke keeps history delete, old inventory preview fallback, and markdown report rendering in the agent console", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
   const appSource = await readFile(appSourcePath, "utf8");
@@ -242,8 +254,26 @@ test("UI smoke keeps history delete, old inventory preview fallback, and markdow
   assert.match(source, /OpeningConditionMarkdownReport/);
   assert.match(source, /opening-agent-markdown-report/);
   assert.match(source, /selectedAgentTask\.reportAsset\.markdownContent/);
+  assert.match(source, /opening-agent-timeline-section/);
+  assert.match(source, /opening-agent-section-heading/);
+  assert.match(source, /opening-agent-secondary-diagnostics/);
   assert.match(styles, /\.opening-agent-markdown-report/);
   assert.match(styles, /\.opening-agent-markdown-table/);
+  assert.match(styles, /\.opening-agent-report-placeholder/);
+  assert.match(styles, /\.opening-agent-secondary-diagnostics-body/);
+});
+
+test("UI smoke keeps opening-condition task creation and deletion aligned with current-run refresh", async () => {
+  const appSource = await readFile(appSourcePath, "utf8");
+
+  assert.match(appSource, /function handleOpeningTrialBootstrapComplete/);
+  assert.match(appSource, /setOpeningPage\("workspace-context"\);/);
+  assert.match(appSource, /setOpeningPilotTask\(createdTask\);/);
+  assert.match(appSource, /setOpeningPilotAllTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, createdTask\)\);/);
+  assert.match(appSource, /setOpeningPilotWorkspaceTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, createdTask\)\);/);
+  assert.match(appSource, /void refreshOpeningPilotTask\(createdTask\.id, \{ preserveStatus: true \}\);/);
+  assert.match(appSource, /async function deleteOpeningPilotHistoryTask/);
+  assert.match(appSource, /await refreshOpeningPilotTask\(undefined, \{ resolveCurrentRun: true, preserveStatus: true \}\);/);
 });
 
 test("UI smoke keeps the cloud-case shell clean when no backend task exists", async () => {
@@ -290,4 +320,21 @@ test("UI smoke keeps the default opening-condition home as one centered chat ent
   assert.match(styles, /\.opening-agent-modal \.opening-trial-upload-grid input::file-selector-button/);
   assert.doesNotMatch(source, /<div className="opening-agent-chat-context">/);
   assert.doesNotMatch(styles, /\.opening-agent-chat-context/);
+});
+
+test("UI smoke protects centered agent home, derived preview preference, and active human-review refresh", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+  const appSource = await readFile(appSourcePath, "utf8");
+  const styles = await readFile(new URL("../src/styles/opening-condition.css", import.meta.url), "utf8");
+
+  assert.match(styles, /\.opening-workspace-content[\s\S]*justify-content: center/);
+  assert.match(styles, /\.opening-condition-page[\s\S]*margin: 0 auto/);
+  assert.match(source, /\[\.\.\.\(pilotTask \? \[pilotTask\] : \[\]\), \.\.\.\(allPilotTasks \?\? \[\]\)\]/);
+  assert.match(source, /const openReviewByTargetId = useMemo/);
+  assert.match(source, /assetizationStatus/);
+  assert.match(source, /hasDerivedAsset/);
+  assert.match(source, /sourceArchiveStorageKey/);
+  assert.match(source, /sourceArchiveFileName/);
+  assert.match(appSource, /setOpeningPilotAllTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, result\.task\)\);/);
+  assert.match(appSource, /setOpeningPilotWorkspaceTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, result\.task\)\);/);
 });

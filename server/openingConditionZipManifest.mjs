@@ -54,6 +54,16 @@ function normalizeZipEntryPath(value) {
   return safePath;
 }
 
+function createStableEntryId(sourceObjectId, relativePath, index) {
+  const normalizedPath = normalizeZipEntryPath(relativePath);
+  if (!normalizedPath) {
+    return `${sourceObjectId}-entry-${index + 1}`;
+  }
+
+  const encodedPath = Buffer.from(normalizedPath, "utf8").toString("base64url").slice(0, 160);
+  return `${sourceObjectId}-entry-${encodedPath || index + 1}`;
+}
+
 function createManifestEntry(sourceObjectId, relativePath, index, sizeBytes) {
   const fileName = posix.basename(relativePath);
   if (!fileName) {
@@ -61,7 +71,7 @@ function createManifestEntry(sourceObjectId, relativePath, index, sizeBytes) {
   }
 
   return {
-    id: `${sourceObjectId}-entry-${index + 1}`,
+    id: createStableEntryId(sourceObjectId, relativePath, index),
     sourceObjectId,
     fileName,
     relativePath,

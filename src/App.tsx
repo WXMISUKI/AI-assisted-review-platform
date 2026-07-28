@@ -725,8 +725,11 @@ export function App() {
         return;
       }
 
+      const nextTask = result.task;
       const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
-      setOpeningPilotTask(result.task);
+      setOpeningPilotTask(nextTask);
+      setOpeningPilotAllTasks((tasks) => upsertOpeningPilotTaskList(tasks, nextTask));
+      setOpeningPilotWorkspaceTasks((tasks) => upsertOpeningPilotTaskList(tasks, nextTask));
       setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
       if (result.blockingCount && result.blockingCount > 0) {
         setOpeningPilotStatus("Human-review decision recorded; " + result.blockingCount + " blocker(s) remain.");
@@ -771,15 +774,21 @@ export function App() {
         return;
       }
 
+      const completedTask = completed.task;
       const report = await generateOpeningConditionPilotReport(taskId);
       if (!report.ok || !report.task) {
-        setOpeningPilotTask(completed.task);
+        setOpeningPilotTask(completedTask);
+        setOpeningPilotAllTasks((tasks) => upsertOpeningPilotTaskList(tasks, completedTask));
+        setOpeningPilotWorkspaceTasks((tasks) => upsertOpeningPilotTaskList(tasks, completedTask));
         setOpeningPilotStatus(report.message ?? "人工复核已完成，但最终报告生成失败");
         return;
       }
 
+      const reportTask = report.task;
       const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
-      setOpeningPilotTask(report.task);
+      setOpeningPilotTask(reportTask);
+      setOpeningPilotAllTasks((tasks) => upsertOpeningPilotTaskList(tasks, reportTask));
+      setOpeningPilotWorkspaceTasks((tasks) => upsertOpeningPilotTaskList(tasks, reportTask));
       setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
       setOpeningPilotStatus("人工复核已完成，最终报告已生成。");
     } catch (error) {
@@ -809,11 +818,14 @@ export function App() {
         return;
       }
 
+      const nextTask = result.task;
       const readinessResult = await fetchOpeningConditionPilotTaskReadiness(taskId).catch(() => null);
-      setOpeningPilotTask(result.task);
+      setOpeningPilotTask(nextTask);
+      setOpeningPilotAllTasks((tasks) => upsertOpeningPilotTaskList(tasks, nextTask));
+      setOpeningPilotWorkspaceTasks((tasks) => upsertOpeningPilotTaskList(tasks, nextTask));
       setOpeningPilotReadiness(readinessResult?.ok ? readinessResult : openingPilotReadiness);
       setOpeningPilotStatus(
-        "Report summary generated with " + (result.reportAsset?.summary.total ?? result.task.checkItems.length) + " check item(s).",
+        "Report summary generated with " + (result.reportAsset?.summary.total ?? nextTask.checkItems.length) + " check item(s).",
       );
     } catch (error) {
       setOpeningPilotStatus(error instanceof Error ? error.message : "鎶ュ憡鎽樿鐢熸垚澶辫触");
@@ -1029,6 +1041,7 @@ export function App() {
     }
 
     const createdTask = result.task;
+    setOpeningPage("workspace-context");
     setOpeningPilotIntakeMode("default");
     setOpeningPilotTask(createdTask);
     setOpeningPilotAllTasks((tasks) => upsertOpeningPilotTaskList(tasks, createdTask));
@@ -1051,6 +1064,7 @@ export function App() {
     void refreshOpeningWorkspaceFacts(createdTask.context.workspaceId);
     void refreshOpeningWorkspaceTasks(createdTask.context.workspaceId);
     void refreshOpeningWorkspaceAssetRegistry();
+    void refreshOpeningPilotTask(createdTask.id, { preserveStatus: true });
   }
 
   async function deleteOpeningPilotHistoryTask(taskId: string) {
@@ -1068,6 +1082,7 @@ export function App() {
         setOpeningPilotTask(null);
         setOpeningPilotReadiness(null);
       }
+      await refreshOpeningPilotTask(undefined, { resolveCurrentRun: true, preserveStatus: true });
       setOpeningPilotStatus(
         result.status === "not_found"
           ? "该历史记录在当前后端实例中已不存在，已从前端列表清理。"

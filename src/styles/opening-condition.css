@@ -1,10 +1,14 @@
 .opening-workspace-content {
   display: flex;
   flex: 1;
-  min-height: 0;
+  min-height: 100%;
   min-width: 0;
+  width: 100%;
+  justify-content: center;
+  align-items: stretch;
   overflow: auto;
   padding-right: 2px;
+  box-sizing: border-box;
 }
 
 .opening-portal-shell .shell-topbar {
@@ -14,13 +18,17 @@
 .opening-agent-console {
   display: grid;
   gap: 16px;
+  width: 100%;
   min-height: 100%;
-  height: 100%;
+  align-content: start;
   min-width: 0;
 }
 
 .opening-agent-chat-page {
+  width: 100%;
+  min-width: 0;
   min-height: 100%;
+  box-sizing: border-box;
   display: grid;
   place-items: center;
   align-content: center;
@@ -1321,8 +1329,14 @@
 
 .opening-condition-page {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 18px;
+  width: min(100%, 1480px);
+  min-width: 0;
+  min-height: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .opening-condition-hero,

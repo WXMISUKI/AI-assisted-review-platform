@@ -43,6 +43,84 @@ const zipFixtureBase64 =
   "UEsDBBQAAAgIAFqN8VxOe43fEAAAAA4AAAAgAAAA5Lq65ZGYXOS4k+iBjOWuieWFqOWRmOivgeS5pi50eHR7v3t/WmZFSWlRqm4iLxcAUEsDBBQAAAgIAFqN8VwXxcvdEAAAAA4AAAAgAAAA6K6+5aSHXOaxvei9puWQiuajgOmqjOaKpeWRii50eHR7v3t/WmZFSWlRqm4SLxcAUEsBAhQAFAAACAgAWo3xXE57jd8QAAAADgAAACAAAAAAAAAAAAAAAAAAAAAAAOS6uuWRmFzkuJPogYzlronlhajlkZjor4HkuaYudHh0UEsBAhQAFAAACAgAWo3xXBfFy90QAAAADgAAACAAAAAAAAAAAAAAAAAATgAAAOiuvuWkh1zmsb3ovablkIrmo4DpqozmiqXlkYoudHh0UEsFBgAAAAACAAIAnAAAAJwAAAAAAA==";
 const zipFixtureBuffer = Buffer.from(zipFixtureBase64, "base64");
 
+const crc32Table = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
+function crc32(buffer) {
+  let value = 0xffffffff;
+  for (const byte of buffer) {
+    value = crc32Table[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function createStoredZipBuffer(entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const nameBuffer = Buffer.from(entry.name, "utf8");
+    const dataBuffer = Buffer.from(entry.content ?? "", "utf8");
+    const checksum = crc32(dataBuffer);
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(checksum, 14);
+    localHeader.writeUInt32LE(dataBuffer.length, 18);
+    localHeader.writeUInt32LE(dataBuffer.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    localParts.push(localHeader, nameBuffer, dataBuffer);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(checksum, 16);
+    centralHeader.writeUInt32LE(dataBuffer.length, 20);
+    centralHeader.writeUInt32LE(dataBuffer.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralParts.push(centralHeader, nameBuffer);
+
+    offset += localHeader.length + nameBuffer.length + dataBuffer.length;
+  }
+
+  const centralOffset = offset;
+  const centralDirectory = Buffer.concat(centralParts);
+  const endHeader = Buffer.alloc(22);
+  endHeader.writeUInt32LE(0x06054b50, 0);
+  endHeader.writeUInt16LE(0, 4);
+  endHeader.writeUInt16LE(0, 6);
+  endHeader.writeUInt16LE(entries.length, 8);
+  endHeader.writeUInt16LE(entries.length, 10);
+  endHeader.writeUInt32LE(centralDirectory.length, 12);
+  endHeader.writeUInt32LE(centralOffset, 16);
+  endHeader.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, centralDirectory, endHeader]);
+}
+
 function validTaskInput() {
   return {
     context: {
@@ -828,6 +906,35 @@ test("extracts bounded ZIP manifest entries from a real archive buffer", async (
   );
   assert.equal(entries[0].sourceObjectId, "archive-1");
   assert.equal(entries[0].fileName, "专职安全员证书.txt");
+});
+
+test("assigns stable unique ZIP inventory ids for duplicate basenames in different folders", async () => {
+  const duplicateBasenameZipBuffer = createStoredZipBuffer([
+    { name: "personnel/docx-4.docx", content: "personnel file" },
+    { name: "equipment/docx-4.docx", content: "equipment file" },
+  ]);
+  const entries = await extractOpeningConditionZipManifestEntries(duplicateBasenameZipBuffer, {
+    sourceObjectId: "archive-duplicate",
+  });
+
+  assert.equal(entries.length, 2);
+  assert.deepEqual(
+    entries.map((item) => item.fileName),
+    ["docx-4.docx", "docx-4.docx"],
+  );
+  assert.deepEqual(
+    entries.map((item) => item.relativePath),
+    ["personnel/docx-4.docx", "equipment/docx-4.docx"],
+  );
+  assert.equal(new Set(entries.map((item) => item.id)).size, 2);
+  assert.equal(
+    entries[0].id,
+    `archive-duplicate-entry-${Buffer.from("personnel/docx-4.docx", "utf8").toString("base64url")}`,
+  );
+  assert.equal(
+    entries[1].id,
+    `archive-duplicate-entry-${Buffer.from("equipment/docx-4.docx", "utf8").toString("base64url")}`,
+  );
 });
 
 test("initializes packet inventory from ZIP manifest when a readable ZIP source object is provided", async () => {

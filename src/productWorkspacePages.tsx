@@ -1132,6 +1132,24 @@ function getOpeningConditionAgentTaskProgress(task?: OpeningConditionPilotTask |
   }
 }
 
+function buildOpeningConditionAgentInventoryFileId(
+  entry: NonNullable<NonNullable<OpeningConditionPilotTask["packet"]>["inventoryEntries"]>[number],
+  derivedObject: NonNullable<NonNullable<OpeningConditionPilotTask["packet"]>["inventoryEntries"]>[number]["derivedObjectRef"],
+  index: number,
+) {
+  return [
+    "inventory",
+    entry.id,
+    entry.sourceObjectId,
+    entry.relativePath ?? entry.fileName,
+    derivedObject?.storageKey,
+    index,
+  ]
+    .filter((part) => part !== undefined && part !== null && part !== "")
+    .map(String)
+    .join("::");
+}
+
 function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTask | null) {
   if (!task) {
     return [];
@@ -1148,8 +1166,11 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
     contentType?: string;
     sizeBytes?: number;
     sourceObjectId?: string;
+    relativePath?: string;
     sourceArchiveFileName?: string;
     sourceArchiveStorageKey?: string;
+    assetizationStatus?: "derived_object_ready" | "manifest_only" | "source_object_fallback";
+    hasDerivedAsset?: boolean;
   }> = [];
   const basisObject = task.basisVersion?.sourceObject;
   if (basisObject) {
@@ -1188,11 +1209,11 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       sizeBytes: sourceObject.sizeBytes,
     });
   }
-  for (const entry of task.packet?.inventoryEntries ?? []) {
+  for (const [entryIndex, entry] of (task.packet?.inventoryEntries ?? []).entries()) {
     const sourceArchive = entry.sourceObjectId ? packetSourceObjects.get(entry.sourceObjectId) : undefined;
     const derivedObject = entry.derivedObjectRef;
     files.push({
-      id: entry.id,
+      id: buildOpeningConditionAgentInventoryFileId(entry, derivedObject, entryIndex),
       label: "资料包文件",
       fileName: entry.fileName,
       summary: entry.summary ?? "资料包拆分清单文件",
@@ -1201,8 +1222,11 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       contentType: entry.contentType ?? derivedObject?.contentType,
       sizeBytes: entry.sizeBytes ?? derivedObject?.sizeBytes,
       sourceObjectId: entry.sourceObjectId,
+      relativePath: entry.relativePath,
       sourceArchiveFileName: sourceArchive?.fileName,
       sourceArchiveStorageKey: sourceArchive?.storageKey,
+      assetizationStatus: entry.assetizationStatus,
+      hasDerivedAsset: Boolean(derivedObject?.storageKey),
     });
   }
   return files;
@@ -1614,13 +1638,21 @@ function findOpeningConditionAgentPreviewFile(
     if (!evidence) {
       continue;
     }
-    const matchedFile = files.find((file) => file.fileName === evidence.objectRef.fileName);
-    if (matchedFile) {
-      return matchedFile;
+      const matchedFile = files.find(
+        (file) =>
+          file.storageKey === evidence.objectRef.storageKey ||
+          (file.fileName === evidence.objectRef.fileName && file.hasDerivedAsset),
+      );
+      if (matchedFile) {
+        return matchedFile;
+      }
+      const fallbackFile = files.find((file) => file.fileName === evidence.objectRef.fileName);
+      if (fallbackFile) {
+        return fallbackFile;
+      }
     }
+    return files[0] ?? null;
   }
-  return files[0] ?? null;
-}
 
 function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTask | null) {
   if (!task) {
@@ -3071,7 +3103,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const agentTasks = useMemo(
     () =>
-      [...(allPilotTasks ?? []), ...(pilotTask ? [pilotTask] : [])]
+      [...(pilotTask ? [pilotTask] : []), ...(allPilotTasks ?? [])]
         .filter((task) => task.context.workspaceId === selectedWorkspaceId)
         .filter((task, index, tasks) => tasks.findIndex((candidate) => candidate.id === task.id) === index)
         .sort(compareTaskByUpdatedAtDesc),
@@ -3135,13 +3167,31 @@ function OpeningConditionObjectOverviewProductizedPage({
       ),
     [selectedAgentTask],
   );
+  const openReviewByTargetId = useMemo(
+    () =>
+      new Map(
+        (selectedAgentTask?.humanReviewQueue ?? [])
+          .filter(
+            (item) =>
+              item.targetType === "check_item" &&
+              (item.status === "open" || item.status === "deferred"),
+          )
+          .map((item) => [item.targetId, item]),
+      ),
+    [selectedAgentTask],
+  );
   const activeReviewQueueItem =
     activeReviewItem && activeReviewItem.humanReviewId
-      ? (selectedAgentTask?.humanReviewQueue ?? []).find((item) => item.id === activeReviewItem.humanReviewId) ??
+      ? (selectedAgentTask?.humanReviewQueue ?? []).find(
+          (item) =>
+            item.id === activeReviewItem.humanReviewId &&
+            (item.status === "open" || item.status === "deferred"),
+        ) ??
+        openReviewByTargetId.get(activeReviewItem.id) ??
         latestReviewByTargetId.get(activeReviewItem.id) ??
         null
       : activeReviewItem
-        ? latestReviewByTargetId.get(activeReviewItem.id) ?? null
+        ? openReviewByTargetId.get(activeReviewItem.id) ?? latestReviewByTargetId.get(activeReviewItem.id) ?? null
         : null;
   const blockingReviewCount =
     selectedAgentTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
