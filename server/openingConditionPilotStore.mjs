@@ -22,6 +22,8 @@ const MAX_STRING_LENGTH = 2000;
 const MAX_KNOWLEDGE_BASE_RECORDS = 300;
 const MAX_KNOWLEDGE_BASE_ENTRIES = 200;
 const MAX_BASIS_PREVIEW_TEXT_LENGTH = 4000;
+const MAX_PACKET_CONTENT_FACTS = 500;
+const MAX_ITEM_RETRIEVAL_DIAGNOSTICS = 50;
 const DEFAULT_STORE_PATH = resolve(process.cwd(), ".local-data", "opening-condition-pilot-tasks.json");
 
 export const pilotTaskStates = [
@@ -69,6 +71,8 @@ const visualAssertionTypes = new Set(["stamp", "signature", "checkbox", "handwri
 const visualAssertionStatuses = new Set(["detected", "missing", "uncertain", "confirmed", "rejected", "not_required"]);
 const knowledgeBaseStatusValues = new Set(["draft", "ready", "needs_review", "archived"]);
 const basisPreviewStatusValues = new Set(["needs_confirmation", "confirmed", "rejected", "published"]);
+const packetContentFactStatuses = new Set(["ready", "partial", "unsupported", "failed"]);
+const retrievalDiagnosticStatuses = new Set(["supporting", "conflicting", "uncertain", "unavailable"]);
 
 let writeQueue = Promise.resolve();
 
@@ -214,6 +218,53 @@ function normalizePacketInventoryEntry(value, index = 0, sourceObjectIds = new S
     derivedObjectRef: derivedObjectRef ?? undefined,
     assetizationStatus,
     fallbackReason,
+  });
+}
+
+function normalizePacketContentFact(value, index = 0) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const fileName = normalizeString(value.fileName ?? value.name, "", 240);
+  const packetEntryId = normalizeString(value.packetEntryId ?? value.entryId, "", 180);
+  const sourceObjectId = normalizeString(value.sourceObjectId, "", 180);
+  const derivedObjectId = normalizeString(value.derivedObjectId ?? value.objectId, "", 180);
+  if (!fileName && !packetEntryId && !derivedObjectId && !sourceObjectId) {
+    return null;
+  }
+
+  const score = Number(value.providerScore ?? value.score ?? value.confidenceScore);
+  const snippets = Array.isArray(value.snippets)
+    ? value.snippets.map((item) => normalizeString(item?.text ?? item, "", 500)).filter(Boolean).slice(0, 8)
+    : normalizeString(value.snippet ?? value.safeSnippet, "", 500)
+      ? [normalizeString(value.snippet ?? value.safeSnippet, "", 500)]
+      : [];
+  const locators = Array.isArray(value.locators)
+    ? value.locators.map((item) => normalizeString(item?.locator ?? item, "", 240)).filter(Boolean).slice(0, 12)
+    : normalizeString(value.locator, "", 240)
+      ? [normalizeString(value.locator, "", 240)]
+      : [];
+
+  return sanitizeOpeningConditionPilotValue({
+    id: normalizeString(value.id, `packet-content-fact-${index + 1}`, 180),
+    packetEntryId: packetEntryId || undefined,
+    sourceObjectId: sourceObjectId || undefined,
+    derivedObjectId: derivedObjectId || undefined,
+    fileName: fileName || undefined,
+    relativePath: normalizeString(value.relativePath ?? value.path, "", 500) || undefined,
+    status: packetContentFactStatuses.has(value.status) ? value.status : "ready",
+    extractor: normalizeString(value.extractor, "provider_packet_content_fact_v1", 100),
+    safeSummary: normalizeString(value.safeSummary ?? value.summary ?? value.factSummary, "", 800) || undefined,
+    snippets,
+    locators,
+    confidence: ["high", "medium", "low"].includes(value.confidence) ? value.confidence : "medium",
+    provider: normalizeString(value.provider, "", 80) || undefined,
+    providerJobId: normalizeString(value.providerJobId ?? value.jobId, "", 180) || undefined,
+    providerDocumentId: normalizeString(value.providerDocumentId ?? value.documentId, "", 180) || undefined,
+    providerChunkId: normalizeString(value.providerChunkId ?? value.chunkId, "", 180) || undefined,
+    providerScore: Number.isFinite(score) ? Math.max(0, Math.min(score, 1)) : undefined,
+    extractedAt: normalizeString(value.extractedAt, new Date().toISOString(), 80),
   });
 }
 
@@ -1242,6 +1293,12 @@ function normalizePacket(value, taskId, workspaceId, options = {}) {
     checklistObject,
     sourceObjects,
     inventoryEntries,
+    contentFacts: Array.isArray(value.contentFacts)
+      ? value.contentFacts
+          .map((item, index) => normalizePacketContentFact(item, index))
+          .filter(Boolean)
+          .slice(0, MAX_PACKET_CONTENT_FACTS)
+      : [],
     submittedAt: normalizeString(value.submittedAt, new Date().toISOString(), 80),
     submittedBy: normalizeString(value.submittedBy, "pilot-user", 160),
   };
@@ -1338,6 +1395,41 @@ function normalizeHumanReviewItem(value, taskId) {
   });
 }
 
+function normalizeItemRetrievalDiagnostic(value, index = 0) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  const status = retrievalDiagnosticStatuses.has(value.status) ? value.status : "uncertain";
+  const score = Number(value.providerScore ?? value.score);
+  const snippets = Array.isArray(value.snippets)
+    ? value.snippets.map((item) => normalizeString(item?.text ?? item, "", 500)).filter(Boolean).slice(0, 8)
+    : normalizeString(value.snippet ?? value.safeSnippet, "", 500)
+      ? [normalizeString(value.snippet ?? value.safeSnippet, "", 500)]
+      : [];
+
+  return sanitizeOpeningConditionPilotValue({
+    id: normalizeString(value.id, `retrieval-diagnostic-${index + 1}`, 180),
+    status,
+    source: normalizeString(value.source ?? value.provider, "knowledge_base", 100),
+    note: normalizeString(value.note ?? value.summary, "", 700) || undefined,
+    snippets,
+    locators: Array.isArray(value.locators)
+      ? value.locators.map((item) => normalizeString(item?.locator ?? item, "", 240)).filter(Boolean).slice(0, 12)
+      : [],
+    relatedEvidenceIds: Array.isArray(value.relatedEvidenceIds ?? value.evidenceIds)
+      ? (value.relatedEvidenceIds ?? value.evidenceIds)
+          .map((item) => normalizeString(item, "", 180))
+          .filter(Boolean)
+          .slice(0, 50)
+      : [],
+    provider: normalizeString(value.provider, "", 80) || undefined,
+    providerDocumentId: normalizeString(value.providerDocumentId ?? value.documentId, "", 180) || undefined,
+    providerChunkId: normalizeString(value.providerChunkId ?? value.chunkId, "", 180) || undefined,
+    providerScore: Number.isFinite(score) ? Math.max(0, Math.min(score, 1)) : undefined,
+  });
+}
+
 function normalizeChecklistItem(value, index = 0) {
   if (!isPlainObject(value) && typeof value !== "string") {
     return null;
@@ -1375,6 +1467,12 @@ function normalizeChecklistItem(value, index = 0) {
     visualAssertions: Array.isArray(source.visualAssertions)
       ? source.visualAssertions.map((item) => normalizeVisualAssertion(item)).filter(Boolean).slice(0, 20)
       : [],
+    retrievalDiagnostics: Array.isArray(source.retrievalDiagnostics)
+      ? source.retrievalDiagnostics
+          .map((item, index) => normalizeItemRetrievalDiagnostic(item, index))
+          .filter(Boolean)
+          .slice(0, MAX_ITEM_RETRIEVAL_DIAGNOSTICS)
+      : [],
   };
 }
 
@@ -1400,6 +1498,7 @@ function normalizeCheckItem(value, taskId) {
       : "needs_human_review",
     ruleExplanation: normalizeString(value.ruleExplanation, "", 500),
     semanticNote: normalizeString(value.semanticNote, "", 500) || undefined,
+    semanticMatch: isPlainObject(value.semanticMatch) ? sanitizeOpeningConditionPilotValue(value.semanticMatch) : undefined,
     basisVersionId: normalizeString(value.basisVersionId, "", 180),
     evidenceIds: Array.isArray(value.evidenceIds)
       ? value.evidenceIds.map((item) => normalizeString(item, "", 180)).filter(Boolean).slice(0, 50)
@@ -1416,6 +1515,12 @@ function normalizeCheckItem(value, taskId) {
     contentCompliance: contentComplianceValues.has(value.contentCompliance) ? value.contentCompliance : undefined,
     visualAssertions: Array.isArray(value.visualAssertions)
       ? value.visualAssertions.map((item) => normalizeVisualAssertion(item, value.evidenceIds ?? [])).filter(Boolean)
+      : [],
+    retrievalDiagnostics: Array.isArray(value.retrievalDiagnostics)
+      ? value.retrievalDiagnostics
+          .map((item, index) => normalizeItemRetrievalDiagnostic(item, index))
+          .filter(Boolean)
+          .slice(0, MAX_ITEM_RETRIEVAL_DIAGNOSTICS)
       : [],
     finalDisposition: finalDispositionValues.has(value.finalDisposition) ? value.finalDisposition : undefined,
     issueTypeId: normalizeString(value.issueTypeId, "", 160) || undefined,
@@ -1516,6 +1621,174 @@ function buildPacketMatchCandidates(packet) {
       hasStandalonePreviewAsset: Boolean(preferredObjectRef?.storageKey),
     };
   });
+}
+
+function buildPacketContentFactIndex(contentFacts = []) {
+  const index = {
+    byEntryId: new Map(),
+    byObjectId: new Map(),
+    byFileName: new Map(),
+  };
+
+  for (const fact of contentFacts) {
+    if (!fact) {
+      continue;
+    }
+    if (fact.packetEntryId) {
+      index.byEntryId.set(fact.packetEntryId, fact);
+    }
+    if (fact.derivedObjectId) {
+      index.byObjectId.set(fact.derivedObjectId, fact);
+    }
+    if (fact.sourceObjectId) {
+      index.byObjectId.set(fact.sourceObjectId, fact);
+    }
+    for (const key of [fact.fileName, fact.relativePath]) {
+      const normalizedKey = normalizeMatchText(key);
+      if (normalizedKey) {
+        index.byFileName.set(normalizedKey, fact);
+      }
+    }
+  }
+
+  return index;
+}
+
+function findPacketContentFactForCandidate(candidate, contentFactIndex) {
+  const byEntryId = contentFactIndex.byEntryId.get(candidate.entry.id);
+  if (byEntryId) {
+    return byEntryId;
+  }
+
+  const byDerivedObjectId = candidate.entry.derivedObjectRef?.objectId
+    ? contentFactIndex.byObjectId.get(candidate.entry.derivedObjectRef.objectId)
+    : null;
+  if (byDerivedObjectId) {
+    return byDerivedObjectId;
+  }
+
+  const byObjectId = candidate.objectRef?.objectId ? contentFactIndex.byObjectId.get(candidate.objectRef.objectId) : null;
+  if (byObjectId) {
+    return byObjectId;
+  }
+
+  for (const key of [candidate.entry.relativePath, candidate.entry.fileName, candidate.objectRef?.fileName]) {
+    const normalizedKey = normalizeMatchText(key);
+    const byFileName = normalizedKey ? contentFactIndex.byFileName.get(normalizedKey) : null;
+    if (byFileName) {
+      return byFileName;
+    }
+  }
+
+  return null;
+}
+
+function evaluatePacketContentSupport(checklistItem, candidate, contentFactIndex) {
+  const fact = findPacketContentFactForCandidate(candidate, contentFactIndex);
+  if (!fact) {
+    return {
+      status: "missing_fact",
+      confidence: "low",
+      note: "平台尚未取得该候选文件的逐文件内容事实，当前只能作为文件名或清单级命中处理。",
+    };
+  }
+
+  if (fact.status === "unsupported" || fact.status === "failed") {
+    return {
+      status: fact.status,
+      confidence: "low",
+      fact,
+      note: "候选文件暂未完成可用的 OCR/内容抽取，无法证明其内容满足核查项。",
+    };
+  }
+
+  const contentText = normalizeMatchText([fact.safeSummary, ...(fact.snippets ?? []), ...(fact.locators ?? [])].join(" "));
+  const matchedHints = (checklistItem.expectedEvidenceHints ?? [])
+    .map((hint) => normalizeString(hint, "", 120))
+    .filter(Boolean)
+    .filter((hint) => {
+      const normalizedHint = normalizeMatchText(hint);
+      return Boolean(contentText && normalizedHint && (contentText.includes(normalizedHint) || normalizedHint.includes(contentText)));
+    });
+
+  if (matchedHints.length > 0) {
+    return {
+      status: "supported",
+      confidence: fact.confidence ?? "medium",
+      fact,
+      matchedHints,
+      note: `逐文件内容事实支持 ${matchedHints.slice(0, 3).join("、")}。`,
+    };
+  }
+
+  return {
+    status: "mismatch",
+    confidence: fact.confidence ?? "medium",
+    fact,
+    note: "文件名或清单命中，但逐文件内容摘要/片段没有支撑该核查材料项。",
+  };
+}
+
+function summarizeRetrievalDiagnostics(checklistItem) {
+  const diagnostics = Array.isArray(checklistItem.retrievalDiagnostics) ? checklistItem.retrievalDiagnostics : [];
+  const conflicting = diagnostics.filter((item) => item.status === "conflicting");
+  const supporting = diagnostics.filter((item) => item.status === "supporting");
+  const unavailable = diagnostics.filter((item) => item.status === "unavailable");
+  const uncertain = diagnostics.filter((item) => item.status === "uncertain");
+
+  return {
+    diagnostics,
+    hasConflict: conflicting.length > 0,
+    hasSupport: supporting.length > 0,
+    hasUnavailable: unavailable.length > 0,
+    hasUncertain: uncertain.length > 0,
+    note:
+      conflicting[0]?.note ??
+      supporting[0]?.note ??
+      unavailable[0]?.note ??
+      uncertain[0]?.note ??
+      "",
+  };
+}
+
+function buildOpeningConditionHumanReviewReason({
+  missing,
+  manifestOnlyMatch,
+  masterDataAuthorizationMissing,
+  isResourceItem,
+  retrievalSummary,
+  contentMismatch,
+  contentUnavailable,
+  hasPacketContentFacts,
+  visualReviewRequired,
+}) {
+  if (missing) {
+    return "资料包中未找到稳定匹配文件。";
+  }
+  if (manifestOnlyMatch) {
+    return "资料包清单命中文件名，但平台没有该条目的独立预览资产，需要人工打开源资料或重新上传可拆分资料确认。";
+  }
+  if (masterDataAuthorizationMissing) {
+    return isResourceItem
+      ? "人员或设备资料已命中候选文件，但缺少合同边界下已发布或人工批准的项目主数据授权。"
+      : "核查项引用的主数据尚未发布、人工批准或绑定。";
+  }
+  if (retrievalSummary.hasConflict) {
+    return `依据/知识库检索与资料包证据存在冲突：${retrievalSummary.note || "需要人工核对合同边界和资料内容。"}`;
+  }
+  if (retrievalSummary.hasUnavailable || retrievalSummary.hasUncertain) {
+    return `依据/知识库检索暂不能形成稳定结论：${retrievalSummary.note || "需要人工复核。"}`;
+  }
+  if (contentMismatch) {
+    return "文件名或清单命中，但逐文件内容摘要/片段没有证明其属于该核查材料。";
+  }
+  if (visualReviewRequired) {
+    return "签名、盖章、勾选或日期等视觉要素存在性或清晰度不足，需要人工确认。";
+  }
+  if (contentUnavailable || !hasPacketContentFacts) {
+    return "候选文件尚无可用 OCR/内容抽取事实，当前不能仅凭文件名判断内容准确性。";
+  }
+  return "存在多个候选资料或证据边界不清，需要人工确认最准确证据。";
 }
 
 function hasManifestOnlyPacketMatch(matches = []) {
@@ -2482,7 +2755,7 @@ function deriveReportMvpAcceptance(task, summary, humanReview, archiveStatus = "
   });
 }
 
-const reportDeliveryPackageDispositions = new Set(["blocked", "fail", "reject", "needs_human_review", "warning"]);
+const reportDeliveryPackageDispositions = new Set(["blocked", "fail", "reject", "correct", "needs_human_review", "warning"]);
 
 function getReportFindingRiskLabel(finding) {
   switch (finding?.riskLevel) {
@@ -3044,7 +3317,7 @@ function deriveReportPackageFindings(task) {
                 ? "needs_human_review"
                 : item.finalDisposition ?? item.verdict;
 
-      if (disposition === "pass" || disposition === "not_applicable") {
+      if (disposition === "pass" || disposition === "not_applicable" || disposition === "confirm") {
         return null;
       }
 
@@ -3079,7 +3352,12 @@ function deriveReportPackageFindings(task) {
         rectificationRequirement: derivedTaxonomy.rectificationRequirement,
         verificationGuidance: derivedTaxonomy.verificationGuidance,
         basisVersionId: item.basisVersionId,
-        description: item.semanticNote || item.ruleExplanation || "Opening-condition finding derived from pilot checklist matching.",
+        description: [
+          item.semanticNote || item.ruleExplanation || "Opening-condition finding derived from pilot checklist matching.",
+          latestReview?.safeNote ? `人工复核意见：${latestReview.safeNote}` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
         evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
         evidenceLabels: (item.evidenceIds ?? [])
           .map((evidenceId) => {
@@ -4522,6 +4800,7 @@ async function buildPilotPacketFromIntakeInput(taskId, context, input = {}, opti
     id: input.packetId ?? `${taskId}-packet`,
     checklistObject: input.checklistObject,
     sourceObjects: Array.isArray(input.sourceObjects) ? input.sourceObjects : [],
+    contentFacts: Array.isArray(input.contentFacts) ? input.contentFacts : [],
     submittedBy: input.submittedBy,
     submittedAt: input.submittedAt,
   };
@@ -5283,6 +5562,8 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
 
     const basisVersionId = existingTask.basisVersion?.id ?? "";
     const packetCandidates = buildPacketMatchCandidates(existingTask.packet);
+    const contentFactIndex = buildPacketContentFactIndex(existingTask.packet.contentFacts ?? []);
+    const hasPacketContentFacts = (existingTask.packet.contentFacts ?? []).length > 0;
     const evidence = [];
     const humanReviewQueue = [];
     const checkItems = checklistItems.map((item, itemIndex) => {
@@ -5318,6 +5599,13 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         .sort((left, right) => right.score - left.score);
       const bestScore = scoredMatches[0]?.score ?? 0;
       const topMatches = scoredMatches.filter((match) => match.score === bestScore).slice(0, 5);
+      const contentEvaluations = topMatches.map((match) => evaluatePacketContentSupport(item, match, contentFactIndex));
+      const contentSupported = contentEvaluations.some((evaluation) => evaluation.status === "supported");
+      const contentMismatch = contentEvaluations.some((evaluation) => evaluation.status === "mismatch");
+      const contentUnavailable = contentEvaluations.some((evaluation) =>
+        ["missing_fact", "unsupported", "failed"].includes(evaluation.status),
+      );
+      const retrievalSummary = summarizeRetrievalDiagnostics(item);
       const ambiguous = topMatches.length > 1;
       const missing = topMatches.length === 0;
       const manifestOnlyMatch = !missing && hasManifestOnlyPacketMatch(topMatches);
@@ -5344,14 +5632,39 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
       });
       const visualAssertions = buildVisualAssertions(item, topMatches, itemEvidence);
       const visualReviewRequired = visualAssertions.some((assertion) => assertion?.requiresHumanReview);
-      const needsHumanReview = ambiguous || missing || manifestOnlyMatch || masterDataAuthorizationMissing || visualReviewRequired;
+      const semanticReviewRequired =
+        (!missing && !hasPacketContentFacts) ||
+        contentMismatch ||
+        contentUnavailable ||
+        retrievalSummary.hasConflict ||
+        retrievalSummary.hasUnavailable ||
+        retrievalSummary.hasUncertain;
+      const needsHumanReview =
+        ambiguous ||
+        missing ||
+        manifestOnlyMatch ||
+        masterDataAuthorizationMissing ||
+        visualReviewRequired ||
+        semanticReviewRequired;
       const documentPresence = missing ? "missing" : ambiguous ? "ambiguous" : "present";
-      const relevanceStatus = missing ? "unconfirmed" : ambiguous ? "unconfirmed" : "matched";
+      const relevanceStatus = missing
+        ? "unconfirmed"
+        : contentMismatch || retrievalSummary.hasConflict
+          ? "unconfirmed"
+          : ambiguous
+            ? "unconfirmed"
+            : "matched";
       const contentCompliance = needsHumanReview
-        ? masterDataAuthorizationMissing || visualReviewRequired || ambiguous
-          ? "not_evaluated"
-          : "non_compliant"
-        : "compliant";
+        ? contentMismatch
+          ? "non_compliant"
+          : contentSupported && !retrievalSummary.hasConflict
+            ? "partially_compliant"
+            : masterDataAuthorizationMissing || visualReviewRequired || ambiguous || semanticReviewRequired
+              ? "not_evaluated"
+              : "non_compliant"
+        : contentSupported || !hasPacketContentFacts
+          ? "compliant"
+          : "not_evaluated";
       const finalDisposition = needsHumanReview
         ? missing && item.required && !visualReviewRequired
           ? "fail"
@@ -5380,18 +5693,17 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           subCategory: item.subCategory,
           ruleExplanation: item.ruleExplanation ?? `正式核查项：${item.name}`,
           expectedEvidenceHints: item.expectedEvidenceHints,
-          reason: missing
-            ? "资料包中未找到稳定匹配文件。"
-            : manifestOnlyMatch
-              ? "资料包清单命中文件名，但平台没有该条目的独立预览资产，需要人工打开源资料或重新上传可拆分资料确认。"
-            : masterDataAuthorizationMissing
-              ? isResourceItem
-                ? "人员或设备资料已命中候选文件，但缺少合同边界下已发布或人工批准的项目主数据授权。"
-                : "核查项引用的主数据尚未发布、人工批准或未绑定。"
-              : visualReviewRequired
-                ? "签名、盖章、勾选或日期等视觉要素存在性或清晰度不足，需要人工确认。"
-                : "存在多个候选资料，需人工确认。",
-          status: "open",
+          reason: buildOpeningConditionHumanReviewReason({
+            missing,
+            manifestOnlyMatch,
+            masterDataAuthorizationMissing,
+            isResourceItem,
+            retrievalSummary,
+            contentMismatch,
+            contentUnavailable,
+            hasPacketContentFacts,
+            visualReviewRequired,
+          }),
           evidenceIds: itemEvidence,
         });
         humanReviewIds.push(reviewId);
@@ -5408,6 +5720,22 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           ? "确定性规则未在资料包文件名或摘要中命中所需资料。"
           : `确定性规则命中 ${topMatches.length} 个候选资料。`,
         semanticNote: buildSemanticNote(item, topMatches, verdict),
+        semanticMatch: {
+          mode: hasPacketContentFacts ? "content_fact_semantic_match" : "filename_or_manifest_fallback",
+          contentSupported,
+          contentMismatch,
+          contentUnavailable,
+          retrievalStatus: retrievalSummary.hasConflict
+            ? "conflicting"
+            : retrievalSummary.hasSupport
+              ? "supporting"
+              : retrievalSummary.hasUnavailable
+                ? "unavailable"
+                : retrievalSummary.hasUncertain
+                  ? "uncertain"
+                  : "not_provided",
+          notes: contentEvaluations.map((evaluation) => evaluation.note).filter(Boolean).slice(0, 5),
+        },
         basisVersionId: item.basisVersionId || basisVersionId,
         evidenceIds: itemEvidence,
         masterDataIds: item.masterDataIds,
@@ -5417,6 +5745,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         relevanceStatus,
         contentCompliance,
         visualAssertions,
+        retrievalDiagnostics: retrievalSummary.diagnostics,
         finalDisposition,
       }, finalDisposition);
     });
@@ -5429,6 +5758,8 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
       }),
       createMatchEvent(taskId, startSequence + 1, "matching.started", "matching", "开始按核查表执行确定性匹配。", 50, {
         checklistItemCount: checklistItems.length,
+        packetContentFactCount: existingTask.packet.contentFacts?.length ?? 0,
+        contentVerificationMode: hasPacketContentFacts ? "content_fact_semantic_match" : "filename_or_manifest_fallback",
       }),
       createMatchEvent(
         taskId,
@@ -5441,6 +5772,8 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           checkItemCount: checkItems.length,
           evidenceCount: evidence.length,
           humanReviewCount: humanReviewQueue.length,
+          packetContentFactCount: existingTask.packet.contentFacts?.length ?? 0,
+          contentVerificationMode: hasPacketContentFacts ? "content_fact_semantic_match" : "filename_or_manifest_fallback",
         },
       ),
     ];
@@ -5706,82 +6039,55 @@ function summarizePilotCheckItems(checkItems) {
   );
 }
 
-function buildOpeningConditionPilotReportMarkdown(task, summary, now) {
-  const nonCompliantItems = task.checkItems.filter((item) => item.verdict !== "pass" && item.finalDisposition !== "not_applicable");
-  const seriousFailures = nonCompliantItems.filter((item) => item.required).length;
-  const generalFailures = Math.max(0, nonCompliantItems.length - seriousFailures);
-  const allowConstruction = nonCompliantItems.length === 0;
-  const reportDate = now.slice(0, 10);
-  const projectName = task.context.projectId || "暂无";
-  const reviewObjectName = task.context.reviewObjectId || "暂无";
-  const rows = nonCompliantItems.map((item, index) => {
-    const risk = item.required ? "🔴严重" : "🟡一般";
-    const basis =
-      item.legalBasis?.map((basisItem) => [basisItem.title, basisItem.clause].filter(Boolean).join("")).join("、") ||
-      "平台内置开工条件核查规则";
-    const issue = item.verdict === "needs_human_review" || item.verdict === "blocked"
-      ? "资料缺失、匹配不稳定或需人工复核确认"
-      : item.ruleExplanation;
-    const rectification = item.required
-      ? `立即补充或复核“${item.name.replace(/★/g, "")}”对应资料，核实真实性、有效性和合规性，并在3日内完成整改反馈`
-      : `补充或复核“${item.name.replace(/★/g, "")}”对应资料，并在3日内完善报审记录`;
-    return `| ${index + 1} | ${item.category}${item.subCategory ? `-${item.subCategory}` : ""}${item.required ? "★" : ""} | ${issue} | ${risk} | ${basis} | ${rectification} |`;
-  });
-
-  return [
-    `## 施工条件核查报告 ${allowConstruction ? "🟢 允许施工" : "🔴 不允许施工"}`,
-    "*智能体自动生成 · 仅供参考*",
-    "",
-    `**工程名称：**${projectName}`,
-    `**核查部位：**${reviewObjectName}`,
-    `**申报日期：**${reportDate}`,
-    "",
-    "### 一、核查总体情况",
-    `本次共核查 ${summary.total} 项内容，其中符合 ${summary.passed} 项，不符合 ${nonCompliantItems.length} 项（含严重不符合 ${seriousFailures} 项）。`,
-    "",
-    "**统计概览：**",
-    `- 总核查项：**${summary.total}**`,
-    `- 符合项：**${summary.passed}**`,
-    `- 一般不符合：**${generalFailures}**`,
-    `- 严重不符合：**${seriousFailures}**`,
-    "",
-    "### 二、不符合项清单",
-    "| 序号 | 核查项目 | 问题描述 | 风险等级 | 法规依据 | 整改要求 |",
-    "|------|----------|----------|----------|----------|----------|",
-    ...(rows.length > 0 ? rows : ["| - | - | 未发现不符合项 | - | - | - |"]),
-    "",
-    "### 三、整改要求",
-    allowConstruction
-      ? "当前未发现阻断施工的不符合项，建议提交监理工程师进行最终审核。"
-      : "请施工单位在限定时间内完成所有问题整改并重新上报。整改完成后，平台智能体将自动进行复核，复核通过后提交监理工程师最终审核。",
-    "",
-    "**AI评判结果：** 平台已生成内部辅助核查报告资产。",
-  ].join("\n");
+function isReportActionableCheckItem(item) {
+  return item?.scopeStatus !== "out_of_scope" && item?.finalDisposition !== "not_applicable";
 }
 
-function buildOpeningConditionPilotReportMarkdownV2(task, summary, now) {
-  const nonCompliantItems = task.checkItems.filter((item) => item.verdict !== "pass" && item.finalDisposition !== "not_applicable");
-  const seriousFailures = nonCompliantItems.filter((item) => item.required).length;
-  const generalFailures = Math.max(0, nonCompliantItems.length - seriousFailures);
-  const allowConstruction = nonCompliantItems.length === 0;
+function isReportBlockingFinding(finding) {
+  return ["blocked", "fail", "reject", "correct", "needs_human_review"].includes(finding?.disposition);
+}
+
+function summarizePilotReportOutcome(task, findings = deriveReportPackageFindings(task)) {
+  const actionableItems = (task.checkItems ?? []).filter(isReportActionableCheckItem);
+  const failed = findings.filter(isReportBlockingFinding).length;
+  const warnings = findings.filter((finding) => finding.disposition === "warning").length;
+  const humanReview = findings.filter((finding) => finding.disposition === "needs_human_review").length;
+  return {
+    total: actionableItems.length,
+    passed: Math.max(0, actionableItems.length - failed - warnings),
+    failed,
+    warnings,
+    humanReview,
+  };
+}
+
+function getReportFindingMarkdownIssue(finding) {
+  const base =
+    finding.description ||
+    (finding.disposition === "needs_human_review"
+      ? "资料缺失、匹配不稳定或需人工复核确认"
+      : getReportFindingDispositionLabel(finding));
+  const humanNote = finding.latestHumanReviewNote ? `人工意见：${finding.latestHumanReviewNote}` : "";
+  return [base, humanNote].filter(Boolean).join("；");
+}
+
+function buildOpeningConditionPilotReportMarkdownV2(task, summary, now, findings = deriveReportPackageFindings(task)) {
+  const reportableFindings = findings.filter((finding) => reportDeliveryPackageDispositions.has(finding.disposition));
+  const seriousFailures = reportableFindings.filter((finding) => finding.required || finding.riskLevel === "high").length;
+  const generalFailures = Math.max(0, reportableFindings.length - seriousFailures);
+  const allowConstruction = reportableFindings.length === 0;
   const reportDate = now.slice(0, 10);
   const previewFacts = task.basisVersion?.ingestionPreview?.facts ?? {};
   const projectName = previewFacts.projectName || task.context.projectId || "暂无";
   const reviewObjectName = task.context.reviewObjectId || task.context.contractPackageId || "暂无";
-  const rows = nonCompliantItems.map((item, index) => {
-    const risk = item.required ? "🔴严重" : "🟡一般";
+  const rows = reportableFindings.map((finding, index) => {
+    const risk = finding.required || finding.riskLevel === "high" ? "🔴严重" : "🟡一般";
     const basis =
-      item.legalBasis?.map((basisItem) => [basisItem.title, basisItem.clause].filter(Boolean).join("")).join("、") ||
+      finding.legalBasis?.map((basisItem) => [basisItem.title, basisItem.clause].filter(Boolean).join("")).join("、") ||
       "平台内置开工条件核查规则";
-    const issue =
-      item.verdict === "needs_human_review" || item.verdict === "blocked"
-        ? "资料缺失、匹配不稳定或需人工复核确认"
-        : item.ruleExplanation || "资料核查未通过";
-    const itemName = item.name.replace(/★/g, "");
-    const rectification = item.required
-      ? `立即对“${itemName}”对应资料进行补充或复核，核实真实性、有效性和合规性，并在3日内完成整改反馈`
-      : `请补充或复核“${itemName}”对应资料，并在3日内完善报审记录`;
-    return `| ${index + 1} | ${item.category}${item.subCategory ? `-${item.subCategory}` : ""}${item.required ? "★" : ""} | ${issue} | ${risk} | ${basis} | ${rectification} |`;
+    const issue = getReportFindingMarkdownIssue(finding);
+    const rectification = finding.rectificationRequirement || "补齐对应资料后重新提交复审。";
+    return `| ${index + 1} | ${finding.category}${finding.subCategory ? `-${finding.subCategory}` : ""}${finding.required ? "★" : ""} | ${issue} | ${risk} | ${basis} | ${rectification} |`;
   });
 
   return [
@@ -5793,7 +6099,7 @@ function buildOpeningConditionPilotReportMarkdownV2(task, summary, now) {
     `**申报日期：**${reportDate}`,
     "",
     "### 一、核查总体情况",
-    `本次共核查 ${summary.total} 项内容，其中符合 ${summary.passed} 项，不符合 ${nonCompliantItems.length} 项（含严重不符合 ${seriousFailures} 项）。`,
+    `本次共核查 ${summary.total} 项内容，其中符合 ${summary.passed} 项，不符合 ${reportableFindings.length} 项（含严重不符合 ${seriousFailures} 项）。`,
     "",
     "**统计概览：**",
     `- 总核查项：**${summary.total}**`,
@@ -5856,9 +6162,10 @@ export async function generateOpeningConditionPilotReport(taskId, input = {}, op
 
     const now = new Date().toISOString();
     const reportTask = normalizeOpeningConditionPilotTask(existingTask) ?? existingTask;
-    const summary = summarizePilotCheckItems(reportTask.checkItems);
+    const findings = deriveReportPackageFindings(reportTask);
+    const summary = summarizePilotReportOutcome(reportTask, findings);
     const markdownContent =
-      input.markdownContent ?? buildOpeningConditionPilotReportMarkdownV2(reportTask, summary, now);
+      input.markdownContent ?? buildOpeningConditionPilotReportMarkdownV2(reportTask, summary, now, findings);
     const reportAsset = normalizeReportAsset(
       {
         id: input.id ?? `report-${taskId}`,

@@ -683,9 +683,10 @@ The opening-condition task history SHALL update when a task is created or delete
 - **AND** the detail view is bound to that returned task id
 
 #### Scenario: Operator deletes a history task
-- **WHEN** the operator clicks delete on a history row
+- **WHEN** the operator clicks delete on a history row from the sidebar or report/history surface
 - **THEN** the platform removes that task from opening-condition history
 - **AND** the UI clears the selected detail if it was showing the deleted task
+- **AND** visible copy uses delete/remove language instead of mixing deletion with hidden test-run semantics
 
 ### Requirement: Document library opens source previews
 The selected task detail SHALL treat document preview as an explicit workbench mode instead of a default always-visible panel.
@@ -722,8 +723,9 @@ The selected task detail SHALL render all extracted material-review checklist it
 
 #### Scenario: Checklist items exist
 - **WHEN** the backend task contains extracted checklist items
-- **THEN** the task detail lists every material-review item
+- **THEN** the task detail lists every current-MVP material-review item
 - **AND** each row shows a backend-backed status such as matched, unmatched, awaiting human review, or reviewed
+- **AND** out-of-scope rows such as `现场核查` are not shown as actionable `待核查资料项`
 
 #### Scenario: Operator opens a checklist item
 - **WHEN** the operator clicks a checklist item row
@@ -749,6 +751,7 @@ The selected task detail SHALL expose the existing human-review completion step 
 - **WHEN** the selected task has no open or deferred human-review items
 - **THEN** the workbench enables the existing completion action
 - **AND** completing that action continues the platform workflow into final report generation
+- **AND** report actions use final report delivery wording rather than report-summary-only wording
 
 ### Requirement: Selected-task shell stays within parent layout bounds
 The opening-condition task workbench SHALL keep sidebar rows, task detail columns, and preview/review panes inside their parent widths.

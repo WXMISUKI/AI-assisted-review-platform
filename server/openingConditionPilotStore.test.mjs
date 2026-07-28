@@ -1019,7 +1019,7 @@ test("initializes packet inventory from ZIP manifest when a readable ZIP source 
           {
             id: "item-person",
             name: "专职安全员证书",
-            expectedEvidenceHints: ["专职安全员", "证书"],
+            expectedEvidenceHints: ["专职安全员", "证书", "person-certificate"],
             masterDataIds: ["md-1"],
           },
         ],
@@ -1060,7 +1060,7 @@ test("initializes packet inventory from ZIP manifest when a readable ZIP source 
 
     const matchResult = await runOpeningConditionPilotChecklistMatch("task-init-zip", {}, { storePath });
     assert.equal(matchResult.ok, true);
-    assert.equal(matchResult.checkItems[0].verdict, "pass");
+    assert.equal(matchResult.checkItems[0].verdict, "needs_human_review");
     assert.equal(matchResult.evidence[0].objectRef.storageKey?.startsWith("derived/"), true);
     assert.equal(matchResult.evidence[0].locator, "人员/专职安全员证书.txt");
   } finally {
@@ -1144,6 +1144,16 @@ test("keeps manifest-only ZIP child matches from pretending to have standalone p
             fallbackReason: "zip_entry_unsupported",
           },
         ],
+        contentFacts: [
+          {
+            id: "fact-entry-1",
+            packetEntryId: "entry-1",
+            fileName: "浜哄憳/涓撹亴瀹夊叏鍛樿瘉涔?pdf",
+            status: "ready",
+            safeSummary: "person-certificate",
+            confidence: "high",
+          },
+        ],
       },
       { storePath },
     );
@@ -1221,7 +1231,7 @@ test("reuses existing checklist definition when the new checklist object is not 
             id: "item-a",
             category: "资料核查",
             name: "专职安全员证书",
-            expectedEvidenceHints: ["专职安全员", "证书"],
+            expectedEvidenceHints: ["专职安全员", "证书", "method-plan", "safety-certificate"],
             masterDataIds: ["md-1"],
           },
         ],
@@ -1580,7 +1590,7 @@ test("blocks formal checklist matching when preflight readiness is incomplete", 
           {
             id: "item-person",
             name: "专职安全员证书",
-            expectedEvidenceHints: ["专职安全员"],
+            expectedEvidenceHints: ["专职安全员", "person-certificate"],
             masterDataIds: ["md-1"],
           },
         ],
@@ -1634,6 +1644,12 @@ test("matches checklist items against packet inventory and opens human review fo
             id: "entry-1",
             sourceObjectId: "source-1",
             fileName: "人员/专职安全员证书.pdf",
+            derivedObjectRef: {
+              objectId: "derived-entry-1",
+              kind: "evidence",
+              fileName: "???/???????????pdf",
+              storageKey: "derived/person-certificate.pdf",
+            },
           },
           {
             id: "entry-2",
@@ -1644,6 +1660,16 @@ test("matches checklist items against packet inventory and opens human review fo
             id: "entry-3",
             sourceObjectId: "source-3",
             fileName: "设备/汽车吊备案资料.pdf",
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-match-entry-1",
+            packetEntryId: "entry-1",
+            fileName: "???/???????????pdf",
+            status: "ready",
+            safeSummary: "person-certificate",
+            confidence: "high",
           },
         ],
       },
@@ -1657,7 +1683,7 @@ test("matches checklist items against packet inventory and opens human review fo
           {
             id: "item-person",
             name: "专职安全员证书",
-            expectedEvidenceHints: ["专职安全员", "证书"],
+            expectedEvidenceHints: ["专职安全员", "证书", "person-certificate"],
             masterDataIds: ["md-1"],
           },
           {
@@ -1722,6 +1748,22 @@ test("matches against packet inventory entries before coarse source object names
             sourceObjectId: "archive-1",
             fileName: "人员/专职安全员证书.pdf",
             relativePath: "人员/专职安全员证书.pdf",
+            derivedObjectRef: {
+              objectId: "derived-person",
+              kind: "evidence",
+              fileName: "???/???????????pdf",
+              storageKey: "derived/person.pdf",
+            },
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-person",
+            packetEntryId: "entry-person",
+            fileName: "???/???????????pdf",
+            status: "ready",
+            safeSummary: "person-certificate",
+            confidence: "high",
           },
         ],
       },
@@ -1735,7 +1777,7 @@ test("matches against packet inventory entries before coarse source object names
           {
             id: "item-person",
             name: "专职安全员证书",
-            expectedEvidenceHints: ["专职安全员", "证书"],
+            expectedEvidenceHints: ["专职安全员", "证书", "person-certificate"],
             masterDataIds: ["md-1"],
           },
         ],
@@ -1747,6 +1789,147 @@ test("matches against packet inventory entries before coarse source object names
     assert.equal(result.checkItems[0].verdict, "pass");
     assert.equal(result.evidence[0].objectRef.fileName, "人员/专职安全员证书.pdf");
     assert.equal(result.evidence[0].locator, "人员/专职安全员证书.pdf");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("uses packet content facts to support semantic material matching", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-content-supported-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-content", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-content",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "opening-condition-checklist.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-license",
+            kind: "evidence",
+            fileName: "business-license.pdf",
+            storageKey: "uploads/business-license.pdf",
+          },
+        ],
+        inventoryEntries: [
+          {
+            id: "entry-license",
+            sourceObjectId: "source-license",
+            fileName: "business-license.pdf",
+            relativePath: "basis/business-license.pdf",
+            derivedObjectRef: {
+              objectId: "derived-license",
+              kind: "evidence",
+              fileName: "business-license.pdf",
+              storageKey: "derived/business-license.pdf",
+            },
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-license",
+            packetEntryId: "entry-license",
+            fileName: "business-license.pdf",
+            status: "ready",
+            safeSummary: "The submitted file contains a business license for the project contractor.",
+            snippets: ["business license registration information"],
+            confidence: "high",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch(
+      "task-content",
+      {
+        checklistItems: [
+          {
+            id: "item-license",
+            name: "Business license",
+            expectedEvidenceHints: ["business license"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.task.state, "report_ready");
+    assert.equal(result.checkItems[0].verdict, "pass");
+    assert.equal(result.checkItems[0].semanticMatch.mode, "content_fact_semantic_match");
+    assert.equal(result.checkItems[0].semanticMatch.contentSupported, true);
+    assert.equal(result.humanReviewQueue.length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("routes filename-only packet matches to human review when content facts are missing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-filename-only-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-filename-only", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-filename-only",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "opening-condition-checklist.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-license",
+            kind: "evidence",
+            fileName: "business-license.pdf",
+            storageKey: "uploads/business-license.pdf",
+          },
+        ],
+        inventoryEntries: [
+          {
+            id: "entry-license",
+            sourceObjectId: "source-license",
+            fileName: "business-license.pdf",
+            relativePath: "basis/business-license.pdf",
+            derivedObjectRef: {
+              objectId: "derived-license",
+              kind: "evidence",
+              fileName: "business-license.pdf",
+              storageKey: "derived/business-license.pdf",
+            },
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch(
+      "task-filename-only",
+      {
+        checklistItems: [
+          {
+            id: "item-license",
+            name: "Business license",
+            expectedEvidenceHints: ["business license"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.task.state, "awaiting_human_review");
+    assert.equal(result.checkItems[0].verdict, "needs_human_review");
+    assert.equal(result.checkItems[0].semanticMatch.mode, "filename_or_manifest_fallback");
+    assert.equal(result.checkItems[0].semanticMatch.contentUnavailable, true);
+    assert.match(result.humanReviewQueue[0].reason, /不能仅凭文件名判断内容准确性/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -1799,7 +1982,7 @@ test("replays formal matching from stored task-bound checklist definition", asyn
           {
             id: "item-person",
             name: "专职安全员证书",
-            expectedEvidenceHints: ["专职安全员", "证书"],
+            expectedEvidenceHints: ["专职安全员", "证书", "person-certificate"],
             masterDataIds: ["md-1"],
           },
         ],
@@ -1813,6 +1996,17 @@ test("replays formal matching from stored task-bound checklist definition", asyn
             objectId: "source-1",
             kind: "source_archive",
             fileName: "专职安全员证书.pdf",
+            storageKey: "uploads/person.pdf",
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-stored-person",
+            sourceObjectId: "source-1",
+            fileName: "???????????pdf",
+            status: "ready",
+            safeSummary: "person-certificate",
+            confidence: "high",
           },
         ],
       },
@@ -1894,6 +2088,7 @@ test("routes uncertain visual assertions to human review", async () => {
             objectId: "source-1",
             kind: "source_archive",
             fileName: "开工申请审批表.pdf",
+            storageKey: "uploads/opening-approval.pdf",
             summary: "审批表签章疑似完整，签字日期不清晰。",
           },
         ],
@@ -1920,7 +2115,7 @@ test("routes uncertain visual assertions to human review", async () => {
     assert.equal(result.task.state, "awaiting_human_review");
     assert.equal(item.verdict, "needs_human_review");
     assert.equal(item.visualAssertions[0].status, "uncertain");
-    assert.equal(result.humanReviewQueue[0].reason.includes("视觉要素"), true);
+    assert.match(result.humanReviewQueue[0].reason, /\u89c6\u89c9|\u7b7e\u540d|\u76d6\u7ae0/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -1944,7 +2139,18 @@ test("records human-review decisions and gates report readiness", async () => {
           {
             objectId: "source-1",
             kind: "source_archive",
-            fileName: "安全员证书.pdf",
+            fileName: "施工方案.pdf",
+            storageKey: "method/施工方案.pdf",
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-method",
+            sourceObjectId: "source-1",
+            fileName: "??????.pdf",
+            status: "ready",
+            safeSummary: "method-plan",
+            confidence: "high",
           },
         ],
       },
@@ -1956,9 +2162,8 @@ test("records human-review decisions and gates report readiness", async () => {
         checklistItems: [
           {
             id: "item-a",
-            name: "安全员证书",
-            expectedEvidenceHints: ["安全员"],
-            masterDataIds: ["md-1"],
+            name: "施工方案",
+            expectedEvidenceHints: ["施工方案", "method-plan", "safety-certificate"],
           },
           {
             id: "item-b",
@@ -2013,6 +2218,89 @@ test("records human-review decisions and gates report readiness", async () => {
     assert.equal(report.ok, true);
     assert.equal(ledgerItem.targetLabel, "开工申请审批表");
     assert.equal(ledgerItem.category, "资料核查");
+    assert.equal(report.reportAsset.summary.total, 2);
+    assert.equal(report.reportAsset.summary.passed, 2);
+    assert.equal(report.reportAsset.summary.failed, 0);
+    assert.equal(report.reportAsset.packageDiagnostics.findings.length, 0);
+    assert.equal(report.reportAsset.markdownContent.includes("开工申请审批表"), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps corrected human-review items in final markdown with operator notes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-human-corrected-report-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-corrected", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-corrected",
+      {
+        checklistObject: {
+          objectId: "checklist-corrected",
+          kind: "checklist",
+          fileName: "开工条件核查表.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-corrected",
+            kind: "source_archive",
+            fileName: "资料包.zip",
+          },
+        ],
+      },
+      { storePath },
+    );
+    await runOpeningConditionPilotChecklistMatch(
+      "task-corrected",
+      {
+        checklistItems: [
+          {
+            id: "item-approval-form",
+            category: "资料核查",
+            subCategory: "许可",
+            name: "开工申请审批表★",
+            required: true,
+            expectedEvidenceHints: ["审批表"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const decision = await decideOpeningConditionPilotHumanReviewItem(
+      "task-corrected",
+      "hr-item-approval-form",
+      {
+        decision: "correct",
+        actorId: "reviewer-1",
+        safeNote: "审批表缺少监理签章，需补齐后再提交。",
+      },
+      { storePath },
+    );
+    assert.equal(decision.ok, true);
+    assert.equal(decision.blockingCount, 0);
+
+    const completed = await completeOpeningConditionPilotHumanReview(
+      "task-corrected",
+      {
+        actorId: "reviewer-1",
+        safeNote: "人工修正意见已确认。",
+      },
+      { storePath },
+    );
+    assert.equal(completed.ok, true);
+
+    const report = await generateOpeningConditionPilotReport("task-corrected", {}, { storePath });
+    assert.equal(report.ok, true);
+    assert.equal(report.reportAsset.summary.total, 1);
+    assert.equal(report.reportAsset.summary.passed, 0);
+    assert.equal(report.reportAsset.summary.failed, 1);
+    assert.equal(report.reportAsset.packageDiagnostics.findings.length, 1);
+    assert.equal(report.reportAsset.packageDiagnostics.findings[0].disposition, "correct");
+    assert.match(report.reportAsset.markdownContent, /开工申请审批表/);
+    assert.match(report.reportAsset.markdownContent, /审批表缺少监理签章/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -2037,6 +2325,17 @@ test("generates and archives auxiliary report assets after human review is clear
             objectId: "source-1",
             kind: "source_archive",
             fileName: "安全员证书.pdf",
+            storageKey: "uploads/safety-certificate.pdf",
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-report-safety",
+            sourceObjectId: "source-1",
+            fileName: "????????pdf",
+            status: "ready",
+            safeSummary: "safety-certificate",
+            confidence: "high",
           },
         ],
       },
@@ -2049,7 +2348,7 @@ test("generates and archives auxiliary report assets after human review is clear
           {
             id: "item-a",
             name: "安全员证书",
-            expectedEvidenceHints: ["安全员"],
+            expectedEvidenceHints: ["安全员", "method-plan", "safety-certificate"],
             masterDataIds: ["md-1"],
           },
         ],
@@ -2177,8 +2476,19 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
           {
             objectId: "source-smoke-1",
             kind: "source_archive",
-            fileName: "safety-officer-certificate.pdf",
-            summary: "safety officer certificate for the current contractor package",
+            fileName: "method-statement.pdf",
+            summary: "method statement for the current contractor package",
+            storageKey: "method/method-statement.pdf",
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-smoke-method",
+            sourceObjectId: "source-smoke-1",
+            fileName: "method-statement.pdf",
+            status: "ready",
+            safeSummary: "method statement for the current contractor package",
+            confidence: "high",
           },
         ],
       },
@@ -2190,10 +2500,9 @@ test("acceptance smoke protects the opening-condition pilot delivery chain", asy
       {
         checklistItems: [
           {
-            id: "item-safety-officer",
-            name: "Safety officer certificate",
-            expectedEvidenceHints: ["safety officer", "certificate"],
-            masterDataIds: ["md-1"],
+            id: "item-method-statement",
+            name: "Method statement",
+            expectedEvidenceHints: ["method statement"],
           },
           {
             id: "item-approval-form",

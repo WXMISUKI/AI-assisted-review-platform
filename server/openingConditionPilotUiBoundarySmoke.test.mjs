@@ -261,6 +261,10 @@ test("UI smoke keeps history delete, old inventory preview fallback, and markdow
   const styles = await readFile(new URL("../src/styles/opening-condition.css", import.meta.url), "utf8");
 
   assert.match(source, /opening-sidebar-task-delete/);
+  assert.match(source, /删除历史记录/);
+  assert.match(source, /生成最终报告/);
+  assert.doesNotMatch(source, /隐藏测试轮次/);
+  assert.doesNotMatch(source, /生成报告摘要/);
   assert.match(appSource, /deleteOpeningConditionPilotTask\(taskId\)/);
   assert.doesNotMatch(source, /!isOpeningConditionBasePilotTask\(task\.id, selectedWorkspaceId\)/);
   assert.match(source, /sourceArchiveStorageKey/);
@@ -301,7 +305,10 @@ test("UI smoke keeps opening-condition task creation and deletion aligned with c
 test("UI smoke keeps duplicate checklist ids from becoming review row identity", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
 
-  assert.match(source, /return checkItems\.map\(\(item, index\) => \{/);
+  assert.match(source, /const actionableCheckItems = checkItems\.filter/);
+  assert.match(source, /!\("scopeStatus" in item\) \|\| item\.scopeStatus !== "out_of_scope"/);
+  assert.match(source, /!\("finalDisposition" in item\) \|\| item\.finalDisposition !== "not_applicable"/);
+  assert.match(source, /return actionableCheckItems\.map\(\(item, index\) => \{/);
   assert.match(source, /\[task\.id, item\.id, item\.category, item\.subCategory, item\.name, index\]/);
   assert.match(source, /targetId: item\.id/);
   assert.match(source, /openReviewByTargetId\.get\(activeReviewItem\.targetId\)/);

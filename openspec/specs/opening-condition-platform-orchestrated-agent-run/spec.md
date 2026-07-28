@@ -66,6 +66,16 @@ The platform SHALL derive report readiness and report content from persisted che
 - **THEN** the task can enter `report_ready`
 - **AND** the generated report asset summarizes total, passed, failed, general failures, serious failures, legal basis, rectification, and the internal AI-assisted disclaimer
 
+#### Scenario: Human-reviewed item is accepted
+- **WHEN** a human-review item is confirmed by the operator
+- **THEN** the final Markdown report treats that item as accepted for the current run
+- **AND** it does not keep the item in the non-compliant Markdown table solely because the automatic verdict was previously blocking
+
+#### Scenario: Human-reviewed item is corrected or rejected
+- **WHEN** a human-review item is corrected or rejected by the operator
+- **THEN** the final Markdown report includes the item as a reportable finding
+- **AND** the problem description includes the platform reason and the operator safe note when present
+
 ### Requirement: Checklist extraction follows the uploaded checklist content
 The platform SHALL prefer checklist items extracted from the uploaded checklist document over static built-in templates.
 
@@ -78,6 +88,7 @@ The platform SHALL prefer checklist items extracted from the uploaded checklist 
 - **WHEN** a parsed checklist row belongs to `现场核查`
 - **THEN** the platform excludes that row from the current MVP material-review checklist
 - **AND** it does not create a pending material-review item for that row
+- **AND** final reports do not include that row as a compliant or non-compliant material-review finding
 
 #### Scenario: Uploaded checklist cannot be parsed
 - **WHEN** request-level items and document extraction do not produce items
@@ -116,3 +127,16 @@ The platform SHALL treat manifest-only matches as bounded evidence context and r
 - **WHEN** a checklist expected material matches only a manifest-only packet entry with no derived object
 - **THEN** the check item records the manifest match context
 - **AND** the human-review reason explains that the file name exists but no standalone preview asset is available
+
+### Requirement: Agent run records content verification before review readiness
+The platform SHALL record content verification diagnostics after packet inventory preparation and before deriving final review readiness when packet content facts are available.
+
+#### Scenario: Content verification completes automatically
+- **WHEN** a task has checklist items, packet inventory, and packet content facts
+- **THEN** the task records content verification and semantic matching events before report readiness or human-review waiting state is derived
+- **AND** the browser does not need to call Dify, OCR Worker, or MaxKB directly
+
+#### Scenario: Content verification is incomplete
+- **WHEN** a task lacks content facts for matched packet files
+- **THEN** the task records safe diagnostics that only filename or manifest-level matching was available
+- **AND** items that need substantive content judgement remain eligible for human review

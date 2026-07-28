@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   Archive,
   BookOpen,
-  EyeOff,
   ExternalLink,
   FileSearch,
   LogOut,
@@ -1596,7 +1595,13 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
           humanReviewIds: [],
         }));
 
-  return checkItems.map((item, index) => {
+  const actionableCheckItems = checkItems.filter(
+    (item) =>
+      (!("scopeStatus" in item) || item.scopeStatus !== "out_of_scope") &&
+      (!("finalDisposition" in item) || item.finalDisposition !== "not_applicable"),
+  );
+
+  return actionableCheckItems.map((item, index) => {
     const latestReview = latestHumanReviewByTargetId.get(item.id);
     const matchedEvidence = item.evidenceIds.map((evidenceId) => evidenceById.get(evidenceId)).filter(Boolean);
     const status = latestReview && (latestReview.status === "open" || latestReview.status === "deferred")
@@ -2963,6 +2968,7 @@ export function OpeningConditionWorkspaceShell({
               onGenerateReport={onGenerateReport}
               onExportReport={onExportReport}
               onArchive={onArchivePilotTask}
+              onDeleteTask={onDeletePilotTask}
               onStartRectificationRerun={onStartRectificationRerun}
               onFocusCheckItem={(checkItemId) => focusOpeningChecklistItem(checkItemId, "reports")}
               onFocusHumanReview={(reviewId) => focusOpeningHumanReviewItem(reviewId, "reports")}
@@ -5798,13 +5804,6 @@ function readHiddenPilotRunAudits(workspaceId: string): HiddenPilotRunAudit[] {
   }
 }
 
-function writeHiddenPilotRunAudits(workspaceId: string, audits: HiddenPilotRunAudit[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.setItem(getHiddenRunStorageKey(workspaceId), JSON.stringify(audits));
-}
-
 function OpeningConditionReportDeliveryWorkbench({
   packet,
   pilotTask,
@@ -5815,6 +5814,7 @@ function OpeningConditionReportDeliveryWorkbench({
   onGenerateReport,
   onExportReport,
   onArchive,
+  onDeleteTask,
   onStartRectificationRerun,
   onFocusCheckItem,
   onFocusHumanReview,
@@ -5828,11 +5828,12 @@ function OpeningConditionReportDeliveryWorkbench({
   onGenerateReport?: () => void;
   onExportReport?: (taskId: string) => void;
   onArchive?: () => void;
+  onDeleteTask?: (taskId: string) => void;
   onStartRectificationRerun?: () => void;
   onFocusCheckItem?: (checkItemId: string) => void;
   onFocusHumanReview?: (reviewId: string) => void;
 }) {
-  const [hiddenRunAudits, setHiddenRunAudits] = useState<HiddenPilotRunAudit[]>(() =>
+  const [hiddenRunAudits] = useState<HiddenPilotRunAudit[]>(() =>
     readHiddenPilotRunAudits(packet.workspaceId),
   );
   const hiddenRunIds = new Set(hiddenRunAudits.map((item) => item.taskId));
@@ -5894,22 +5895,6 @@ function OpeningConditionReportDeliveryWorkbench({
     pilotTask && selectedTask?.id === pilotTask.id && pilotTask.state === "report_ready" && blockingReviewCount === 0 && !reportAsset,
   );
   const canStartRectificationRerun = Boolean(onStartRectificationRerun && runSnapshot.canStartRectificationRerun);
-
-  function hideHistoryRun(taskId: string) {
-    const nextAudits = [
-      ...hiddenRunAudits.filter((item) => item.taskId !== taskId),
-      {
-        taskId,
-        hiddenAt: new Date().toISOString(),
-        reason: "operator_hidden_test_or_mistaken_run",
-      },
-    ];
-    setHiddenRunAudits(nextAudits);
-    writeHiddenPilotRunAudits(packet.workspaceId, nextAudits);
-    if (selectedHistoryTaskId === taskId) {
-      setSelectedHistoryTaskId(null);
-    }
-  }
 
   return (
     <section className="opening-panel opening-panel-report opening-panel-wide">
@@ -6345,7 +6330,7 @@ function OpeningConditionReportDeliveryWorkbench({
           <div>
             <strong>历史核查轮次</strong>
             <span>{historyTasks.length} 轮记录</span>
-            <p>新的整改复审会生成新的 run。历史 run 保留为只读记录，已隐藏测试轮次 {hiddenRunAudits.length} 条。</p>
+            <p>新的整改复审会生成新的 run。历史 run 保留为只读记录；误建或测试 run 可在本页或侧栏删除。</p>
           </div>
           {historyTasks.map((task) => {
             const taskFindings = buildReportFindings(task);
@@ -6394,10 +6379,10 @@ function OpeningConditionReportDeliveryWorkbench({
                   >
                     {isSelected ? "当前查看中" : "查看该轮详情"}
                   </button>
-                  {pilotTask?.id !== task.id && (
-                    <button type="button" className="secondary" onClick={() => hideHistoryRun(task.id)} disabled={pilotBusy}>
-                      <EyeOff size={16} />
-                      隐藏测试轮次
+                  {pilotTask?.id !== task.id && onDeleteTask && (
+                    <button type="button" className="secondary" onClick={() => onDeleteTask(task.id)} disabled={pilotBusy}>
+                      <Trash2 size={16} />
+                      删除历史记录
                     </button>
                   )}
                 </div>
@@ -6411,7 +6396,7 @@ function OpeningConditionReportDeliveryWorkbench({
         <div className="dialog-actions">
           {onGenerateReport && (
             <button type="button" className="primary" onClick={onGenerateReport} disabled={pilotBusy || !canGenerateReport}>
-              生成报告摘要
+              生成最终报告
             </button>
           )}
           {onExportReport && reportAsset && (
@@ -6453,6 +6438,7 @@ function OpeningConditionReportArchivePage({
   pilotBusy,
   onGenerateReport,
   onArchive,
+  onDeleteTask,
   onStartRectificationRerun,
 }: {
   packet: OpeningConditionReviewPacket;
@@ -6461,9 +6447,10 @@ function OpeningConditionReportArchivePage({
   pilotBusy?: boolean;
   onGenerateReport?: () => void;
   onArchive?: () => void;
+  onDeleteTask?: (taskId: string) => void;
   onStartRectificationRerun?: () => void;
 }) {
-  const [hiddenRunAudits, setHiddenRunAudits] = useState<HiddenPilotRunAudit[]>(() =>
+  const [hiddenRunAudits] = useState<HiddenPilotRunAudit[]>(() =>
     readHiddenPilotRunAudits(packet.workspaceId),
   );
   const hiddenRunIds = new Set(hiddenRunAudits.map((item) => item.taskId));
@@ -6496,22 +6483,6 @@ function OpeningConditionReportArchivePage({
     pendingHuman: findings.filter((item) => item.disposition === "needs_human_review").length,
     warning: findings.filter((item) => item.disposition === "warning").length,
   };
-
-  function hideHistoryRun(taskId: string) {
-    const nextAudits = [
-      ...hiddenRunAudits.filter((item) => item.taskId !== taskId),
-      {
-        taskId,
-        hiddenAt: new Date().toISOString(),
-        reason: "operator_hidden_test_or_mistaken_run",
-      },
-    ];
-    setHiddenRunAudits(nextAudits);
-    writeHiddenPilotRunAudits(packet.workspaceId, nextAudits);
-    if (selectedHistoryTaskId === taskId) {
-      setSelectedHistoryTaskId(null);
-    }
-  }
 
   return (
     <section className="opening-panel opening-panel-report opening-panel-wide">
@@ -6572,10 +6543,10 @@ function OpeningConditionReportArchivePage({
                   发起下一轮整改复审
                 </button>
               )}
-              {!isCurrentRun && (
-                <button type="button" className="secondary" onClick={() => hideHistoryRun(selectedTask.id)} disabled={pilotBusy}>
-                  <EyeOff size={16} />
-                  隐藏测试轮次
+              {!isCurrentRun && onDeleteTask && (
+                <button type="button" className="secondary" onClick={() => onDeleteTask(selectedTask.id)} disabled={pilotBusy}>
+                  <Trash2 size={16} />
+                  删除历史记录
                 </button>
               )}
             </div>
@@ -6761,7 +6732,7 @@ function OpeningConditionReportArchivePage({
           <div>
             <strong>历史核查轮次</strong>
             <span>{historyTasks.length} 轮记录</span>
-            <p>新一轮整改复审会生成新 run，历史 run 默认保留为只读记录。已隐藏测试轮次 {hiddenRunAudits.length} 条。</p>
+            <p>新一轮整改复审会生成新 run，历史 run 默认保留为只读记录；误建或测试 run 可删除。</p>
           </div>
           {historyTasks.map((task) => (
             <div
@@ -6790,10 +6761,10 @@ function OpeningConditionReportArchivePage({
                 <button type="button" className="secondary" onClick={() => setSelectedHistoryTaskId(task.id)}>
                   {selectedTask?.id === task.id ? "当前查看中" : "查看该轮详情"}
                 </button>
-                {pilotTask?.id !== task.id && (
-                  <button type="button" className="secondary" onClick={() => hideHistoryRun(task.id)} disabled={pilotBusy}>
-                    <EyeOff size={16} />
-                    隐藏测试轮次
+                {pilotTask?.id !== task.id && onDeleteTask && (
+                  <button type="button" className="secondary" onClick={() => onDeleteTask(task.id)} disabled={pilotBusy}>
+                    <Trash2 size={16} />
+                    删除历史记录
                   </button>
                 )}
               </div>
@@ -6806,7 +6777,7 @@ function OpeningConditionReportArchivePage({
         <div className="dialog-actions">
           {onGenerateReport && (
             <button type="button" className="primary" onClick={onGenerateReport} disabled={pilotBusy || !canGenerateReport}>
-              生成报告摘要
+              生成最终报告
             </button>
           )}
           {onArchive && reportAsset?.status === "ready" && (
