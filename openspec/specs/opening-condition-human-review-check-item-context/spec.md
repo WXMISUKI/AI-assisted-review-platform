@@ -47,3 +47,14 @@ Human-review items created from formal matching SHALL include operator-facing re
 #### Scenario: Content fact mismatches expected evidence
 - **WHEN** bounded content facts do not support the expected material
 - **THEN** the human-review item reason explains that file name or manifest matching is insufficient and identifies the content-verification mismatch category
+
+### Requirement: Human-review detail shows content-verification context
+The human-review detail page SHALL show content-verification context for the selected checklist item when task-owned facts are available.
+
+#### Scenario: Operator opens a content-mismatched item
+- **WHEN** the selected checklist item has semantic mismatch or unavailable content diagnostics
+- **THEN** the detail page shows the semantic note and matching content-fact rows so the operator can understand why the item needs review
+
+#### Scenario: Content facts are unsupported or pending
+- **WHEN** matching content facts are pending, unsupported, partial, or failed
+- **THEN** the detail page shows a readable Chinese status and makes clear that content accuracy has not been proven

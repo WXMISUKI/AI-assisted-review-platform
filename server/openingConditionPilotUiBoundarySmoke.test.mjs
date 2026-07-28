@@ -341,6 +341,13 @@ test("UI smoke keeps the opening-condition agent detail workbench usable", async
   assert.match(source, /需要人工审核原因/);
   assert.match(source, /opening-agent-review-reason-list/);
   assert.match(styles, /\.opening-agent-review-reason-list/);
+  assert.match(source, /内容核验依据/);
+  assert.match(source, /buildOpeningConditionAgentContentFactDiagnostics/);
+  assert.match(source, /openingContentFactStatusMeta/);
+  assert.match(source, /当前核查项暂无可关联的逐文件内容事实/);
+  assert.match(source, /opening-agent-content-facts-card/);
+  assert.match(styles, /\.opening-agent-content-facts-card/);
+  assert.match(styles, /\.opening-agent-content-fact-row/);
   assert.match(source, /平台正在准备最终 Markdown 报告/);
   assert.match(source, /辅助诊断/);
 });

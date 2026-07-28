@@ -299,6 +299,14 @@ export interface OpeningConditionPilotCheckItem extends OpeningConditionPilotIss
   verdict: "pass" | "fail" | "warning" | "needs_human_review" | "blocked";
   ruleExplanation: string;
   semanticNote?: string;
+  semanticMatch?: {
+    mode?: string;
+    contentSupported?: boolean;
+    contentMismatch?: boolean;
+    contentUnavailable?: boolean;
+    retrievalStatus?: string;
+    notes?: string[];
+  };
   basisVersionId: string;
   evidenceIds: string[];
   masterDataIds: string[];

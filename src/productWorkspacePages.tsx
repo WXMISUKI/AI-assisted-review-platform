@@ -44,6 +44,7 @@ import {
 } from "./domain/openingConditionReviewClean";
 import type {
   OpeningConditionObjectRef,
+  OpeningConditionPilotCheckItem,
   OpeningConditionPilotChecklistDefinitionItem,
   OpeningConditionPilotEvidence,
   OpeningConditionPilotHumanReviewItem,
@@ -328,6 +329,20 @@ type ReportRectificationDeliveryRow = OpeningConditionPilotReportDeliveryPackage
   notes: string[];
 };
 
+type OpeningConditionAgentContentFact = NonNullable<NonNullable<OpeningConditionPilotTask["packet"]>["contentFacts"]>[number];
+
+type OpeningConditionAgentContentFactDiagnostic = {
+  id: string;
+  fileName: string;
+  statusLabel: string;
+  statusTone: "success" | "warning" | "danger" | "info";
+  confidenceLabel: string;
+  summary: string;
+  snippets: string[];
+  locators: string[];
+  sourceLabel: string;
+};
+
 type OpeningConditionIssueClosureSummary = {
   statusLabel: string;
   statusTone: ReportFinding["dispositionTone"];
@@ -342,6 +357,38 @@ type OpeningConditionIssueClosureSummary = {
 type RectificationClosureSummary = RectificationClosureDiff["summary"];
 
 const reportDeliveryDispositions = new Set(["blocked", "fail", "reject", "needs_human_review", "warning"]);
+
+const openingContentFactStatusMeta: Record<
+  OpeningConditionAgentContentFact["status"],
+  { label: string; tone: OpeningConditionAgentContentFactDiagnostic["statusTone"] }
+> = {
+  ready: { label: "内容已抽取", tone: "success" },
+  partial: { label: "部分内容可用", tone: "warning" },
+  pending: { label: "等待内容抽取", tone: "warning" },
+  unsupported: { label: "暂不支持抽取", tone: "danger" },
+  failed: { label: "抽取失败", tone: "danger" },
+};
+
+const openingContentFactConfidenceLabels: Record<OpeningConditionAgentContentFact["confidence"], string> = {
+  high: "高置信",
+  medium: "中置信",
+  low: "低置信",
+};
+
+const openingSemanticRetrievalLabels: Record<string, string> = {
+  supporting: "依据/知识库支持",
+  conflicting: "依据/知识库冲突",
+  unavailable: "依据/知识库不可用",
+  uncertain: "依据/知识库不确定",
+  not_provided: "未提供依据检索",
+};
+
+const openingContentComplianceLabels: Record<string, string> = {
+  compliant: "内容可支持",
+  partially_compliant: "部分可支持",
+  non_compliant: "内容不支持",
+  not_evaluated: "未完成内容判断",
+};
 
 function buildReportRectificationDeliveryRows(findings: ReportFinding[]): ReportRectificationDeliveryRow[] {
   return findings
@@ -1675,6 +1722,115 @@ function buildOpeningConditionAgentReviewReasonLines({
   }
 
   return lines;
+}
+
+function normalizeOpeningConditionAgentMatchText(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function findOpeningConditionAgentCheckItem(
+  task: OpeningConditionPilotTask | null | undefined,
+  reviewItem: OpeningConditionAgentReviewItem | null,
+): OpeningConditionPilotCheckItem | null {
+  if (!task || !reviewItem) {
+    return null;
+  }
+
+  return task.checkItems.find((item) => item.id === reviewItem.targetId) ?? null;
+}
+
+function buildOpeningConditionAgentContentFactDiagnostics({
+  task,
+  reviewItem,
+}: {
+  task?: OpeningConditionPilotTask | null;
+  reviewItem: OpeningConditionAgentReviewItem | null;
+}): OpeningConditionAgentContentFactDiagnostic[] {
+  if (!task?.packet || !reviewItem) {
+    return [];
+  }
+
+  const evidenceById = new Map(task.evidence.map((item) => [item.id, item]));
+  const relatedEvidence = (reviewItem.evidenceIds ?? []).map((evidenceId) => evidenceById.get(evidenceId)).filter(Boolean);
+  const relatedObjectIds = new Set<string>();
+  const relatedFileNames = new Set<string>();
+  const relatedStorageKeys = new Set<string>();
+  const relatedLocators = new Set<string>();
+
+  relatedEvidence.forEach((evidence) => {
+    if (!evidence) {
+      return;
+    }
+    relatedObjectIds.add(evidence.objectRef.objectId);
+    relatedFileNames.add(evidence.objectRef.fileName);
+    if (evidence.objectRef.storageKey) {
+      relatedStorageKeys.add(evidence.objectRef.storageKey);
+    }
+    if (evidence.locator) {
+      relatedLocators.add(evidence.locator);
+    }
+  });
+
+  const relatedPacketEntryIds = new Set<string>();
+  for (const entry of task.packet.inventoryEntries ?? []) {
+    const entryFileName = normalizeOpeningConditionAgentMatchText(entry.fileName);
+    const entryPath = normalizeOpeningConditionAgentMatchText(entry.relativePath);
+    const derivedObjectId = entry.derivedObjectRef?.objectId;
+    const sourceObjectId = entry.sourceObjectId;
+    const derivedStorageKey = entry.derivedObjectRef?.storageKey;
+    const matchesObject =
+      Boolean(derivedObjectId && relatedObjectIds.has(derivedObjectId)) ||
+      Boolean(sourceObjectId && relatedObjectIds.has(sourceObjectId));
+    const matchesStorage = Boolean(derivedStorageKey && relatedStorageKeys.has(derivedStorageKey));
+    const matchesName = [...relatedFileNames].some((name) => {
+      const normalizedName = normalizeOpeningConditionAgentMatchText(name);
+      return Boolean(normalizedName && (entryFileName === normalizedName || entryPath === normalizedName));
+    });
+    const matchesLocator = [...relatedLocators].some((locator) => {
+      const normalizedLocator = normalizeOpeningConditionAgentMatchText(locator);
+      return Boolean(normalizedLocator && (entryFileName === normalizedLocator || entryPath === normalizedLocator));
+    });
+
+    if (matchesObject || matchesStorage || matchesName || matchesLocator) {
+      relatedPacketEntryIds.add(entry.id);
+    }
+  }
+
+  const diagnostics = (task.packet.contentFacts ?? []).filter((fact) => {
+    const factFileName = normalizeOpeningConditionAgentMatchText(fact.fileName);
+    const factPath = normalizeOpeningConditionAgentMatchText(fact.relativePath);
+    const matchesEntry = Boolean(fact.packetEntryId && relatedPacketEntryIds.has(fact.packetEntryId));
+    const matchesObject =
+      Boolean(fact.derivedObjectId && relatedObjectIds.has(fact.derivedObjectId)) ||
+      Boolean(fact.sourceObjectId && relatedObjectIds.has(fact.sourceObjectId));
+    const matchesName = [...relatedFileNames].some((name) => {
+      const normalizedName = normalizeOpeningConditionAgentMatchText(name);
+      return Boolean(normalizedName && (factFileName === normalizedName || factPath === normalizedName));
+    });
+    const matchesLocator = [...relatedLocators].some((locator) => {
+      const normalizedLocator = normalizeOpeningConditionAgentMatchText(locator);
+      return Boolean(normalizedLocator && (factFileName === normalizedLocator || factPath === normalizedLocator));
+    });
+    return matchesEntry || matchesObject || matchesName || matchesLocator;
+  });
+
+  return diagnostics.slice(0, 4).map((fact) => {
+    const statusMeta = openingContentFactStatusMeta[fact.status] ?? { label: fact.status, tone: "info" as const };
+    const sourceLabel = [fact.provider, fact.extractor].filter(Boolean).join(" / ") || "平台内容事实";
+    return {
+      id: fact.id,
+      fileName: fact.relativePath || fact.fileName || "未命名资料",
+      statusLabel: statusMeta.label,
+      statusTone: statusMeta.tone,
+      confidenceLabel: openingContentFactConfidenceLabels[fact.confidence] ?? "置信度未记录",
+      summary: fact.safeSummary || "暂无安全摘要。",
+      snippets: (fact.snippets ?? []).filter(Boolean).slice(0, 3),
+      locators: (fact.locators ?? []).filter(Boolean).slice(0, 4),
+      sourceLabel,
+    };
+  });
 }
 
 function findOpeningConditionAgentPreviewFile(
@@ -3252,6 +3408,14 @@ function OpeningConditionObjectOverviewProductizedPage({
       : activeReviewItem
         ? openReviewByTargetId.get(activeReviewItem.targetId) ?? latestReviewByTargetId.get(activeReviewItem.targetId) ?? null
         : null;
+  const activeCheckItem = findOpeningConditionAgentCheckItem(selectedAgentTask, activeReviewItem);
+  const activeContentFactDiagnostics = buildOpeningConditionAgentContentFactDiagnostics({
+    task: selectedAgentTask,
+    reviewItem: activeReviewItem,
+  });
+  const activeSemanticMatch = "semanticMatch" in (activeCheckItem ?? {}) ? activeCheckItem?.semanticMatch : undefined;
+  const activeContentCompliance =
+    "contentCompliance" in (activeCheckItem ?? {}) ? activeCheckItem?.contentCompliance : undefined;
   const activeReviewReasonLines = buildOpeningConditionAgentReviewReasonLines({
     reviewItem: activeReviewItem,
     reviewQueueItem: activeReviewQueueItem,
@@ -3516,6 +3680,58 @@ function OpeningConditionObjectOverviewProductizedPage({
                       ))}
                     </div>
                     {activeReviewQueueItem?.safeNote ? <small>当前记录：{activeReviewQueueItem.safeNote}</small> : null}
+                  </div>
+                  <div className="opening-agent-content-facts-card">
+                    <div className="opening-agent-content-facts-header">
+                      <div>
+                        <strong>内容核验依据</strong>
+                        <p>
+                          {activeCheckItem?.semanticNote ??
+                            "当前核查项尚未形成内容核验说明，需结合文件预览和资料清单判断。"}
+                        </p>
+                      </div>
+                      <div className="opening-agent-content-facts-chips">
+                        {activeContentCompliance ? (
+                          <span className="opening-report-chip tone-info">
+                            {openingContentComplianceLabels[activeContentCompliance] ?? activeContentCompliance}
+                          </span>
+                        ) : null}
+                        {activeSemanticMatch?.retrievalStatus ? (
+                          <span className="opening-report-chip tone-info">
+                            {openingSemanticRetrievalLabels[activeSemanticMatch.retrievalStatus] ?? activeSemanticMatch.retrievalStatus}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {activeSemanticMatch?.notes?.length ? (
+                      <div className="opening-agent-content-fact-note-list">
+                        {activeSemanticMatch.notes.slice(0, 3).map((note, index) => (
+                          <small key={`${activeReviewItem?.id ?? "review"}-semantic-note-${index}`}>{note}</small>
+                        ))}
+                      </div>
+                    ) : null}
+                    {activeContentFactDiagnostics.length > 0 ? (
+                      <div className="opening-agent-content-fact-list">
+                        {activeContentFactDiagnostics.map((fact) => (
+                          <article key={fact.id} className="opening-agent-content-fact-row">
+                            <div className="opening-agent-content-fact-row-header">
+                              <span className={`opening-review-status tone-${fact.statusTone}`}>{fact.statusLabel}</span>
+                              <strong>{fact.fileName}</strong>
+                            </div>
+                            <p>{fact.summary}</p>
+                            {fact.snippets.length > 0 ? <small>内容片段：{fact.snippets.join(" / ")}</small> : null}
+                            {fact.locators.length > 0 ? <small>定位：{fact.locators.join(" / ")}</small> : null}
+                            <small>
+                              来源：{fact.sourceLabel} · {fact.confidenceLabel}
+                            </small>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="opening-agent-content-fact-empty">
+                        当前核查项暂无可关联的逐文件内容事实；系统只能展示文件名、清单或人工复核原因，不能说明内容已经被验证。
+                      </div>
+                    )}
                   </div>
                   <label className="opening-agent-review-note">
                     <span>人工补充说明</span>

@@ -84,3 +84,14 @@ The platform SHALL use packet content facts when deriving opening-condition chec
 - **WHEN** a candidate file name matches but bounded content facts do not support the expected evidence
 - **THEN** the check item records a mismatch diagnostic
 - **AND** the item is failed or routed to human review instead of passing
+
+### Requirement: Content facts are renderable for checklist review
+The platform SHALL expose enough bounded packet content-fact information for the frontend to render checklist-specific content-verification diagnostics.
+
+#### Scenario: Checklist item has evidence-linked content facts
+- **WHEN** a checklist item references evidence that can be linked to packet content facts
+- **THEN** the review UI can render fact status, confidence, file name, locator, safe summary, bounded snippets, and provider/extractor metadata for that item
+
+#### Scenario: Checklist item has no usable content facts
+- **WHEN** a checklist item has no matching packet content facts
+- **THEN** the review UI indicates that content verification has not produced item-level facts rather than implying the content was checked
