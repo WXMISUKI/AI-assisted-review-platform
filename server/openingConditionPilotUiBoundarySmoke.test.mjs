@@ -240,6 +240,21 @@ test("UI smoke keeps packet inventory document rows keyed by UI-safe identity", 
   assert.doesNotMatch(source, /id: entry\.id,/);
 });
 
+test("UI smoke keeps packet child preview selection on derived assets instead of source ZIP archives", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+
+  assert.match(source, /const derivedObject = entry\.derivedObjectRef;/);
+  assert.match(source, /storageKey: derivedObject\?\.storageKey/);
+  assert.match(source, /sourceArchiveStorageKey: sourceArchive\?\.storageKey/);
+  assert.match(source, /hasDerivedAsset: Boolean\(derivedObject\?\.storageKey\)/);
+  assert.match(source, /file\.storageKey === evidence\.objectRef\.storageKey/);
+  assert.match(source, /file\.fileName === evidence\.objectRef\.fileName && file\.hasDerivedAsset/);
+  assert.match(source, /const fallbackFile = files\.find\(\(file\) => file\.fileName === evidence\.objectRef\.fileName\);/);
+  assert.match(source, /平台没有为它保留独立预览对象/);
+  assert.match(source, /重新上传新资料包以获得逐文件预览/);
+  assert.match(source, /sourceArchiveStorageKey/);
+});
+
 test("UI smoke keeps history delete, old inventory preview fallback, and markdown report rendering in the agent console", async () => {
   const source = await readFile(workspacePagesSourcePath, "utf8");
   const appSource = await readFile(appSourcePath, "utf8");

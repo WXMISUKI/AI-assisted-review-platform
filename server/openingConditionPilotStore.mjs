@@ -142,7 +142,13 @@ function normalizeWorkspaceContext(value) {
     participantEntityId: normalizeString(value.participantEntityId, "", 160) || undefined,
   };
 
-  return Object.values(context).every(Boolean) ? context : null;
+  return context.workspaceId &&
+    context.tenantId &&
+    context.projectId &&
+    context.contractPackageId &&
+    context.participatingOrganizationId
+    ? context
+    : null;
 }
 
 function normalizeObjectRef(value) {
@@ -1487,7 +1493,14 @@ function buildPacketMatchCandidates(packet) {
 
   return inventoryEntries.map((entry) => {
     const sourceObject = entry.sourceObjectId ? sourceObjectMap.get(entry.sourceObjectId) : null;
-    const preferredObjectRef = entry.derivedObjectRef ?? sourceObject;
+    const hasDerivedObject = Boolean(entry.derivedObjectRef?.storageKey);
+    const canUseSourceObjectAsStandalone =
+      entry.assetizationStatus === "source_object_fallback" && sourceObject && !isZipSourceObject(sourceObject);
+    const preferredObjectRef = hasDerivedObject
+      ? entry.derivedObjectRef
+      : canUseSourceObjectAsStandalone
+        ? sourceObject
+        : null;
     return {
       entry,
       objectRef: sanitizeOpeningConditionPilotValue({
@@ -1500,8 +1513,13 @@ function buildPacketMatchCandidates(packet) {
         summary: entry.summary ?? entry.relativePath ?? preferredObjectRef?.summary,
         sizeBytes: entry.sizeBytes ?? preferredObjectRef?.sizeBytes,
       }),
+      hasStandalonePreviewAsset: Boolean(preferredObjectRef?.storageKey),
     };
   });
+}
+
+function hasManifestOnlyPacketMatch(matches = []) {
+  return matches.some((match) => !match.hasStandalonePreviewAsset || match.entry.assetizationStatus === "manifest_only");
 }
 
 function getChecklistReviewText(checklistItem) {
@@ -5302,6 +5320,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
       const topMatches = scoredMatches.filter((match) => match.score === bestScore).slice(0, 5);
       const ambiguous = topMatches.length > 1;
       const missing = topMatches.length === 0;
+      const manifestOnlyMatch = !missing && hasManifestOnlyPacketMatch(topMatches);
       const isResourceItem = isResourceChecklistItem(item);
       const authorizedMasterDataIds = getAuthorizedMasterDataIds(existingTask, item);
       const masterDataMissing = item.masterDataIds.some((masterDataId) => !authorizedMasterDataIds.includes(masterDataId));
@@ -5325,7 +5344,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
       });
       const visualAssertions = buildVisualAssertions(item, topMatches, itemEvidence);
       const visualReviewRequired = visualAssertions.some((assertion) => assertion?.requiresHumanReview);
-      const needsHumanReview = ambiguous || missing || masterDataAuthorizationMissing || visualReviewRequired;
+      const needsHumanReview = ambiguous || missing || manifestOnlyMatch || masterDataAuthorizationMissing || visualReviewRequired;
       const documentPresence = missing ? "missing" : ambiguous ? "ambiguous" : "present";
       const relevanceStatus = missing ? "unconfirmed" : ambiguous ? "unconfirmed" : "matched";
       const contentCompliance = needsHumanReview
@@ -5363,6 +5382,8 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
           expectedEvidenceHints: item.expectedEvidenceHints,
           reason: missing
             ? "资料包中未找到稳定匹配文件。"
+            : manifestOnlyMatch
+              ? "资料包清单命中文件名，但平台没有该条目的独立预览资产，需要人工打开源资料或重新上传可拆分资料确认。"
             : masterDataAuthorizationMissing
               ? isResourceItem
                 ? "人员或设备资料已命中候选文件，但缺少合同边界下已发布或人工批准的项目主数据授权。"

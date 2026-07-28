@@ -381,6 +381,28 @@ test("requires human-confirmed basis ingestion preview before publication", asyn
       },
       { storePath },
     );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        id: "md-1",
+        workspaceId: "ws-1",
+        type: "system_document",
+        label: "试点资料包主数据",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "system_document",
+        label: "试点资料包主数据",
+        status: "published",
+      },
+      { storePath },
+    );
 
     const initialized = await initializeOpeningConditionPilotTaskIntake(
       {
@@ -859,10 +881,15 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
         readObjectBuffer: async () => ({
           buffer: zipFixtureBuffer,
         }),
+        uploadObjectBuffer: async ({ filename, contentType, buffer }) => ({
+          key: `derived/${filename}`,
+          contentType,
+          size: buffer.length,
+        }),
       },
     );
 
-    assert.equal(result.ok, true);
+    assert.equal(result.ok, true, JSON.stringify({ status: result.status, message: result.message, errors: result.errors }));
     assert.equal(result.task.id, "task-trial-1");
     assert.equal(result.task.state, "awaiting_human_review");
     assert.equal(result.task.basisVersion.status, "published");
@@ -882,6 +909,14 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
     assert.equal(result.task.reviewScope, "completeness_and_compliance");
     assert.equal(result.task.checklistDefinition.length, 22);
     assert.equal(result.task.checkItems.length, 22);
+    assert.equal(
+      result.task.packet.inventoryEntries.every((entry) => entry.assetizationStatus === "derived_object_ready"),
+      true,
+    );
+    assert.equal(
+      result.task.packet.inventoryEntries.every((entry) => entry.derivedObjectRef?.storageKey?.startsWith("derived/")),
+      true,
+    );
     assert.equal(result.task.events.some((event) => event.type === "human_review.waiting"), true);
     assert.equal(result.task.humanReviewQueue.length > 0, true);
     assert.equal(result.orchestration.ok, true);
@@ -1013,19 +1048,126 @@ test("initializes packet inventory from ZIP manifest when a readable ZIP source 
       },
     );
 
-    assert.equal(initialized.ok, true);
+    assert.equal(initialized.ok, true, JSON.stringify({ status: initialized.status, message: initialized.message, errors: initialized.errors }));
     assert.equal(initialized.intake.inventoryResolution, "derived_from_zip_manifest");
     assert.equal(initialized.intake.inventoryEntryCount, 2);
-    assert.equal(initialized.intake.inventoryFallbackReason, "zip_entry_unsupported");
+    assert.equal(initialized.intake.inventoryFallbackReason, undefined);
     assert.equal(initialized.task.packet.inventoryEntries[0].derivedObjectRef?.storageKey?.startsWith("derived/"), true);
     assert.equal(initialized.task.packet.inventoryEntries[0].assetizationStatus, "derived_object_ready");
     assert.equal(initialized.task.packet.inventoryEntries[0].relativePath, "人员/专职安全员证书.txt");
+    assert.equal(initialized.task.packet.inventoryEntries[1].derivedObjectRef?.storageKey?.startsWith("derived/"), true);
+    assert.equal(initialized.task.packet.inventoryEntries[1].assetizationStatus, "derived_object_ready");
 
     const matchResult = await runOpeningConditionPilotChecklistMatch("task-init-zip", {}, { storePath });
     assert.equal(matchResult.ok, true);
     assert.equal(matchResult.checkItems[0].verdict, "pass");
     assert.equal(matchResult.evidence[0].objectRef.storageKey?.startsWith("derived/"), true);
     assert.equal(matchResult.evidence[0].locator, "人员/专职安全员证书.txt");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps manifest-only ZIP child matches from pretending to have standalone preview objects", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-manifest-only-match-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotBasisVersion(
+      "ws-1",
+      "basis-1",
+      {
+        title: "承台施工分包合同",
+        status: "published",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotKnowledgeBase(
+      "ws-1",
+      "kb-1",
+      {
+        organizationId: "org-1",
+        contractPackageId: "contract-1",
+        subcontractTeamId: "team-1",
+        label: "承台施工分包队伍知识库",
+        status: "ready",
+      },
+      { storePath },
+    );
+    await upsertOpeningConditionPilotMasterDataRecord(
+      "ws-1",
+      "md-1",
+      {
+        type: "system_document",
+        label: "试点资料包主数据",
+        status: "published",
+      },
+      { storePath },
+    );
+
+    const initialized = await initializeOpeningConditionPilotTaskIntake(
+      {
+        taskId: "task-manifest-only-match",
+        context: validTaskInput().context,
+        basisVersionId: "basis-1",
+        knowledgeBaseId: "kb-1",
+        requiredMasterDataIds: ["md-1"],
+        checklistItems: [
+          {
+            id: "item-permit-contract",
+            category: "资料核查",
+            subCategory: "许可",
+            name: "渣土泥浆外运合同",
+            expectedEvidenceHints: ["渣土泥浆外运合同"],
+          },
+        ],
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "承台施工条件核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "archive-1",
+            kind: "source_archive",
+            fileName: "条件核查.zip",
+            storageKey: "uploads/archive-1.zip",
+          },
+        ],
+        inventoryEntries: [
+          {
+            id: "archive-1-entry-permit-contract",
+            sourceObjectId: "archive-1",
+            fileName: "渣土泥浆外运合同.pdf",
+            relativePath: "许可/渣土泥浆外运合同.pdf",
+            assetizationStatus: "manifest_only",
+            fallbackReason: "zip_entry_unsupported",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(initialized.ok, true, JSON.stringify({ status: initialized.status, message: initialized.message, errors: initialized.errors }));
+    assert.equal(initialized.task.packet.inventoryEntries[0].assetizationStatus, "manifest_only");
+
+    const matchResult = await runOpeningConditionPilotChecklistMatch("task-manifest-only-match", {}, { storePath });
+    assert.equal(
+      matchResult.ok,
+      true,
+      JSON.stringify({
+        status: matchResult.status,
+        message: matchResult.message,
+        errors: matchResult.errors,
+        preflightReadiness: matchResult.preflightReadiness,
+      }),
+    );
+    assert.equal(matchResult.checkItems[0].verdict, "needs_human_review");
+    assert.equal(matchResult.checkItems[0].documentPresence, "present");
+    assert.equal(matchResult.evidence[0].objectRef.fileName, "渣土泥浆外运合同.pdf");
+    assert.equal(matchResult.evidence[0].objectRef.storageKey, undefined);
+    assert.equal(matchResult.humanReviewQueue.length, 1);
+    assert.match(matchResult.humanReviewQueue[0].reason, /独立预览资产/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -1349,7 +1491,7 @@ test("intakes a packet as bounded object summaries and records an event", async 
       { storePath },
     );
 
-    assert.equal(intake.ok, true);
+    assert.equal(intake.ok, true, JSON.stringify({ status: intake.status, message: intake.message, errors: intake.errors }));
     assert.equal(intake.task.state, "packet_uploaded");
     assert.equal(intake.packet.sourceObjects.length, 2);
     assert.equal(intake.packet.inventoryEntries.length, 2);
