@@ -1628,6 +1628,50 @@ function buildOpeningConditionAgentReviewItems(task?: OpeningConditionPilotTask 
   });
 }
 
+function buildOpeningConditionAgentReviewReasonLines({
+  reviewItem,
+  reviewQueueItem,
+  reviewScope,
+}: {
+  reviewItem: OpeningConditionAgentReviewItem | null;
+  reviewQueueItem?: NonNullable<OpeningConditionPilotTask["humanReviewQueue"]>[number] | null;
+  reviewScope: OpeningConditionPilotReviewScope;
+}) {
+  if (!reviewItem) {
+    return ["当前核查项上下文不可用，需要返回列表重新选择。"];
+  }
+
+  const lines = [
+    reviewScope === "completeness_and_compliance"
+      ? "当前核查模式：资料完整性 + 资料合规性。平台会展示已有证据、AI 判断和待人工确认原因。"
+      : "当前核查模式：资料完整性。这里仅说明资料是否缺失、是否无法稳定匹配，不推断深度合规结论。",
+  ];
+
+  if (reviewItem.status.includes("未")) {
+    lines.push(`匹配结果：暂未找到能稳定对应“${reviewItem.content}”的资料文件，需要人工确认是否确实缺失或文件命名不清。`);
+  } else if (reviewItem.status.includes("人工")) {
+    lines.push("匹配结果：系统发现该项存在缺失、歧义或证据不足，已进入人工复核节点。");
+  } else {
+    lines.push("匹配结果：该项已有平台记录的匹配或人工处理结论，可继续核对证据是否符合实际。");
+  }
+
+  if (reviewQueueItem?.reason) {
+    lines.push(`需要人工审核原因：${reviewQueueItem.reason}`);
+  } else if (reviewQueueItem?.ruleExplanation) {
+    lines.push(`需要人工审核原因：${reviewQueueItem.ruleExplanation}`);
+  } else {
+    lines.push("需要人工审核原因：当前证据链不足以自动关闭该核查项，需由用户结合原文资料确认。");
+  }
+
+  if (reviewQueueItem?.expectedEvidenceHints?.length) {
+    lines.push(`期望资料：${reviewQueueItem.expectedEvidenceHints.join(" / ")}`);
+  } else if (reviewItem.evidenceText) {
+    lines.push(`当前证据摘要：${reviewItem.evidenceText}`);
+  }
+
+  return lines;
+}
+
 function findOpeningConditionAgentPreviewFile(
   files: OpeningConditionAgentMaterialFile[],
   reviewItem: OpeningConditionAgentReviewItem | null,
@@ -1663,8 +1707,8 @@ function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTas
     return [
       {
         key: "waiting-upload",
-        label: "Waiting for upload",
-        detail: "Upload the basis document, checklist, and material packet first.",
+        label: "等待上传资料",
+        detail: "请先上传合同/资质依据、资料核查表和核查资料包。",
         progress: 0,
         done: false,
         active: true,
@@ -1676,19 +1720,19 @@ function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTas
 
   const events = [...(task.events ?? [])].sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0));
   const eventLabelByType: Record<string, string> = {
-    "task.created": "Create audit task",
-    "task.intake_initialized": "Initialize intake",
-    "packet.uploaded": "Receive packet",
-    "extraction.started": "Extract checklist",
-    "extraction.completed": "Prepare checklist items",
-    "matching.started": "Run material matching",
-    "matching.completed": "Complete automatic review",
-    "human_review.waiting": "Wait for human review",
-    "report.ready": "Generate final report",
-    "report.exported": "Export report asset",
-    "task.archived": "Archive history",
-    "task.failed": "Task failed",
-    "task.canceled": "Task canceled",
+    "task.created": "创建审核任务",
+    "task.intake_initialized": "初始化资料接入",
+    "packet.uploaded": "接收资料包",
+    "extraction.started": "解析核查表",
+    "extraction.completed": "整理核查项",
+    "matching.started": "执行资料匹配",
+    "matching.completed": "完成自动核查",
+    "human_review.waiting": "等待人工复核",
+    "report.ready": "生成最终报告",
+    "report.exported": "导出报告资产",
+    "task.archived": "归档历史记录",
+    "task.failed": "任务失败",
+    "task.canceled": "任务取消",
   };
   const latestSequence = events[events.length - 1]?.sequence ?? 0;
   const eventSteps = events.map((event) => {
@@ -1726,7 +1770,7 @@ function buildOpeningConditionAgentProgressSteps(task?: OpeningConditionPilotTas
     {
       key: "state-fallback",
       label: openingConditionPilotStateLabels[task.state] ?? task.state,
-      detail: "The task is still moving through the platform-owned workflow. Follow the timeline and human-review guidance on the right.",
+      detail: "任务正在按照平台内置编排推进，请关注时间线和人工复核提示。",
       progress: getOpeningConditionAgentTaskProgress(task),
       done: task.state === "report_ready" || task.state === "archived",
       active: task.state !== "report_ready" && task.state !== "archived",
@@ -2720,7 +2764,11 @@ export function OpeningConditionWorkspaceShell({
                 >
                   <button type="button" className="opening-sidebar-task-main" onClick={() => selectAgentTask(task.id)}>
                     <span>{getOpeningConditionAgentTaskTitle(task)}</span>
-                    <small>{getOpeningConditionAgentTaskProgress(task)}%</small>
+                    <i
+                      className="opening-sidebar-progress-ring"
+                      style={{ "--progress": `${getOpeningConditionAgentTaskProgress(task)}%` } as CSSProperties}
+                      aria-label={`进度 ${getOpeningConditionAgentTaskProgress(task)}%`}
+                    />
                   </button>
                   {onDeletePilotTask && (
                     <button
@@ -3125,6 +3173,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   );
   const [workbenchMode, setWorkbenchMode] = useState<OpeningConditionAgentWorkbenchMode>({ kind: "list" });
   const [agentReviewNote, setAgentReviewNote] = useState("");
+  const [progressPaneCollapsed, setProgressPaneCollapsed] = useState(false);
 
   useEffect(() => {
     setWorkbenchMode({ kind: "list" });
@@ -3197,6 +3246,11 @@ function OpeningConditionObjectOverviewProductizedPage({
       : activeReviewItem
         ? openReviewByTargetId.get(activeReviewItem.targetId) ?? latestReviewByTargetId.get(activeReviewItem.targetId) ?? null
         : null;
+  const activeReviewReasonLines = buildOpeningConditionAgentReviewReasonLines({
+    reviewItem: activeReviewItem,
+    reviewQueueItem: activeReviewQueueItem,
+    reviewScope: selectedReviewScope,
+  });
   const blockingReviewCount =
     selectedAgentTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
   const canCompleteHumanReview = Boolean(
@@ -3325,7 +3379,15 @@ function OpeningConditionObjectOverviewProductizedPage({
 
   return (
     <div className="opening-condition-page opening-agent-console">
-      <section className="opening-agent-detail">
+      <section
+        className={[
+          "opening-agent-detail",
+          workbenchMode.kind !== "list" ? "is-focused-mode" : "",
+          progressPaneCollapsed && workbenchMode.kind === "list" ? "is-progress-collapsed" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <div className="opening-agent-file-pane">
           <div className="opening-agent-pane-header">
             <div>
@@ -3334,6 +3396,11 @@ function OpeningConditionObjectOverviewProductizedPage({
             </div>
             <div className="opening-agent-pane-actions">
               <span className="opening-report-chip tone-info">{agentMaterialFiles.length} 个文件</span>
+              {workbenchMode.kind === "list" ? (
+                <button type="button" className="secondary" onClick={() => setProgressPaneCollapsed((value) => !value)}>
+                  {progressPaneCollapsed ? "展开进度" : "收起进度"}
+                </button>
+              ) : null}
               <button type="button" className="secondary" onClick={onCloseAgentTask}>
                 返回新建审核
               </button>
@@ -3437,11 +3504,11 @@ function OpeningConditionObjectOverviewProductizedPage({
                     <span className={`opening-review-status tone-${activeReviewItem?.tone ?? "warning"}`}>
                       {activeReviewItem?.status ?? "待处理"}
                     </span>
-                    <p>{activeReviewItem?.evidenceText ?? "当前暂无关联证据，需人工结合资料判断。"}</p>
-                    {activeReviewQueueItem?.ruleExplanation ? <small>核查规则：{activeReviewQueueItem.ruleExplanation}</small> : null}
-                    {activeReviewQueueItem?.expectedEvidenceHints?.length ? (
-                      <small>期望资料：{activeReviewQueueItem.expectedEvidenceHints.join(" / ")}</small>
-                    ) : null}
+                    <div className="opening-agent-review-reason-list">
+                      {activeReviewReasonLines.map((line, index) => (
+                        <small key={`${activeReviewItem?.id ?? "review"}-reason-${index}`}>{line}</small>
+                      ))}
+                    </div>
                     {activeReviewQueueItem?.safeNote ? <small>当前记录：{activeReviewQueueItem.safeNote}</small> : null}
                   </div>
                   <label className="opening-agent-review-note">
@@ -3484,9 +3551,14 @@ function OpeningConditionObjectOverviewProductizedPage({
               <h2>{selectedAgentTask ? `${agentProgress}% · ${openingConditionPilotStateLabels[selectedAgentTask.state] ?? selectedAgentTask.state}` : "等待上传"}</h2>
             </div>
             {selectedAgentTask && (
-              <button type="button" className="secondary" onClick={() => onGoToPage("reports")}>
-                查看报告
-              </button>
+              <div className="opening-agent-pane-actions">
+                <button type="button" className="secondary" onClick={() => setProgressPaneCollapsed((value) => !value)}>
+                  {progressPaneCollapsed ? "展开进度" : "收起进度"}
+                </button>
+                <button type="button" className="secondary" onClick={() => onGoToPage("reports")}>
+                  查看报告
+                </button>
+              </div>
             )}
           </div>
           <div className="opening-agent-progress-bar">
@@ -3495,7 +3567,7 @@ function OpeningConditionObjectOverviewProductizedPage({
           <section className="opening-agent-timeline-section">
             <div className="opening-agent-section-heading">
               <strong>执行时间线</strong>
-              <span>{agentSteps.length} steps</span>
+              <span>{agentSteps.length} 步</span>
             </div>
           <div className="opening-agent-step-list">
             {agentSteps.map((step) => (
@@ -3518,13 +3590,13 @@ function OpeningConditionObjectOverviewProductizedPage({
           </section>
           <div className="opening-agent-report-handoff">
             <div className="opening-agent-section-heading">
-              <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "Final report"}</strong>
+              <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "最终报告"}</strong>
               <span>
                 {selectedAgentTask?.reportAsset?.markdownContent
-                  ? "ready"
+                  ? "已生成"
                   : selectedAgentTask.state === "awaiting_human_review"
-                    ? "waiting for human review"
-                    : "running"}
+                    ? "等待人工复核"
+                    : "运行中"}
               </span>
             </div>
             <strong>{selectedAgentTask?.reportAsset ? selectedAgentTask.reportAsset.title : "最终报告将在核查完成后生成"}</strong>
@@ -3539,24 +3611,24 @@ function OpeningConditionObjectOverviewProductizedPage({
               <div className="opening-agent-report-placeholder">
                 <strong>
                   {blockingReviewCount > 0
-                    ? `${blockingReviewCount} review item(s) still need human confirmation`
-                    : "The platform is preparing the final Markdown report"}
+                    ? `${blockingReviewCount} 项仍需人工确认`
+                    : "平台正在准备最终 Markdown 报告"}
                 </strong>
                 <p>
                   {blockingReviewCount > 0
-                    ? "Finish the remaining human-review items on the left, then the workflow can continue into report generation."
-                    : "When the automatic nodes finish, this area will render the final Markdown report directly."}
+                    ? "请先处理剩余人工复核项，之后工作流会继续进入报告生成。"
+                    : "自动节点完成后，这里会直接渲染最终 Markdown 报告。"}
                 </p>
               </div>
             )}
           </div>
           <details className="opening-agent-secondary-diagnostics">
-            <summary>Supporting diagnostics</summary>
+            <summary>辅助诊断</summary>
             <div className="opening-agent-secondary-diagnostics-body">
-              <span>Material files: {agentMaterialFiles.length}</span>
-              <span>Checklist items: {agentReviewItems.length}</span>
-              <span>Human-review queue: {selectedAgentTask?.humanReviewQueue.length ?? 0}</span>
-              <span>Evidence records: {selectedAgentTask?.evidence.length ?? 0}</span>
+              <span>资料文件：{agentMaterialFiles.length}</span>
+              <span>核查项：{agentReviewItems.length}</span>
+              <span>人工复核队列：{selectedAgentTask?.humanReviewQueue.length ?? 0}</span>
+              <span>证据记录：{selectedAgentTask?.evidence.length ?? 0}</span>
             </div>
           </details>
         </div>

@@ -259,6 +259,30 @@
   color: var(--text-muted);
 }
 
+.opening-sidebar-progress-ring {
+  --progress: 0%;
+  position: relative;
+  display: inline-block;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: conic-gradient(var(--primary) var(--progress), var(--border-soft) 0);
+}
+
+.opening-sidebar-progress-ring::after {
+  position: absolute;
+  inset: 5px;
+  border-radius: inherit;
+  background: var(--surface);
+  content: "";
+}
+
+.opening-sidebar-task:hover .opening-sidebar-progress-ring::after,
+.opening-sidebar-task.active .opening-sidebar-progress-ring::after {
+  background: var(--surface-muted);
+}
+
 .opening-agent-hero,
 .opening-agent-entry,
 .opening-agent-history,
@@ -483,6 +507,21 @@
   min-height: 0;
   height: 100%;
   overflow: hidden;
+}
+
+.opening-agent-detail.is-focused-mode,
+.opening-agent-detail.is-progress-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.opening-agent-detail.is-focused-mode .opening-agent-file-pane,
+.opening-agent-detail.is-progress-collapsed .opening-agent-file-pane {
+  border-right: 0;
+}
+
+.opening-agent-detail.is-focused-mode .opening-agent-progress-pane,
+.opening-agent-detail.is-progress-collapsed .opening-agent-progress-pane {
+  display: none;
 }
 
 .opening-agent-file-pane,
@@ -802,6 +841,16 @@
   margin: 0;
 }
 
+.opening-agent-review-reason-list {
+  display: grid;
+  gap: 7px;
+}
+
+.opening-agent-review-reason-list small {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .opening-agent-review-summary-card.muted {
   background: color-mix(in srgb, var(--surface-muted) 65%, var(--surface));
 }
@@ -918,6 +967,12 @@
   display: block;
   object-fit: contain;
   padding: 8px;
+}
+
+.opening-agent-detail.is-focused-mode .opening-agent-docx-preview,
+.opening-agent-detail.is-focused-mode .opening-agent-inline-frame,
+.opening-agent-detail.is-focused-mode .opening-agent-inline-image {
+  min-height: min(76vh, 820px);
 }
 
 @keyframes opening-agent-spin {

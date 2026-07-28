@@ -293,6 +293,36 @@ test("UI smoke keeps duplicate checklist ids from becoming review row identity",
   assert.match(source, /latestReviewByTargetId\.get\(activeReviewItem\.targetId\)/);
 });
 
+test("UI smoke keeps the opening-condition agent detail workbench usable", async () => {
+  const source = await readFile(workspacePagesSourcePath, "utf8");
+  const styles = await readFile(new URL("../src/styles/opening-condition.css", import.meta.url), "utf8");
+
+  assert.match(source, /opening-sidebar-progress-ring/);
+  assert.match(source, /style=\{\{ "--progress": `\$\{getOpeningConditionAgentTaskProgress\(task\)\}%` \} as CSSProperties\}/);
+  assert.match(styles, /\.opening-sidebar-progress-ring[\s\S]*conic-gradient/);
+  assert.match(source, /"task\.created": "创建审核任务"/);
+  assert.match(source, /"matching\.started": "执行资料匹配"/);
+  assert.match(source, /"human_review\.waiting": "等待人工复核"/);
+  assert.match(source, /待人工处理/);
+  assert.match(source, /已完成/);
+  assert.match(source, /进行中/);
+  assert.match(source, /const \[progressPaneCollapsed, setProgressPaneCollapsed\] = useState\(false\);/);
+  assert.match(source, /is-focused-mode/);
+  assert.match(source, /is-progress-collapsed/);
+  assert.match(source, /收起进度/);
+  assert.match(source, /展开进度/);
+  assert.match(styles, /\.opening-agent-detail\.is-focused-mode/);
+  assert.match(styles, /\.opening-agent-detail\.is-progress-collapsed/);
+  assert.match(styles, /\.opening-agent-detail\.is-focused-mode \.opening-agent-progress-pane[\s\S]*display: none/);
+  assert.match(source, /function buildOpeningConditionAgentReviewReasonLines/);
+  assert.match(source, /当前核查模式：资料完整性/);
+  assert.match(source, /需要人工审核原因/);
+  assert.match(source, /opening-agent-review-reason-list/);
+  assert.match(styles, /\.opening-agent-review-reason-list/);
+  assert.match(source, /平台正在准备最终 Markdown 报告/);
+  assert.match(source, /辅助诊断/);
+});
+
 test("UI smoke keeps basis as context and packet files as evidence candidates", async () => {
   const storeSource = await readFile(pilotStoreSourcePath, "utf8");
 
@@ -362,6 +392,6 @@ test("UI smoke protects centered agent home, derived preview preference, and act
   assert.match(source, /hasDerivedAsset/);
   assert.match(source, /sourceArchiveStorageKey/);
   assert.match(source, /sourceArchiveFileName/);
-  assert.match(appSource, /setOpeningPilotAllTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, result\.task\)\);/);
-  assert.match(appSource, /setOpeningPilotWorkspaceTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, result\.task\)\);/);
+  assert.match(appSource, /setOpeningPilotAllTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, nextTask\)\);/);
+  assert.match(appSource, /setOpeningPilotWorkspaceTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, nextTask\)\);/);
 });
