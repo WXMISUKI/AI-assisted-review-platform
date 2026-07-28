@@ -110,6 +110,15 @@ export const config = {
     retrievalPath: normalizeProviderString(process.env.MAXKB_RETRIEVAL_PATH || "", "/api/knowledge/:knowledgeId/search", 220),
     timeoutMs: normalizePositiveInteger(process.env.MAXKB_TIMEOUT_MS, 5000, 60_000),
   },
+  aiGateway: {
+    routingConfigPath: normalizeProviderString(process.env.AI_GATEWAY_ROUTING_CONFIG_PATH || "", "", 500),
+    routingDataId: normalizeProviderString(
+      process.env.AI_GATEWAY_ROUTING_DATA_ID || "",
+      "ai-gateway-app-routing.yaml",
+      180,
+    ),
+    routingGroup: normalizeProviderString(process.env.AI_GATEWAY_ROUTING_GROUP || "", "AI_GATEWAY", 120),
+  },
   knowledgeProvider: selectedKnowledgeProvider,
   agentService: {
     baseURL: normalizeBaseURL(process.env.AGENT_SERVICE_BASE_URL || ""),
@@ -224,6 +233,16 @@ export function getSafeProviderStatus() {
           : config.knowledgeProvider === "ragflow"
             ? "RAGFlow is selected as the knowledge-base provider."
             : "Mock knowledge-base provider is selected for local development.",
+    },
+    aiGateway: {
+      configured: Boolean(config.aiGateway.routingConfigPath),
+      routingConfigPath: Boolean(config.aiGateway.routingConfigPath),
+      routingDataId: config.aiGateway.routingDataId,
+      routingGroup: config.aiGateway.routingGroup,
+      status: normalizeProviderStatus(config.aiGateway.routingConfigPath ? "provisional" : "disabled", "disabled"),
+      summary: config.aiGateway.routingConfigPath
+        ? "AI gateway routing config path is configured; use routing status for app-level readiness."
+        : "AI gateway routing config is disabled. Set AI_GATEWAY_ROUTING_CONFIG_PATH to validate a Nacos routing YAML export.",
     },
     agentService: {
       configured: Boolean(config.agentService.baseURL),

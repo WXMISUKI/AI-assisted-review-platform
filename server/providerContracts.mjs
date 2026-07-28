@@ -39,7 +39,12 @@ export function sanitizeProviderValue(value, maxStringLength = 2000) {
 
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => !unsafeKeyPattern.test(key))
+      .filter(([key, nestedValue]) => {
+        if (!unsafeKeyPattern.test(key)) {
+          return true;
+        }
+        return /^has[A-Z].*/.test(key) && typeof nestedValue === "boolean";
+      })
       .map(([key, nestedValue]) => [key, sanitizeProviderValue(nestedValue, maxStringLength)]),
   );
 }

@@ -71,7 +71,7 @@ const visualAssertionTypes = new Set(["stamp", "signature", "checkbox", "handwri
 const visualAssertionStatuses = new Set(["detected", "missing", "uncertain", "confirmed", "rejected", "not_required"]);
 const knowledgeBaseStatusValues = new Set(["draft", "ready", "needs_review", "archived"]);
 const basisPreviewStatusValues = new Set(["needs_confirmation", "confirmed", "rejected", "published"]);
-const packetContentFactStatuses = new Set(["ready", "partial", "unsupported", "failed"]);
+const packetContentFactStatuses = new Set(["pending", "ready", "partial", "unsupported", "failed"]);
 const retrievalDiagnosticStatuses = new Set(["supporting", "conflicting", "uncertain", "unavailable"]);
 
 let writeQueue = Promise.resolve();
@@ -266,6 +266,137 @@ function normalizePacketContentFact(value, index = 0) {
     providerScore: Number.isFinite(score) ? Math.max(0, Math.min(score, 1)) : undefined,
     extractedAt: normalizeString(value.extractedAt, new Date().toISOString(), 80),
   });
+}
+
+function getPacketContentFactIdentityKeys(fact = {}) {
+  return [
+    fact.packetEntryId ? `entry:${fact.packetEntryId}` : "",
+    fact.derivedObjectId ? `object:${fact.derivedObjectId}` : "",
+    fact.sourceObjectId ? `object:${fact.sourceObjectId}` : "",
+    fact.relativePath ? `file:${normalizeMatchText(fact.relativePath)}` : "",
+    fact.fileName ? `file:${normalizeMatchText(fact.fileName)}` : "",
+  ].filter(Boolean);
+}
+
+function buildPacketContentFactMap(contentFacts = []) {
+  const map = new Map();
+  for (const fact of contentFacts) {
+    for (const key of getPacketContentFactIdentityKeys(fact)) {
+      if (!map.has(key)) {
+        map.set(key, fact);
+      }
+    }
+  }
+  return map;
+}
+
+function derivePacketContentFactFromInventoryEntry(entry, sourceObjectMap, index = 0) {
+  const sourceObject = entry.sourceObjectId ? sourceObjectMap.get(entry.sourceObjectId) : null;
+  const standaloneObject = entry.derivedObjectRef ?? (entry.assetizationStatus === "source_object_fallback" ? sourceObject : null);
+  const hasStandalonePreviewAsset = Boolean(standaloneObject?.storageKey);
+  const safeSummary = normalizeString(entry.summary ?? standaloneObject?.summary ?? sourceObject?.summary, "", 800);
+  const status = hasStandalonePreviewAsset ? (safeSummary ? "partial" : "pending") : "unsupported";
+
+  return normalizePacketContentFact(
+    {
+      id: `packet-content-${entry.id}`,
+      packetEntryId: entry.id,
+      sourceObjectId: entry.sourceObjectId,
+      derivedObjectId: standaloneObject?.objectId,
+      fileName: entry.fileName,
+      relativePath: entry.relativePath,
+      status,
+      extractor: hasStandalonePreviewAsset ? "platform_packet_content_placeholder_v1" : "platform_manifest_only_placeholder_v1",
+      safeSummary: safeSummary || (hasStandalonePreviewAsset ? entry.fileName : "Manifest-only packet entry without standalone preview asset."),
+      snippets: safeSummary ? [safeSummary] : [],
+      locators: [entry.relativePath ?? entry.fileName].filter(Boolean),
+      confidence: safeSummary ? "medium" : "low",
+    },
+    index,
+  );
+}
+
+function initializePacketContentFacts(packet) {
+  const explicitFacts = Array.isArray(packet?.contentFacts)
+    ? packet.contentFacts.map((item, index) => normalizePacketContentFact(item, index)).filter(Boolean)
+    : [];
+  const factMap = buildPacketContentFactMap(explicitFacts);
+  const sourceObjectMap = new Map((packet?.sourceObjects ?? []).map((item) => [item.objectId, item]));
+  const generatedFacts = [];
+
+  for (const [index, entry] of (packet?.inventoryEntries ?? []).entries()) {
+    const generated = derivePacketContentFactFromInventoryEntry(entry, sourceObjectMap, index);
+    if (!generated) {
+      continue;
+    }
+    const hasExisting = getPacketContentFactIdentityKeys(generated).some((key) => factMap.has(key));
+    if (!hasExisting) {
+      generatedFacts.push(generated);
+      for (const key of getPacketContentFactIdentityKeys(generated)) {
+        factMap.set(key, generated);
+      }
+    }
+  }
+
+  return [...explicitFacts, ...generatedFacts].slice(0, MAX_PACKET_CONTENT_FACTS);
+}
+
+function mergePacketContentFacts(existingFacts = [], incomingFacts = []) {
+  const merged = [...existingFacts];
+  const keyToIndex = new Map();
+  merged.forEach((fact, index) => {
+    for (const key of getPacketContentFactIdentityKeys(fact)) {
+      if (!keyToIndex.has(key)) {
+        keyToIndex.set(key, index);
+      }
+    }
+  });
+
+  let updatedCount = 0;
+  let insertedCount = 0;
+  for (const incoming of incomingFacts) {
+    const normalized = normalizePacketContentFact(incoming, merged.length + insertedCount);
+    if (!normalized) {
+      continue;
+    }
+    const existingIndex = getPacketContentFactIdentityKeys(normalized)
+      .map((key) => keyToIndex.get(key))
+      .find((index) => Number.isInteger(index));
+    if (Number.isInteger(existingIndex)) {
+      merged[existingIndex] = normalizePacketContentFact(
+        {
+          ...merged[existingIndex],
+          ...normalized,
+          id: merged[existingIndex].id,
+          packetEntryId: normalized.packetEntryId ?? merged[existingIndex].packetEntryId,
+          sourceObjectId: normalized.sourceObjectId ?? merged[existingIndex].sourceObjectId,
+          derivedObjectId: normalized.derivedObjectId ?? merged[existingIndex].derivedObjectId,
+          fileName: normalized.fileName ?? merged[existingIndex].fileName,
+          relativePath: normalized.relativePath ?? merged[existingIndex].relativePath,
+          provider: normalized.provider ?? merged[existingIndex].provider,
+          providerJobId: normalized.providerJobId ?? merged[existingIndex].providerJobId,
+          providerDocumentId: normalized.providerDocumentId ?? merged[existingIndex].providerDocumentId,
+          providerChunkId: normalized.providerChunkId ?? merged[existingIndex].providerChunkId,
+          providerScore: normalized.providerScore ?? merged[existingIndex].providerScore,
+        },
+        existingIndex,
+      );
+      updatedCount += 1;
+    } else if (merged.length < MAX_PACKET_CONTENT_FACTS) {
+      merged.push(normalized);
+      const nextIndex = merged.length - 1;
+      for (const key of getPacketContentFactIdentityKeys(normalized)) {
+        keyToIndex.set(key, nextIndex);
+      }
+      insertedCount += 1;
+    }
+  }
+
+  return {
+    contentFacts: merged.slice(0, MAX_PACKET_CONTENT_FACTS),
+    updatedCount,
+    insertedCount,
+  };
 }
 
 function derivePacketInventoryEntryFromSourceObject(objectRef, index = 0) {
@@ -1286,21 +1417,23 @@ function normalizePacket(value, taskId, workspaceId, options = {}) {
     return undefined;
   }
 
-  return {
+  const packet = {
     id,
     taskId,
     workspaceId,
     checklistObject,
     sourceObjects,
     inventoryEntries,
-    contentFacts: Array.isArray(value.contentFacts)
-      ? value.contentFacts
-          .map((item, index) => normalizePacketContentFact(item, index))
-          .filter(Boolean)
-          .slice(0, MAX_PACKET_CONTENT_FACTS)
-      : [],
     submittedAt: normalizeString(value.submittedAt, new Date().toISOString(), 80),
     submittedBy: normalizeString(value.submittedBy, "pilot-user", 160),
+  };
+
+  return {
+    ...packet,
+    contentFacts: initializePacketContentFacts({
+      ...packet,
+      contentFacts: value.contentFacts,
+    }),
   };
 }
 
@@ -1693,7 +1826,7 @@ function evaluatePacketContentSupport(checklistItem, candidate, contentFactIndex
     };
   }
 
-  if (fact.status === "unsupported" || fact.status === "failed") {
+  if (fact.status === "pending" || fact.status === "unsupported" || fact.status === "failed") {
     return {
       status: fact.status,
       confidence: "low",
@@ -1703,6 +1836,7 @@ function evaluatePacketContentSupport(checklistItem, candidate, contentFactIndex
   }
 
   const contentText = normalizeMatchText([fact.safeSummary, ...(fact.snippets ?? []), ...(fact.locators ?? [])].join(" "));
+  const sourceText = [fact.safeSummary, ...(fact.snippets ?? []), ...(fact.locators ?? [])].join(" ");
   const matchedHints = (checklistItem.expectedEvidenceHints ?? [])
     .map((hint) => normalizeString(hint, "", 120))
     .filter(Boolean)
@@ -1710,6 +1844,22 @@ function evaluatePacketContentSupport(checklistItem, candidate, contentFactIndex
       const normalizedHint = normalizeMatchText(hint);
       return Boolean(contentText && normalizedHint && (contentText.includes(normalizedHint) || normalizedHint.includes(contentText)));
     });
+
+  const negatedHints = matchedHints.filter((hint) => {
+    const escapedHint = hint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:不包含|未包含|不含|缺少|未见|无法证明|不是).{0,20}${escapedHint}|${escapedHint}.{0,20}(?:缺失|不符|无效|不能作为)`, "u").test(
+      sourceText,
+    );
+  });
+  if (negatedHints.length > 0) {
+    return {
+      status: "mismatch",
+      confidence: fact.confidence ?? "medium",
+      fact,
+      negatedHints,
+      note: `逐文件内容事实提到 ${negatedHints.slice(0, 3).join("、")}，但语义为缺失或不支持。`,
+    };
+  }
 
   if (matchedHints.length > 0) {
     return {
@@ -1806,17 +1956,25 @@ function getChecklistReviewText(checklistItem) {
   );
 }
 
+function hasFieldOnlyReviewKeyword(text) {
+  return /现场核查|现场检查|现场确认|应急响应|应急演练|应急处置|现场观测|到场/.test(text);
+}
+
+function hasMaterialReviewKeyword(text) {
+  return /资料核查|资料|报审|证书|合同|方案|许可|台账|报告|记录|审批|备案|文件|清单|资质|许可证/.test(text);
+}
+
 function isChecklistDefinitionInCurrentMvpScope(checklistItem) {
   const text = getChecklistReviewText(checklistItem);
   if (!text) {
     return false;
   }
 
-  if (/鐜板満鏍告煡|鐜板満妫€鏌鐜板満纭|鏃犻渶鐜板満|鍒板満/.test(text)) {
+  if (hasFieldOnlyReviewKeyword(text)) {
     return false;
   }
 
-  return /璧勬枡鏍告煡|璧勬枡|鎶ュ|璇佷功|鍚堝悓|鏂规|璁稿彲|鍙版湳|鎶ュ憡|鍙拌处|褰卞儚|鏂囦欢/.test(text);
+  return hasMaterialReviewKeyword(text);
 }
 
 function isOutOfScopeChecklistItem(checklistItem) {
@@ -1825,7 +1983,7 @@ function isOutOfScopeChecklistItem(checklistItem) {
   }
 
   const text = getChecklistReviewText(checklistItem);
-  return /现场核查|现场检查|现场确认|应急响应|应急演练|应急处置|现场观测/.test(text);
+  return hasFieldOnlyReviewKeyword(text);
 }
 
 function isResourceChecklistItem(checklistItem) {
@@ -1892,7 +2050,21 @@ function buildVisualAssertions(checklistItem, matches, evidenceIds) {
   ];
 }
 
-function buildSemanticNote(checklistItem, matches, verdict) {
+function buildSemanticNote(checklistItem, matches, verdict, contentEvaluations = [], retrievalSummary = summarizeRetrievalDiagnostics(checklistItem)) {
+  const contentNotes = contentEvaluations.map((evaluation) => evaluation.note).filter(Boolean);
+  if (retrievalSummary.hasConflict) {
+    return `依据/知识库检索与资料证据存在冲突：${retrievalSummary.note || "需要人工核对。"}`;
+  }
+  if (contentEvaluations.some((evaluation) => evaluation.status === "mismatch")) {
+    return contentNotes[0] || "文件名或清单命中，但逐文件内容事实没有证明其属于该核查材料。";
+  }
+  if (contentEvaluations.some((evaluation) => ["missing_fact", "pending", "unsupported", "failed"].includes(evaluation.status))) {
+    return contentNotes[0] || "候选文件尚无可用逐文件内容事实，不能仅凭文件名判断内容准确性。";
+  }
+  if (contentEvaluations.some((evaluation) => evaluation.status === "supported")) {
+    return contentNotes[0] || `逐文件内容事实支持“${checklistItem.name}”。`;
+  }
+
   if (matches.length > 1) {
     return `存在 ${matches.length} 个候选资料，需要人工确认最准确证据。`;
   }
@@ -5496,6 +5668,106 @@ export async function intakeOpeningConditionPilotPacket(taskId, input = {}, opti
   }, options.storePath);
 }
 
+export async function ingestOpeningConditionPilotPacketContentFacts(taskId, input = {}, options = {}) {
+  return mutateSnapshot((snapshot) => {
+    const index = snapshot.tasks.findIndex((task) => task.id === taskId);
+    if (index < 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "not_found",
+          message: "Opening-condition pilot task not found.",
+        },
+      };
+    }
+
+    const existingTask = snapshot.tasks[index];
+    if (!existingTask.packet) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "missing_packet",
+          message: "Packet content fact ingestion requires a submitted packet first.",
+        },
+      };
+    }
+
+    const incomingFacts = Array.isArray(input.contentFacts ?? input.facts ?? input.results)
+      ? input.contentFacts ?? input.facts ?? input.results
+      : [];
+    if (incomingFacts.length === 0) {
+      return {
+        snapshot,
+        value: {
+          ok: false,
+          status: "invalid_input",
+          message: "Provider ingestion requires at least one packet content fact.",
+        },
+      };
+    }
+
+    const providerDefaults = {
+      provider: normalizeString(input.provider, "", 80) || undefined,
+      providerJobId: normalizeString(input.providerJobId ?? input.jobId, "", 180) || undefined,
+    };
+    const mergeResult = mergePacketContentFacts(
+      existingTask.packet.contentFacts ?? [],
+      incomingFacts.map((item) => (isPlainObject(item) ? { ...providerDefaults, ...item } : item)),
+    );
+    const occurredAt = new Date().toISOString();
+    const sequence = existingTask.events.length + 1;
+    const event = normalizeEvent(
+      {
+        id: `oc-event-${taskId}-${sequence}`,
+        taskId,
+        sequence,
+        type: "packet.content_facts.ingested",
+        state: existingTask.state,
+        occurredAt,
+        message: "资料包逐文件内容事实已安全回填。",
+        progress: existingTask.state === "packet_uploaded" ? 40 : 60,
+        safeDiagnostics: {
+          provider: normalizeString(input.provider, "", 80) || undefined,
+          providerJobId: normalizeString(input.providerJobId ?? input.jobId, "", 180) || undefined,
+          receivedCount: incomingFacts.length,
+          updatedCount: mergeResult.updatedCount,
+          insertedCount: mergeResult.insertedCount,
+          contentFactCount: mergeResult.contentFacts.length,
+        },
+      },
+      taskId,
+      sequence,
+    );
+    const nextTask = normalizeOpeningConditionPilotTask({
+      ...existingTask,
+      packet: {
+        ...existingTask.packet,
+        contentFacts: mergeResult.contentFacts,
+      },
+      updatedAt: occurredAt,
+      events: [...existingTask.events, event],
+    });
+    const nextTasks = [...snapshot.tasks];
+    nextTasks[index] = nextTask;
+
+    return {
+      snapshot: {
+        ...snapshot,
+        tasks: nextTasks,
+      },
+      value: {
+        ok: true,
+        task: nextTask,
+        packet: nextTask.packet,
+        contentFacts: nextTask.packet.contentFacts,
+        event,
+      },
+    };
+  }, options.storePath);
+}
+
 export async function runOpeningConditionPilotChecklistMatch(taskId, input = {}, options = {}) {
   return mutateSnapshot((snapshot) => {
     const index = snapshot.tasks.findIndex((task) => task.id === taskId);
@@ -5603,7 +5875,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
       const contentSupported = contentEvaluations.some((evaluation) => evaluation.status === "supported");
       const contentMismatch = contentEvaluations.some((evaluation) => evaluation.status === "mismatch");
       const contentUnavailable = contentEvaluations.some((evaluation) =>
-        ["missing_fact", "unsupported", "failed"].includes(evaluation.status),
+        ["missing_fact", "pending", "unsupported", "failed"].includes(evaluation.status),
       );
       const retrievalSummary = summarizeRetrievalDiagnostics(item);
       const ambiguous = topMatches.length > 1;
@@ -5719,7 +5991,7 @@ export async function runOpeningConditionPilotChecklistMatch(taskId, input = {},
         ruleExplanation: missing
           ? "确定性规则未在资料包文件名或摘要中命中所需资料。"
           : `确定性规则命中 ${topMatches.length} 个候选资料。`,
-        semanticNote: buildSemanticNote(item, topMatches, verdict),
+        semanticNote: buildSemanticNote(item, topMatches, verdict, contentEvaluations, retrievalSummary),
         semanticMatch: {
           mode: hasPacketContentFacts ? "content_fact_semantic_match" : "filename_or_manifest_fallback",
           contentSupported,

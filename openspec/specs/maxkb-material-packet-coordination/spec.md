@@ -33,7 +33,7 @@ The MaxKB-side provider SHALL store and retrieve OCR-derived chunks with platfor
 - **THEN** the platform keeps its own facts authoritative and routes the conflict to human review
 
 ### Requirement: Provider-side packet endpoints
-The MaxKB-side OCR Worker / Provider Proxy SHOULD expose provider endpoints that accept platform file refs and metadata for batch OCR ingestion and retrieval-check without requiring the platform to hold MaxKB administrator credentials.
+The MaxKB-side OCR Worker / Provider Proxy SHALL expose provider endpoints that accept platform file refs and metadata for batch OCR ingestion and retrieval-check without requiring the platform to hold MaxKB administrator credentials.
 
 #### Scenario: Platform submits batch ingestion
 - **WHEN** the platform submits a material packet batch for provider processing
@@ -62,3 +62,16 @@ The provider coordination contract SHALL treat retrieval checks as checklist-ite
 - **WHEN** a provider returns retrieval-check output for a checklist item
 - **THEN** the platform records bounded hits and diagnostics linked to the item and related evidence
 - **AND** MaxKB does not own checklist conclusions, human decisions, or report status
+
+### Requirement: Provider ingestion is task-scoped
+The provider coordination contract SHALL submit packet content extraction results to a task-scoped platform endpoint.
+
+#### Scenario: Provider posts batch results
+- **WHEN** OCR Worker or MaxKB Provider Proxy completes batch processing for packet files
+- **THEN** it posts safe per-file facts to the platform task endpoint
+- **AND** the platform owns the task state, content-fact merge, checklist conclusions, human decisions, and reports
+
+#### Scenario: Provider reports unsupported files
+- **WHEN** a provider cannot process a packet file type
+- **THEN** it returns a safe unsupported status and reason
+- **AND** the platform records the unsupported fact and keeps affected checklist items eligible for human review

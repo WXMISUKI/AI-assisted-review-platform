@@ -187,6 +187,7 @@ test("HTTP smoke protects the opening-condition pilot delivery chain", async () 
           kind: "source_archive",
           fileName: "safety-officer-certificate.pdf",
           summary: "safety officer certificate for current contractor package",
+          storageKey: "uploads/safety-officer-certificate.pdf",
         },
       ],
       checklistItems: [
@@ -215,6 +216,35 @@ test("HTTP smoke protects the opening-condition pilot delivery chain", async () 
     assert.equal(intake.payload.ok, true);
     assert.equal(intake.payload.task.state, "packet_uploaded");
     assert.equal(intake.payload.preflightReadiness.status, "ready");
+    assert.equal(intake.payload.task.packet.contentFacts.length > 0, true);
+
+    const providerFacts = await requestJson(
+      baseUrl,
+      "POST",
+      "/api/opening-condition/pilot-tasks/task-http-run-1/packet/content-facts",
+      {
+        provider: "maxkb",
+        providerJobId: "job-http-1",
+        contentFacts: [
+          {
+            sourceObjectId: "source-http-1",
+            fileName: "safety-officer-certificate.pdf",
+            status: "ready",
+            safeSummary: "safety officer certificate for current contractor package",
+            rawText: "must redact",
+            privateUrl: "https://private.example/object",
+            providerDocumentId: "doc-http-1",
+            providerChunkId: "chunk-http-1",
+            providerScore: 0.92,
+          },
+        ],
+      },
+    );
+    assert.equal(providerFacts.statusCode, 200);
+    assert.equal(providerFacts.payload.ok, true);
+    assert.equal(providerFacts.payload.contentFacts[0].status, "ready");
+    assert.equal("rawText" in providerFacts.payload.contentFacts[0], false);
+    assert.equal("privateUrl" in providerFacts.payload.contentFacts[0], false);
 
     const matched = await requestJson(baseUrl, "POST", "/api/opening-condition/pilot-tasks/task-http-run-1/match", {});
     assert.equal(matched.statusCode, 200);

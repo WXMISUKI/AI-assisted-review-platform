@@ -19,6 +19,7 @@ import {
   deriveOpeningConditionPilotPreflightReadiness,
   generateOpeningConditionPilotReport,
   initializeOpeningConditionPilotTaskIntake,
+  ingestOpeningConditionPilotPacketContentFacts,
   intakeOpeningConditionPilotPacket,
   getOpeningConditionPilotTaskReadiness,
   listOpeningConditionPilotKnowledgeBases,
@@ -1060,7 +1061,7 @@ test("initializes packet inventory from ZIP manifest when a readable ZIP source 
 
     const matchResult = await runOpeningConditionPilotChecklistMatch("task-init-zip", {}, { storePath });
     assert.equal(matchResult.ok, true);
-    assert.equal(matchResult.checkItems[0].verdict, "needs_human_review");
+    assert.equal(matchResult.checkItems[0].verdict, "pass");
     assert.equal(matchResult.evidence[0].objectRef.storageKey?.startsWith("derived/"), true);
     assert.equal(matchResult.evidence[0].locator, "人员/专职安全员证书.txt");
   } finally {
@@ -1794,6 +1795,128 @@ test("matches against packet inventory entries before coarse source object names
   }
 });
 
+test("initializes packet content fact placeholders from packet inventory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-content-placeholder-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-content-placeholders", validTaskInput(), { storePath });
+    const intake = await intakeOpeningConditionPilotPacket(
+      "task-content-placeholders",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "opening-condition-checklist.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "evidence",
+            fileName: "business-license.pdf",
+            storageKey: "uploads/business-license.pdf",
+          },
+          {
+            objectId: "archive-1",
+            kind: "source_archive",
+            fileName: "packet.zip",
+          },
+        ],
+        inventoryEntries: [
+          {
+            id: "entry-ready",
+            sourceObjectId: "source-1",
+            fileName: "business-license.pdf",
+            relativePath: "business-license.pdf",
+            derivedObjectRef: {
+              objectId: "derived-ready",
+              kind: "evidence",
+              fileName: "business-license.pdf",
+              storageKey: "derived/business-license.pdf",
+            },
+          },
+          {
+            id: "entry-manifest",
+            sourceObjectId: "archive-1",
+            fileName: "manifest-only.pdf",
+            relativePath: "manifest-only.pdf",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(intake.ok, true);
+    assert.equal(intake.packet.contentFacts.length, 2);
+    assert.equal(intake.packet.contentFacts.find((item) => item.packetEntryId === "entry-ready").status, "pending");
+    assert.equal(intake.packet.contentFacts.find((item) => item.packetEntryId === "entry-manifest").status, "unsupported");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("merges provider packet content facts safely into existing placeholders", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-content-provider-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-provider-content", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-provider-content",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "opening-condition-checklist.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-1",
+            kind: "evidence",
+            fileName: "business-license.pdf",
+            storageKey: "uploads/business-license.pdf",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await ingestOpeningConditionPilotPacketContentFacts(
+      "task-provider-content",
+      {
+        provider: "maxkb",
+        providerJobId: "job-1",
+        contentFacts: [
+          {
+            sourceObjectId: "source-1",
+            fileName: "business-license.pdf",
+            status: "ready",
+            safeSummary: "business license content verified by provider",
+            rawText: "must redact",
+            privateUrl: "https://private.example/object",
+            providerDocumentId: "doc-1",
+            providerChunkId: "chunk-1",
+            providerScore: 0.91,
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.contentFacts.length, 1);
+    assert.equal(result.contentFacts[0].status, "ready");
+    assert.equal(result.contentFacts[0].provider, "maxkb");
+    assert.equal(result.contentFacts[0].safeSummary, "business license content verified by provider");
+    assert.equal("rawText" in result.contentFacts[0], false);
+    assert.equal("privateUrl" in result.contentFacts[0], false);
+    assert.equal(result.event.type, "packet.content_facts.ingested");
+    assert.equal(result.event.safeDiagnostics.updatedCount, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("uses packet content facts to support semantic material matching", async () => {
   const directory = await mkdtemp(join(tmpdir(), "oc-pilot-content-supported-"));
   const storePath = join(directory, "tasks.json");
@@ -1927,9 +2050,109 @@ test("routes filename-only packet matches to human review when content facts are
     assert.equal(result.ok, true);
     assert.equal(result.task.state, "awaiting_human_review");
     assert.equal(result.checkItems[0].verdict, "needs_human_review");
-    assert.equal(result.checkItems[0].semanticMatch.mode, "filename_or_manifest_fallback");
+    assert.equal(result.checkItems[0].semanticMatch.mode, "content_fact_semantic_match");
     assert.equal(result.checkItems[0].semanticMatch.contentUnavailable, true);
-    assert.match(result.humanReviewQueue[0].reason, /不能仅凭文件名判断内容准确性/);
+    assert.match(result.checkItems[0].semanticNote, /OCR|内容抽取|内容事实/);
+    assert.match(result.humanReviewQueue[0].reason, /\u4e0d\u80fd\u4ec5\u51ed\u6587\u4ef6\u540d/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("routes content-fact mismatches to human review and final markdown", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-content-mismatch-report-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-content-mismatch", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-content-mismatch",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.xlsx",
+        },
+        sourceObjects: [
+          {
+            objectId: "source-license",
+            kind: "evidence",
+            fileName: "施工单位营业执照.pdf",
+            storageKey: "uploads/license.pdf",
+          },
+        ],
+        inventoryEntries: [
+          {
+            id: "entry-license",
+            sourceObjectId: "source-license",
+            fileName: "施工单位营业执照.pdf",
+            relativePath: "人员/施工单位营业执照.pdf",
+            derivedObjectRef: {
+              objectId: "derived-license",
+              kind: "evidence",
+              fileName: "施工单位营业执照.pdf",
+              storageKey: "derived/license.pdf",
+            },
+          },
+        ],
+        contentFacts: [
+          {
+            id: "fact-license",
+            packetEntryId: "entry-license",
+            fileName: "施工单位营业执照.pdf",
+            status: "ready",
+            safeSummary: "该文件内容摘要显示为项目会议纪要，不包含营业执照登记信息。",
+            snippets: ["会议时间、会议地点、参会人员"],
+            confidence: "high",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const match = await runOpeningConditionPilotChecklistMatch(
+      "task-content-mismatch",
+      {
+        checklistItems: [
+          {
+            id: "item-license",
+            category: "资料核查",
+            subCategory: "资质",
+            name: "施工单位营业执照★",
+            required: true,
+            expectedEvidenceHints: ["营业执照", "登记信息"],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(match.ok, true);
+    assert.equal(match.task.state, "awaiting_human_review");
+    assert.equal(match.checkItems[0].semanticMatch.contentMismatch, true);
+    assert.match(match.checkItems[0].semanticNote, /逐文件内容|内容摘要|没有支撑/);
+    assert.match(match.humanReviewQueue[0].reason, /逐文件内容|内容摘要|没有证明/);
+
+    const decision = await decideOpeningConditionPilotHumanReviewItem(
+      "task-content-mismatch",
+      "hr-item-license",
+      {
+        decision: "correct",
+        actorId: "reviewer-1",
+        safeNote: "文件名疑似错误，当前资料不能作为施工单位营业执照采信。",
+      },
+      { storePath },
+    );
+    assert.equal(decision.ok, true);
+
+    await completeOpeningConditionPilotHumanReview("task-content-mismatch", { actorId: "reviewer-1" }, { storePath });
+    const report = await generateOpeningConditionPilotReport("task-content-mismatch", {}, { storePath });
+
+    assert.equal(report.ok, true);
+    assert.equal(report.reportAsset.packageDiagnostics.findings.length, 1);
+    assert.match(report.reportAsset.markdownContent, /施工单位营业执照/);
+    assert.match(report.reportAsset.markdownContent, /文件名疑似错误/);
+    assert.doesNotMatch(report.reportAsset.markdownContent, /\| - \| - \| 未发现不符合项/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

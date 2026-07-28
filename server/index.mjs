@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import Busboy from "busboy";
 import { config, getSafeProviderStatus } from "./config.mjs";
+import { getAiGatewayRoutingReadiness } from "./aiGatewayRouting.mjs";
 import { checkLlmConnectivity } from "./llmClient.mjs";
 import {
   checkMinioBucket,
@@ -55,6 +56,7 @@ import {
   initializeOpeningConditionPilotTaskIntake,
   ingestOpeningConditionPilotBasisProviderPreview,
   ingestOpeningConditionPilotMasterDataProviderPreview,
+  ingestOpeningConditionPilotPacketContentFacts,
   intakeOpeningConditionPilotPacket,
   bindOpeningConditionPilotKnowledgeBase,
   listOpeningConditionPilotHumanReviewItems,
@@ -265,6 +267,7 @@ export function createBackendServer(options = {}) {
         "POST /api/llm/check",
         "GET /api/ocr/status",
         "GET /api/knowledge-base/provider/status",
+        "GET /api/ai-gateway/routing/status",
         "GET /api/review-tasks",
           "GET /api/opening-condition/pilot-tasks",
           "GET /api/opening-condition/pilot-tasks/:taskId",
@@ -273,6 +276,7 @@ export function createBackendServer(options = {}) {
           "POST /api/opening-condition/pilot-tasks/intake-init",
           "POST /api/opening-condition/pilot-tasks/trial-bootstrap",
           "POST /api/opening-condition/pilot-tasks/:taskId/packet",
+          "POST /api/opening-condition/pilot-tasks/:taskId/packet/content-facts",
           "POST /api/opening-condition/pilot-tasks/:taskId/match",
           "GET /api/opening-condition/pilot-tasks/:taskId/human-review",
           "POST /api/opening-condition/pilot-tasks/:taskId/human-review/:reviewId/decision",
@@ -333,6 +337,7 @@ export function createBackendServer(options = {}) {
         timestamp: new Date().toISOString(),
         runtime: getRuntimeDiagnostics(),
         providers: getSafeProviderStatus(),
+        aiGateway: getAiGatewayRoutingReadiness(),
         knowledgeBaseProvider: await getKnowledgeBaseProviderReadiness(),
         agentService: await getAgentServiceReadiness(),
         queue: {
@@ -356,6 +361,11 @@ export function createBackendServer(options = {}) {
 
     if (request.method === "GET" && url.pathname === "/api/knowledge-base/provider/status") {
       sendJson(response, 200, await getKnowledgeBaseProviderReadiness());
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/ai-gateway/routing/status") {
+      sendJson(response, 200, getAiGatewayRoutingReadiness());
       return;
     }
 
@@ -685,6 +695,20 @@ export function createBackendServer(options = {}) {
       const body = await readJson(request);
       const result = await intakeOpeningConditionPilotPacket(
         decodeURIComponent(openingConditionPilotTaskPacketMatch[1]),
+        body,
+        openingConditionStoreOptions,
+      );
+      sendJson(response, result.ok ? 200 : result.status === "not_found" ? 404 : 400, result);
+      return;
+    }
+
+    const openingConditionPilotPacketContentFactsMatch = url.pathname.match(
+      /^\/api\/opening-condition\/pilot-tasks\/([^/]+)\/packet\/content-facts$/,
+    );
+    if (request.method === "POST" && openingConditionPilotPacketContentFactsMatch) {
+      const body = await readJson(request);
+      const result = await ingestOpeningConditionPilotPacketContentFacts(
+        decodeURIComponent(openingConditionPilotPacketContentFactsMatch[1]),
         body,
         openingConditionStoreOptions,
       );

@@ -504,6 +504,15 @@ export interface OpeningConditionPilotTaskDeleteResult {
   message?: string;
 }
 
+export interface OpeningConditionPilotPacketContentFactsResult {
+  ok: boolean;
+  status?: string;
+  task?: OpeningConditionPilotTask;
+  packet?: OpeningConditionPilotTask["packet"];
+  contentFacts?: NonNullable<OpeningConditionPilotTask["packet"]>["contentFacts"];
+  message?: string;
+}
+
 export interface OpeningConditionPilotReadinessResult {
   ok: boolean;
   taskId?: string;
@@ -991,6 +1000,7 @@ export async function intakeOpeningConditionPilotPacket(taskId: string, packet: 
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
   inventoryEntries?: NonNullable<OpeningConditionPilotTask["packet"]>["inventoryEntries"];
+  contentFacts?: NonNullable<OpeningConditionPilotTask["packet"]>["contentFacts"];
   submittedBy?: string;
 }) {
   const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/packet`, {
@@ -1003,12 +1013,31 @@ export async function intakeOpeningConditionPilotPacket(taskId: string, packet: 
   return readJson<OpeningConditionPilotTaskResult>(response);
 }
 
+export async function ingestOpeningConditionPilotPacketContentFacts(
+  taskId: string,
+  input: {
+    provider?: string;
+    providerJobId?: string;
+    contentFacts: NonNullable<OpeningConditionPilotTask["packet"]>["contentFacts"];
+  },
+) {
+  const response = await fetch(`/api/opening-condition/pilot-tasks/${encodeURIComponent(taskId)}/packet/content-facts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  return readJson<OpeningConditionPilotPacketContentFactsResult>(response);
+}
+
 export async function initializeOpeningConditionPilotIntake(input: {
   taskId: string;
   context: OpeningConditionPilotTask["context"];
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
   inventoryEntries?: NonNullable<OpeningConditionPilotTask["packet"]>["inventoryEntries"];
+  contentFacts?: NonNullable<OpeningConditionPilotTask["packet"]>["contentFacts"];
   checklistItems?: OpeningConditionPilotChecklistDefinitionItem[];
   basisVersionId?: string;
   knowledgeBaseId?: string;

@@ -152,6 +152,7 @@ export interface OpeningConditionPilotPacket {
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
   inventoryEntries: OpeningConditionPilotPacketInventoryEntry[];
+  contentFacts?: OpeningConditionPilotPacketContentFact[];
   submittedAt: string;
   submittedBy: string;
 }
@@ -173,6 +174,27 @@ export interface OpeningConditionPilotPacketInventoryEntry {
     | "zip_entry_read_failed"
     | "zip_entry_upload_failed"
     | "zip_entry_unsupported";
+}
+
+export interface OpeningConditionPilotPacketContentFact {
+  id: string;
+  packetEntryId?: string;
+  sourceObjectId?: string;
+  derivedObjectId?: string;
+  fileName?: string;
+  relativePath?: string;
+  status: "pending" | "ready" | "partial" | "unsupported" | "failed";
+  extractor: string;
+  safeSummary?: string;
+  snippets?: string[];
+  locators?: string[];
+  confidence: "high" | "medium" | "low";
+  provider?: string;
+  providerJobId?: string;
+  providerDocumentId?: string;
+  providerChunkId?: string;
+  providerScore?: number;
+  extractedAt?: string;
 }
 
 export interface OpeningConditionPilotEvidence {
