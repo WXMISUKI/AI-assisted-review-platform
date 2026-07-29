@@ -384,6 +384,9 @@ test("UI smoke keeps basis as context and packet files as evidence candidates", 
   assert.match(storeSource, /const sourceObjects = Array\.isArray\(input\.sourceObjects\)/);
   assert.match(storeSource, /sourceObject: basisObject/);
   assert.match(storeSource, /sourceObjects,/);
+  assert.match(storeSource, /const materialSourceObjects = \(packet\?\.sourceObjects \?\? \[\]\)\.filter/);
+  assert.match(storeSource, /item\?\.kind !== "basis" && item\?\.kind !== "checklist"/);
+  assert.match(storeSource, /candidate\.objectRef\.kind !== "basis" && candidate\.objectRef\.kind !== "checklist"/);
   assert.doesNotMatch(storeSource, /sourceObjects:\s*\[basisObject/);
 });
 
@@ -421,6 +424,12 @@ test("UI smoke keeps the default opening-condition home as one centered chat ent
   assert.match(source, /资料合规性（可选）/);
   assert.match(source, /const uploadDisabled = busy \|\| submitting \|\| !portalState\.canUploadNewRun;/);
   assert.match(source, /const submitDisabled = uploadDisabled \|\| missingRequiredFiles;/);
+  assert.match(source, /OpeningConditionAgentUploadDraft/);
+  assert.match(source, /const \[uploadDraft, setUploadDraft\] = useState<OpeningConditionAgentUploadDraft>/);
+  assert.match(source, /onBootstrapStart=\{handleAgentBootstrapStart\}/);
+  assert.match(source, /onBootstrapFailure=\{handleAgentBootstrapFailure\}/);
+  assert.match(source, /onUploadDraftChange=\{setUploadDraft\}/);
+  assert.match(source, /opening-upload-file-remove/);
   assert.match(source, /disabled=\{uploadDisabled\}/);
   assert.match(source, /disabled=\{submitDisabled\}/);
   assert.match(source, /selectedAgentTask && \(/);
@@ -429,6 +438,7 @@ test("UI smoke keeps the default opening-condition home as one centered chat ent
   assert.match(styles, /\.opening-agent-chat-input/);
   assert.match(styles, /\.opening-agent-chat-scope/);
   assert.match(styles, /\.opening-agent-modal \.opening-trial-upload-grid input::file-selector-button/);
+  assert.match(styles, /\.opening-upload-file-remove/);
   assert.doesNotMatch(source, /<div className="opening-agent-chat-context">/);
   assert.doesNotMatch(styles, /\.opening-agent-chat-context/);
 });
@@ -442,10 +452,17 @@ test("UI smoke protects centered agent home, derived preview preference, and act
   assert.match(styles, /\.opening-condition-page[\s\S]*margin: 0 auto/);
   assert.match(source, /\[\.\.\.\(pilotTask \? \[pilotTask\] : \[\]\), \.\.\.\(allPilotTasks \?\? \[\]\)\]/);
   assert.match(source, /const openReviewByTargetId = useMemo/);
+  assert.match(source, /key=\{`\$\{row\.id\}-\$\{row\.sequence\}-\$\{rowIndex\}`\}/);
+  assert.match(source, /key=\{`\$\{finding\.id\}-\$\{group\.id\}-\$\{findingIndex\}`\}/);
+  assert.match(source, /key=\{`\$\{finding\.id\}-\$\{findingIndex\}`\}/);
   assert.match(source, /assetizationStatus/);
   assert.match(source, /hasDerivedAsset/);
   assert.match(source, /sourceArchiveStorageKey/);
   assert.match(source, /sourceArchiveFileName/);
   assert.match(appSource, /setOpeningPilotAllTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, nextTask\)\);/);
   assert.match(appSource, /setOpeningPilotWorkspaceTasks\(\(tasks\) => upsertOpeningPilotTaskList\(tasks, nextTask\)\);/);
+  assert.match(appSource, /function buildPendingOpeningPilotUploadTask/);
+  assert.match(appSource, /handleOpeningTrialBootstrapStart/);
+  assert.match(appSource, /handleOpeningTrialBootstrapFailure/);
+  assert.match(appSource, /setOpeningPilotTask\(\(task\) => \(task\?\.id === taskId \? null : task\)\)/);
 });

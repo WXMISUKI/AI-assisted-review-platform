@@ -6,6 +6,7 @@ import {
   LoginPage,
   OpeningConditionWorkspaceShell,
   ProductLauncherPage,
+  type OpeningConditionAgentUploadStartContext,
 } from "./productWorkspacePages";
 import {
   archiveOpeningConditionPilotTask,
@@ -144,6 +145,90 @@ function isOpeningPilotBasisRecord(
 
 function upsertOpeningPilotTaskList(tasks: OpeningConditionPilotTask[], nextTask: OpeningConditionPilotTask) {
   return [nextTask, ...tasks.filter((task) => task.id !== nextTask.id)].sort(compareOpeningPilotTaskRecency);
+}
+
+function buildPendingOpeningPilotUploadTask(
+  packet: OpeningConditionReviewPacket,
+  context: OpeningConditionAgentUploadStartContext,
+): OpeningConditionPilotTask {
+  const workspace = packet.workspaceContext;
+  const now = new Date().toISOString();
+  return {
+    id: context.taskId,
+    context: {
+      workspaceId: packet.workspaceId,
+      tenantId: workspace.tenantName || "tenant-opening-condition",
+      projectId: workspace.projectId || workspace.projectName || packet.projectName,
+      reviewObjectId: workspace.reviewObjectId,
+      contractPackageId: workspace.contractPackage || "contract-package",
+      participatingOrganizationId: workspace.participatingOrganization || "organization",
+      participantEntityId: workspace.participantEntityId,
+    },
+    state: "draft",
+    reviewScope: context.reviewScope,
+    requiredMasterData: [],
+    checklistDefinition: [],
+    checkItems: [],
+    evidence: [],
+    humanReviewQueue: [],
+    trialPackage: {
+      taskId: context.taskId,
+      workspaceId: packet.workspaceId,
+      status: "draft",
+      submittedBy: context.submittedBy,
+      inputObjects: {
+        basisFileName: context.files.basisFile.name,
+        checklistFileName: context.files.checklistFile.name,
+        sourceFileNames: [context.files.packetFile.name],
+        sourceCount: 1,
+      },
+      diagnostics: {
+        checklistDefinitionCount: 0,
+        inventoryEntryCount: 0,
+        manifestSampleNames: [],
+      },
+      matching: {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        warnings: 0,
+        humanReview: 0,
+        evidenceCount: 0,
+      },
+      humanReview: {
+        total: 0,
+        blockingCount: 0,
+        confirmed: 0,
+        corrected: 0,
+        rejected: 0,
+        deferred: 0,
+      },
+      blockingReasons: ["资料正在上传并创建审核任务。"],
+      reportStatus: "missing",
+      archiveStatus: "pending",
+      updatedAt: now,
+    },
+    events: [
+      {
+        id: `${context.taskId}-pending-created`,
+        taskId: context.taskId,
+        sequence: 1,
+        type: "task.created",
+        state: "draft",
+        occurredAt: now,
+        message: "已创建本地审核任务占位，正在上传资料并启动智能体解析。",
+        progress: 5,
+        safeDiagnostics: {
+          basisFileName: context.files.basisFile.name,
+          checklistFileName: context.files.checklistFile.name,
+          packetFileName: context.files.packetFile.name,
+          optimistic: true,
+        },
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function isPersistedOpeningPilotObject(objectRef?: OpeningPilotPacketRef | null) {
@@ -1114,6 +1199,25 @@ export function App() {
     void refreshOpeningPilotTask(createdTask.id, { preserveStatus: true });
   }
 
+  function handleOpeningTrialBootstrapStart(context: OpeningConditionAgentUploadStartContext) {
+    const pendingTask = buildPendingOpeningPilotUploadTask(openingPacket, context);
+    setOpeningPage("workspace-context");
+    setOpeningPilotIntakeMode("default");
+    setOpeningPilotTask(pendingTask);
+    setOpeningPilotAllTasks((tasks) => upsertOpeningPilotTaskList(tasks, pendingTask));
+    setOpeningPilotWorkspaceTasks((tasks) => upsertOpeningPilotTaskList(tasks, pendingTask));
+    setOpeningPilotReadiness(null);
+    setOpeningPilotStatus(`核查任务已创建：${context.files.packetFile.name} 正在上传并解析。`);
+  }
+
+  function handleOpeningTrialBootstrapFailure(taskId: string, message: string) {
+    setOpeningPilotAllTasks((tasks) => tasks.filter((task) => task.id !== taskId));
+    setOpeningPilotWorkspaceTasks((tasks) => tasks.filter((task) => task.id !== taskId));
+    setOpeningPilotTask((task) => (task?.id === taskId ? null : task));
+    setOpeningPilotReadiness((readiness) => (readiness?.taskId === taskId ? null : readiness));
+    setOpeningPilotStatus(message);
+  }
+
   async function deleteOpeningPilotHistoryTask(taskId: string) {
     setOpeningPilotBusy(true);
     try {
@@ -1220,6 +1324,8 @@ export function App() {
       onDeletePilotTask={(taskId) => void deleteOpeningPilotHistoryTask(taskId)}
       onStartRectificationRerun={startOpeningRectificationRerun}
       onTrialBootstrapComplete={handleOpeningTrialBootstrapComplete}
+      onTrialBootstrapStart={handleOpeningTrialBootstrapStart}
+      onTrialBootstrapFailure={handleOpeningTrialBootstrapFailure}
       getNextOpeningPilotRunTaskId={() => getOpeningPilotRunTaskId(openingPacket)}
     />
   );

@@ -364,6 +364,23 @@ type OpeningConditionAgentDecisionLedgerStatus = {
   safeNote?: string;
 };
 
+export type OpeningConditionAgentUploadDraft = {
+  basisFile: File | null;
+  checklistFile: File | null;
+  packetFile: File | null;
+};
+
+export type OpeningConditionAgentUploadStartContext = {
+  taskId: string;
+  reviewScope: OpeningConditionPilotReviewScope;
+  submittedBy: string;
+  files: {
+    basisFile: File;
+    checklistFile: File;
+    packetFile: File;
+  };
+};
+
 type OpeningConditionIssueClosureSummary = {
   statusLabel: string;
   statusTone: ReportFinding["dispositionTone"];
@@ -640,8 +657,8 @@ function OpeningConditionReportRectificationDeliveryList({ rows }: { rows: Repor
           <span>依据</span>
           <span>整改要求</span>
         </div>
-        {rows.map((row) => (
-          <div key={row.id} className="opening-report-rectification-row" role="row">
+        {rows.map((row, rowIndex) => (
+          <div key={`${row.id}-${row.sequence}-${rowIndex}`} className="opening-report-rectification-row" role="row">
             <span className="opening-report-rectification-sequence">{row.sequence}</span>
             <div>
               <strong>{row.checkItem}</strong>
@@ -2965,6 +2982,8 @@ export function OpeningConditionWorkspaceShell({
   onDeletePilotTask,
   onStartRectificationRerun,
   onTrialBootstrapComplete,
+  onTrialBootstrapStart,
+  onTrialBootstrapFailure,
   getNextOpeningPilotRunTaskId,
 }: {
   roleLabel: string;
@@ -3013,6 +3032,8 @@ export function OpeningConditionWorkspaceShell({
   onDeletePilotTask?: (taskId: string) => void;
   onStartRectificationRerun?: () => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  onTrialBootstrapStart?: (context: OpeningConditionAgentUploadStartContext) => void;
+  onTrialBootstrapFailure?: (taskId: string, message: string) => void;
   getNextOpeningPilotRunTaskId?: () => string;
 }) {
   const activeNavLabel = openingWorkspacePageLabels[activePage] ?? openingWorkspacePageLabels["workspace-context"];
@@ -3211,6 +3232,8 @@ export function OpeningConditionWorkspaceShell({
               onGoToIntake={() => goToOpeningPage("material-intake")}
               onGoToPage={goToOpeningPage}
               onTrialBootstrapComplete={onTrialBootstrapComplete}
+              onTrialBootstrapStart={onTrialBootstrapStart}
+              onTrialBootstrapFailure={onTrialBootstrapFailure}
               getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
               selectedAgentTaskId={selectedAgentTaskId}
               onSelectAgentTask={(taskId) => {
@@ -3434,6 +3457,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onGoToIntake,
   onGoToPage,
   onTrialBootstrapComplete,
+  onTrialBootstrapStart,
+  onTrialBootstrapFailure,
   getNextOpeningPilotRunTaskId,
   selectedAgentTaskId,
   onSelectAgentTask,
@@ -3455,6 +3480,8 @@ function OpeningConditionObjectOverviewProductizedPage({
   onGoToIntake: () => void;
   onGoToPage: (page: OpeningConditionPortalPage) => void;
   onTrialBootstrapComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  onTrialBootstrapStart?: (context: OpeningConditionAgentUploadStartContext) => void;
+  onTrialBootstrapFailure?: (taskId: string, message: string) => void;
   getNextOpeningPilotRunTaskId?: () => string;
   selectedAgentTaskId?: string | null;
   onSelectAgentTask?: (taskId: string) => void;
@@ -3517,6 +3544,15 @@ function OpeningConditionObjectOverviewProductizedPage({
   const [agentReviewNote, setAgentReviewNote] = useState("");
   const [progressPaneCollapsed, setProgressPaneCollapsed] = useState(false);
   const [reviewPreviewOverrideFileId, setReviewPreviewOverrideFileId] = useState<string | null>(null);
+  const [uploadDraft, setUploadDraft] = useState<OpeningConditionAgentUploadDraft>({
+    basisFile: null,
+    checklistFile: null,
+    packetFile: null,
+  });
+
+  const clearUploadDraft = () => {
+    setUploadDraft({ basisFile: null, checklistFile: null, packetFile: null });
+  };
 
   useEffect(() => {
     setWorkbenchMode({ kind: "list" });
@@ -3656,6 +3692,17 @@ function OpeningConditionObjectOverviewProductizedPage({
     onCompleteHumanReview(agentReviewNote.trim() || undefined);
   }
 
+  function handleAgentBootstrapStart(context: OpeningConditionAgentUploadStartContext) {
+    setUploadModalOpen(false);
+    clearUploadDraft();
+    onTrialBootstrapStart?.(context);
+    onSelectAgentTask?.(context.taskId);
+  }
+
+  function handleAgentBootstrapFailure(taskId: string, message: string) {
+    onTrialBootstrapFailure?.(taskId, message);
+  }
+
   if (!selectedAgentTask) {
     return (
       <div className="opening-condition-page opening-agent-console opening-agent-chat-page">
@@ -3735,6 +3782,10 @@ function OpeningConditionObjectOverviewProductizedPage({
                   }
                   onTrialBootstrapComplete?.(result);
                 }}
+                onBootstrapStart={handleAgentBootstrapStart}
+                onBootstrapFailure={handleAgentBootstrapFailure}
+                uploadDraft={uploadDraft}
+                onUploadDraftChange={setUploadDraft}
                 reviewScope={complianceReviewRequested ? "completeness_and_compliance" : "completeness"}
                 getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
               />
@@ -4167,6 +4218,10 @@ function OpeningConditionObjectOverviewProductizedPage({
                 }
                 onTrialBootstrapComplete?.(result);
               }}
+              onBootstrapStart={handleAgentBootstrapStart}
+              onBootstrapFailure={handleAgentBootstrapFailure}
+              uploadDraft={uploadDraft}
+              onUploadDraftChange={setUploadDraft}
               reviewScope={complianceReviewRequested ? "completeness_and_compliance" : "completeness"}
               getNextOpeningPilotRunTaskId={getNextOpeningPilotRunTaskId}
             />
@@ -5828,8 +5883,8 @@ function OpeningConditionCheckTasksPage({
         </div>
       )}
       <div className="opening-record-list">
-        {rows.map((row) => (
-          <div key={row.id} className={row.id === focusedCheckItemId ? "opening-record-focused" : undefined}>
+        {rows.map((row, rowIndex) => (
+          <div key={`${row.id}-${rowIndex}`} className={row.id === focusedCheckItemId ? "opening-record-focused" : undefined}>
             <strong>{row.title}</strong>
             <span>{row.category} | {row.id}</span>
             <p>
@@ -6714,12 +6769,12 @@ function OpeningConditionReportDeliveryWorkbench({
                 <span className={`opening-report-chip tone-${group.tone}`}>{group.findings.length} 项</span>
               </div>
               <div className="opening-finding-group-list">
-                {group.findings.map((finding) => (
+                {group.findings.map((finding, findingIndex) => (
                   (() => {
                     const unresolvedReview = unresolvedReviewByTargetId.get(finding.id);
 
                     return (
-                      <div key={finding.id} className="opening-report-finding">
+                      <div key={`${finding.id}-${group.id}-${findingIndex}`} className="opening-report-finding">
                         <div className="opening-report-finding-header">
                           <strong>{finding.title}</strong>
                           <div className="opening-report-chip-row">
@@ -7151,8 +7206,8 @@ function OpeningConditionReportArchivePage({
             <span>{findings.length} 项需要持续跟踪</span>
             <p>以下内容用于本轮内部辅助意见和下一轮整改复审交接。</p>
           </div>
-          {findings.map((finding) => (
-            <div key={finding.id} className="opening-report-finding">
+          {findings.map((finding, findingIndex) => (
+            <div key={`${finding.id}-${findingIndex}`} className="opening-report-finding">
               <div className="opening-report-finding-header">
                 <strong>{finding.title}</strong>
                 <div className="opening-report-chip-row">
@@ -7464,6 +7519,10 @@ function OpeningConditionRealTrialIntakePanel({
   busy,
   submittedBy,
   onComplete,
+  onBootstrapStart,
+  onBootstrapFailure,
+  uploadDraft,
+  onUploadDraftChange,
   reviewScope = "completeness",
   getNextOpeningPilotRunTaskId,
 }: {
@@ -7473,15 +7532,34 @@ function OpeningConditionRealTrialIntakePanel({
   busy?: boolean;
   submittedBy: string;
   onComplete?: (result: OpeningConditionPilotIntakeInitResult) => void;
+  onBootstrapStart?: (context: OpeningConditionAgentUploadStartContext) => void;
+  onBootstrapFailure?: (taskId: string, message: string) => void;
+  uploadDraft?: OpeningConditionAgentUploadDraft;
+  onUploadDraftChange?: (draft: OpeningConditionAgentUploadDraft) => void;
   reviewScope?: OpeningConditionPilotReviewScope;
   getNextOpeningPilotRunTaskId?: () => string;
 }) {
-  const [basisFile, setBasisFile] = useState<File | null>(null);
-  const [checklistFile, setChecklistFile] = useState<File | null>(null);
-  const [packetFile, setPacketFile] = useState<File | null>(null);
+  const [localUploadDraft, setLocalUploadDraft] = useState<OpeningConditionAgentUploadDraft>({
+    basisFile: null,
+    checklistFile: null,
+    packetFile: null,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("选择合同依据、核查表和资料包后，可创建一条真实试点任务。");
   const isRectificationRerun = portalState.rerunUploadEnabled;
+  const activeUploadDraft = uploadDraft ?? localUploadDraft;
+  const basisFile = activeUploadDraft.basisFile;
+  const checklistFile = activeUploadDraft.checklistFile;
+  const packetFile = activeUploadDraft.packetFile;
+
+  function updateUploadDraft(patch: Partial<OpeningConditionAgentUploadDraft>) {
+    const nextDraft = { ...activeUploadDraft, ...patch };
+    if (onUploadDraftChange) {
+      onUploadDraftChange(nextDraft);
+    } else {
+      setLocalUploadDraft(nextDraft);
+    }
+  }
 
   async function handleBootstrap() {
     if (portalState.intakeReadOnly) {
@@ -7492,6 +7570,20 @@ function OpeningConditionRealTrialIntakePanel({
       setMessage("请先选择合同依据、核查表和资料包 ZIP。");
       return;
     }
+
+    const workspace = packet.workspaceContext;
+    const taskId = getNextOpeningPilotRunTaskId?.() ?? `oc-pilot-${packet.workspaceId}-run-${Date.now()}`;
+
+    onBootstrapStart?.({
+      taskId,
+      reviewScope,
+      submittedBy,
+      files: {
+        basisFile,
+        checklistFile,
+        packetFile,
+      },
+    });
 
     setSubmitting(true);
     setMessage(isRectificationRerun ? "正在上传整改复审资料并创建新一轮 run..." : "正在上传试点资料...");
@@ -7506,12 +7598,11 @@ function OpeningConditionRealTrialIntakePanel({
       const checklistObject = buildOpeningConditionObjectRefFromUpload(checklistUpload, "checklist", "trial-checklist");
       const sourceObject = buildOpeningConditionObjectRefFromUpload(packetUpload, "source_archive", "trial-material-zip");
       if (!basisObject || !checklistObject || !sourceObject) {
-        setMessage(basisUpload.message || checklistUpload.message || packetUpload.message || "试点资料上传失败，无法初始化任务。");
+        const failureMessage = basisUpload.message || checklistUpload.message || packetUpload.message || "试点资料上传失败，无法初始化任务。";
+        setMessage(failureMessage);
+        onBootstrapFailure?.(taskId, failureMessage);
         return;
       }
-
-      const workspace = packet.workspaceContext;
-      const taskId = getNextOpeningPilotRunTaskId?.() ?? `oc-pilot-${packet.workspaceId}-run-${Date.now()}`;
 
       const result = await bootstrapOpeningConditionPilotTrial({
         taskId,
@@ -7534,7 +7625,9 @@ function OpeningConditionRealTrialIntakePanel({
       });
 
       if (!result.ok || !result.task) {
-        setMessage(result.message ?? "单项目试点初始化失败。");
+        const failureMessage = result.message ?? "单项目试点初始化失败。";
+        setMessage(failureMessage);
+        onBootstrapFailure?.(taskId, failureMessage);
         return;
       }
 
@@ -7545,7 +7638,9 @@ function OpeningConditionRealTrialIntakePanel({
       );
       onComplete?.(result);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "单项目试点初始化失败。");
+      const failureMessage = error instanceof Error ? error.message : "单项目试点初始化失败。";
+      setMessage(failureMessage);
+      onBootstrapFailure?.(taskId, failureMessage);
     } finally {
       setSubmitting(false);
     }
@@ -7581,18 +7676,33 @@ function OpeningConditionRealTrialIntakePanel({
       <div className="opening-trial-upload-grid">
         <label>
           <span>合同/资质依据</span>
-          <input type="file" accept=".pdf,.doc,.docx" disabled={uploadDisabled} onChange={(event) => setBasisFile(event.target.files?.[0] ?? null)} />
+          <input type="file" accept=".pdf,.doc,.docx" disabled={uploadDisabled} onChange={(event) => updateUploadDraft({ basisFile: event.target.files?.[0] ?? null })} />
           <small>{basisFile ? `${basisFile.name} · ${formatFileSize(basisFile.size)}` : "例如：结构资质报审表及附件"}</small>
+          {basisFile ? (
+            <button type="button" className="opening-upload-file-remove" disabled={uploadDisabled} onClick={() => updateUploadDraft({ basisFile: null })}>
+              删除文件
+            </button>
+          ) : null}
         </label>
         <label>
           <span>资料核查表</span>
-          <input type="file" accept=".doc,.docx,.pdf" disabled={uploadDisabled} onChange={(event) => setChecklistFile(event.target.files?.[0] ?? null)} />
+          <input type="file" accept=".doc,.docx,.pdf" disabled={uploadDisabled} onChange={(event) => updateUploadDraft({ checklistFile: event.target.files?.[0] ?? null })} />
           <small>{checklistFile ? `${checklistFile.name} · ${formatFileSize(checklistFile.size)}` : "例如：承台施工条件核查表"}</small>
+          {checklistFile ? (
+            <button type="button" className="opening-upload-file-remove" disabled={uploadDisabled} onClick={() => updateUploadDraft({ checklistFile: null })}>
+              删除文件
+            </button>
+          ) : null}
         </label>
         <label>
           <span>核查资料包</span>
-          <input type="file" accept=".zip" disabled={uploadDisabled} onChange={(event) => setPacketFile(event.target.files?.[0] ?? null)} />
+          <input type="file" accept=".zip" disabled={uploadDisabled} onChange={(event) => updateUploadDraft({ packetFile: event.target.files?.[0] ?? null })} />
           <small>{packetFile ? `${packetFile.name} · ${formatFileSize(packetFile.size)}` : "上传 ZIP 后由后端提取 manifest"}</small>
+          {packetFile ? (
+            <button type="button" className="opening-upload-file-remove" disabled={uploadDisabled} onClick={() => updateUploadDraft({ packetFile: null })}>
+              删除文件
+            </button>
+          ) : null}
         </label>
       </div>
       <small>

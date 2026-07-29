@@ -343,6 +343,10 @@
   line-height: 1.5;
 }
 
+.opening-agent-modal .opening-upload-file-remove {
+  grid-column: 2;
+}
+
 .opening-agent-modal .opening-trial-upload-grid input::file-selector-button {
   margin-right: 10px;
   border: 1px solid var(--button-border);
@@ -2250,6 +2254,32 @@
   width: 100%;
   min-width: 0;
   color: var(--text-secondary);
+}
+
+.opening-upload-file-remove {
+  justify-self: start;
+  min-height: 30px;
+  border: 1px solid var(--button-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--button-bg);
+  color: var(--button-foreground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.opening-upload-file-remove:hover,
+.opening-upload-file-remove:focus-visible {
+  background: var(--button-hover-bg);
+  border-color: var(--button-hover-border);
+  color: var(--button-hover-foreground);
+}
+
+.opening-upload-file-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .opening-task-lane {

@@ -1724,11 +1724,18 @@ function getMatchScore(checklistItem, objectRef) {
 }
 
 function buildPacketMatchCandidates(packet) {
-  const sourceObjectMap = new Map((packet?.sourceObjects ?? []).map((item) => [item.objectId, item]));
+  const materialSourceObjects = (packet?.sourceObjects ?? []).filter((item) => item?.kind !== "basis" && item?.kind !== "checklist");
+  const sourceObjectMap = new Map(materialSourceObjects.map((item) => [item.objectId, item]));
   const inventoryEntries =
     Array.isArray(packet?.inventoryEntries) && packet.inventoryEntries.length > 0
-      ? packet.inventoryEntries
-      : derivePacketInventoryEntriesFromSourceObjects(packet?.sourceObjects ?? []);
+      ? packet.inventoryEntries.filter((entry) => {
+          if (entry.sourceObjectId) {
+            return sourceObjectMap.has(entry.sourceObjectId);
+          }
+          const derivedKind = entry.derivedObjectRef?.kind;
+          return derivedKind !== "basis" && derivedKind !== "checklist";
+        })
+      : derivePacketInventoryEntriesFromSourceObjects(materialSourceObjects);
 
   return inventoryEntries.map((entry) => {
     const sourceObject = entry.sourceObjectId ? sourceObjectMap.get(entry.sourceObjectId) : null;
@@ -1754,7 +1761,7 @@ function buildPacketMatchCandidates(packet) {
       }),
       hasStandalonePreviewAsset: Boolean(preferredObjectRef?.storageKey),
     };
-  });
+  }).filter((candidate) => candidate.objectRef.kind !== "basis" && candidate.objectRef.kind !== "checklist");
 }
 
 function buildPacketContentFactIndex(contentFacts = []) {

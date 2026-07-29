@@ -1885,6 +1885,88 @@ test("matches against packet inventory entries before coarse source object names
   }
 });
 
+test("does not use basis or checklist uploads as material evidence candidates", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-basis-not-evidence-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    await upsertOpeningConditionPilotTask("task-basis-boundary", validTaskInput(), { storePath });
+    await intakeOpeningConditionPilotPacket(
+      "task-basis-boundary",
+      {
+        checklistObject: {
+          objectId: "checklist-1",
+          kind: "checklist",
+          fileName: "开工条件核查表.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "basis-source",
+            kind: "basis",
+            fileName: "结构资质报审表及附件(1).pdf",
+            summary: "施工单位营业执照、资质证书、安全生产许可证。",
+          },
+          {
+            objectId: "checklist-source",
+            kind: "checklist",
+            fileName: "承台施工条件核查表.docx",
+            summary: "施工单位营业执照、资质证书、安全生产许可证。",
+          },
+          {
+            objectId: "packet-source",
+            kind: "source_archive",
+            fileName: "条件核查.zip",
+          },
+        ],
+        inventoryEntries: [
+          {
+            id: "basis-entry",
+            sourceObjectId: "basis-source",
+            fileName: "结构资质报审表及附件(1).pdf",
+            summary: "施工单位营业执照、资质证书、安全生产许可证。",
+          },
+          {
+            id: "checklist-entry",
+            sourceObjectId: "checklist-source",
+            fileName: "承台施工条件核查表.docx",
+            summary: "施工单位营业执照、资质证书、安全生产许可证。",
+          },
+          {
+            id: "packet-entry",
+            sourceObjectId: "packet-source",
+            fileName: "资料包/安全协议.pdf",
+            summary: "安全协议。",
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    const result = await runOpeningConditionPilotChecklistMatch(
+      "task-basis-boundary",
+      {
+        checklistItems: [
+          {
+            id: "item-license",
+            name: "施工单位营业执照、资质证书、安全生产许可证齐全",
+            expectedEvidenceHints: ["施工单位营业执照", "资质证书", "安全生产许可证"],
+            masterDataIds: [],
+          },
+        ],
+      },
+      { storePath },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.evidence.some((item) => item.objectRef.kind === "basis"), false);
+    assert.equal(result.evidence.some((item) => item.objectRef.kind === "checklist"), false);
+    assert.equal(result.checkItems[0].evidenceIds.length, 0);
+    assert.equal(result.checkItems[0].documentPresence, "missing");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("initializes packet content fact placeholders from packet inventory", async () => {
   const directory = await mkdtemp(join(tmpdir(), "oc-pilot-content-placeholder-"));
   const storePath = join(directory, "tasks.json");
