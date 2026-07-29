@@ -55,12 +55,30 @@ function getOpeningPilotTaskId(packet: OpeningConditionReviewPacket) {
 }
 
 function getOpeningPilotRunTaskId(packet: OpeningConditionReviewPacket) {
-  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
-  return `${getOpeningPilotTaskId(packet)}-run-${timestamp}`;
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 17);
+  const entropy =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `${getOpeningPilotTaskId(packet)}-run-${timestamp}-${entropy}`;
 }
 
 function isOpeningPilotTerminalState(state?: OpeningConditionPilotTask["state"] | null) {
   return state === "archived" || state === "failed" || state === "canceled";
+}
+
+function isOpeningPilotActiveWorkflowTask(task?: OpeningConditionPilotTask | null) {
+  if (!task || isOpeningPilotTerminalState(task.state)) {
+    return false;
+  }
+
+  if (task.state === "report_ready") {
+    return task.reportAsset?.status !== "ready";
+  }
+
+  return ["draft", "ready_for_packet", "packet_uploaded", "extracting", "matching", "awaiting_human_review"].includes(
+    task.state,
+  );
 }
 
 function compareOpeningPilotTaskRecency(left: OpeningConditionPilotTask, right: OpeningConditionPilotTask) {
@@ -212,6 +230,24 @@ export function App() {
 
     void refreshOpeningPilotTask(undefined, { resolveCurrentRun: true });
   }, [activeProduct, openingPacket.workspaceId]);
+
+  useEffect(() => {
+    const activeWorkflowTask = openingPilotTask;
+    if (
+      activeProduct !== "opening-condition-review" ||
+      !activeWorkflowTask ||
+      !isOpeningPilotActiveWorkflowTask(activeWorkflowTask)
+    ) {
+      return;
+    }
+
+    const activeTaskId = activeWorkflowTask.id;
+    const refreshTimer = window.setInterval(() => {
+      void refreshOpeningPilotTask(activeTaskId, { preserveStatus: true });
+    }, 2500);
+
+    return () => window.clearInterval(refreshTimer);
+  }, [activeProduct, openingPilotTask?.id, openingPilotTask?.state, openingPilotTask?.reportAsset?.status]);
 
   function toggleTheme() {
     setThemeMode((current) => (current === "light" ? "dark" : "light"));
@@ -1068,7 +1104,9 @@ export function App() {
         : null,
     );
     setOpeningPilotStatus(
-      `核查任务已创建：资料清单 ${result.packet?.inventoryEntries.length ?? 0} 项，当前状态 ${createdTask.state}`,
+      result.orchestration?.status === "background_started"
+        ? `核查任务已创建：资料清单 ${result.packet?.inventoryEntries.length ?? 0} 项，智能体正在后台推进核查。`
+        : `核查任务已创建：资料清单 ${result.packet?.inventoryEntries.length ?? 0} 项，当前状态 ${createdTask.state}`,
     );
     void refreshOpeningWorkspaceFacts(createdTask.context.workspaceId);
     void refreshOpeningWorkspaceTasks(createdTask.context.workspaceId);

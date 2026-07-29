@@ -1061,9 +1061,13 @@ export async function bootstrapOpeningConditionPilotTrial(input: {
   basisObject: OpeningConditionObjectRef;
   checklistObject: OpeningConditionObjectRef;
   sourceObjects: OpeningConditionObjectRef[];
+  checklistItems?: OpeningConditionPilotChecklistDefinitionItem[];
   submittedBy?: string;
   subcontractTeamId?: string;
   reviewScope?: OpeningConditionPilotReviewScope;
+  asyncWorkflow?: boolean;
+  asyncMatching?: boolean;
+  executionMode?: "sync" | "async";
 }) {
   const response = await fetch("/api/opening-condition/pilot-tasks/trial-bootstrap", {
     method: "POST",

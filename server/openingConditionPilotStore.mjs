@@ -75,6 +75,7 @@ const packetContentFactStatuses = new Set(["pending", "ready", "partial", "unsup
 const retrievalDiagnosticStatuses = new Set(["supporting", "conflicting", "uncertain", "unavailable"]);
 
 let writeQueue = Promise.resolve();
+const asyncTrialBootstrapMatchTaskIds = new Set();
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -5413,6 +5414,7 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
       requiredMasterDataIds: savedMasterData.map((item) => item.id),
       checklistObject,
       sourceObjects,
+      checklistItems: input.checklistItems,
       submittedBy,
       reviewScope: normalizeReviewScope(input.reviewScope),
     },
@@ -5421,6 +5423,35 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
 
   if (!intake.ok) {
     return intake;
+  }
+
+  if (input.asyncWorkflow === true || input.asyncMatching === true || input.executionMode === "async") {
+    scheduleOpeningConditionPilotAsyncMatch(taskId, options);
+    return {
+      ...intake,
+      task: intake.task,
+      packet: intake.task?.packet,
+      preflightReadiness: intake.task?.preflightReadiness ?? intake.preflightReadiness,
+      orchestration: sanitizeOpeningConditionPilotValue({
+        ok: true,
+        status: "background_started",
+        message: "Opening-condition checklist matching is continuing in the background.",
+        finalState: intake.task?.state,
+      }),
+      bootstrap: sanitizeOpeningConditionPilotValue({
+        taskId,
+        workspaceId: context.workspaceId,
+        basisId,
+        knowledgeBaseId,
+        masterDataIds: savedMasterData.map((item) => item.id),
+        sourceObjectCount: sourceObjects.length,
+        providerRefCount: providerRefs.length,
+        reviewScope: normalizeReviewScope(input.reviewScope),
+        knowledgeBaseResolution: reusableKnowledgeBase ? "reused_ready_workspace_kb" : "upserted_trial_kb",
+        nextHandoff:
+          "Platform task and packet facts are persisted; deterministic matching is running as an async continuation.",
+      }),
+    };
   }
 
   const orchestration = await runOpeningConditionPilotChecklistMatch(taskId, {}, options);
@@ -5455,6 +5486,50 @@ export async function bootstrapOpeningConditionPilotTrial(input = {}, options = 
         : "Packet intake is complete, but deterministic orchestration could not run. Inspect orchestration diagnostics before provider handoff.",
     }),
   };
+}
+
+function scheduleOpeningConditionPilotAsyncMatch(taskId, options = {}) {
+  if (!taskId || asyncTrialBootstrapMatchTaskIds.has(taskId)) {
+    return;
+  }
+
+  asyncTrialBootstrapMatchTaskIds.add(taskId);
+  setTimeout(async () => {
+    try {
+      const result = await runOpeningConditionPilotChecklistMatch(taskId, {}, options);
+      if (!result.ok) {
+        await transitionOpeningConditionPilotTask(
+          taskId,
+          "failed",
+          {
+            type: "task.failed",
+            message: result.message ?? "Async checklist matching failed.",
+            progress: 100,
+            safeDiagnostics: {
+              status: result.status ?? "matching_failed",
+            },
+          },
+          options,
+        );
+      }
+    } catch (error) {
+      await transitionOpeningConditionPilotTask(
+        taskId,
+        "failed",
+        {
+          type: "task.failed",
+          message: error instanceof Error ? error.message : "Async checklist matching failed.",
+          progress: 100,
+          safeDiagnostics: {
+            status: "exception",
+          },
+        },
+        options,
+      ).catch(() => undefined);
+    } finally {
+      asyncTrialBootstrapMatchTaskIds.delete(taskId);
+    }
+  }, 0);
 }
 
 export async function upsertOpeningConditionPilotTask(taskId, input, options = {}) {

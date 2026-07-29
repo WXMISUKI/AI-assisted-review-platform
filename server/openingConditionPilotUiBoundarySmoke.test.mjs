@@ -288,10 +288,15 @@ test("UI smoke keeps opening-condition task creation and deletion aligned with c
   const source = await readFile(workspacePagesSourcePath, "utf8");
 
   assert.match(appSource, /function handleOpeningTrialBootstrapComplete/);
+  assert.match(appSource, /function isOpeningPilotActiveWorkflowTask/);
+  assert.match(appSource, /window\.setInterval\(\(\) => \{/);
+  assert.match(appSource, /refreshOpeningPilotTask\(openingPilotTask\.id, \{ preserveStatus: true \}\)/);
+  assert.match(appSource, /crypto\.randomUUID\(\)\.slice\(0, 8\)/);
   assert.match(appSource, /if \(workspaceTasks\.length === 0\) \{\s+return null;\s+\}/);
   assert.match(appSource, /const fallbackTaskId = getOpeningPilotTaskId\(openingPacket\);/);
   assert.match(appSource, /resolvedTaskId === fallbackTaskId && !workspaceTasks\.some\(\(task\) => task\.id === resolvedTaskId\)/);
   assert.match(source, /const taskId = getNextOpeningPilotRunTaskId\?\.\(\) \?\? `oc-pilot-\$\{packet\.workspaceId\}-run-\$\{Date\.now\(\)\}`;/);
+  assert.match(source, /asyncWorkflow: true/);
   assert.doesNotMatch(source, /pilotTask\?\.id \?\? `oc-pilot-\$\{packet\.workspaceId\}`/);
   assert.match(appSource, /setOpeningPage\("workspace-context"\);/);
   assert.match(appSource, /setOpeningPilotTask\(createdTask\);/);

@@ -21,6 +21,7 @@ import {
   initializeOpeningConditionPilotTaskIntake,
   ingestOpeningConditionPilotPacketContentFacts,
   intakeOpeningConditionPilotPacket,
+  getOpeningConditionPilotTask,
   getOpeningConditionPilotTaskReadiness,
   listOpeningConditionPilotKnowledgeBases,
   listOpeningConditionPilotHumanReviewItems,
@@ -925,6 +926,95 @@ test("bootstraps a single-project trial with MaxKB refs and ZIP manifest invento
     assert.equal("privateUrl" in result.task.basisVersion.sourceObject, false);
     assert.equal("token" in result.task.packet.sourceObjects[0], false);
     assert.equal("token" in result.task.trialPackage, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("async trial bootstrap returns early and continues matching in the background", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "oc-pilot-trial-bootstrap-async-"));
+  const storePath = join(directory, "tasks.json");
+
+  try {
+    const result = await bootstrapOpeningConditionPilotTrial(
+      {
+        taskId: "task-trial-async-1",
+        context: validTaskInput().context,
+        basisObject: {
+          objectId: "basis-object-async-1",
+          kind: "basis",
+          fileName: "trial-basis.pdf",
+          storageKey: "basis.pdf",
+        },
+        checklistObject: {
+          objectId: "checklist-object-async-1",
+          kind: "checklist",
+          fileName: "鎵垮彴鏂藉伐鏉′欢鏍告煡琛?docx",
+          storageKey: "checklist.docx",
+        },
+        sourceObjects: [
+          {
+            objectId: "packet-object-async-1",
+            kind: "source_archive",
+            fileName: "trial-packet.zip",
+            storageKey: "packet.zip",
+          },
+        ],
+        checklistItems: [
+          {
+            id: "async-check-item-1",
+            category: "Documents",
+            subCategory: "Personnel",
+            name: "Async bootstrap safety officer material",
+            required: true,
+            expectedEvidenceHints: ["safety officer", "certificate"],
+            masterDataIds: [],
+          },
+        ],
+        knowledgeBaseProviderRef: {
+          provider: "maxkb",
+          id: "kb-provider-async",
+          datasetId: "kb-provider-async",
+          knowledgeId: "kb-provider-async",
+          syncStatus: "ready",
+        },
+        reviewScope: "completeness",
+        asyncWorkflow: true,
+      },
+      {
+        storePath,
+        readObjectBuffer: async () => ({
+          buffer: zipFixtureBuffer,
+        }),
+        uploadObjectBuffer: async ({ filename, contentType, buffer }) => ({
+          key: `derived/${filename}`,
+          contentType,
+          size: buffer.length,
+        }),
+      },
+    );
+
+    assert.equal(result.ok, true, JSON.stringify({ status: result.status, message: result.message, errors: result.errors }));
+    assert.equal(result.orchestration.status, "background_started");
+    assert.equal(result.task.state, "packet_uploaded");
+
+    let backgroundTask = result.task;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const refreshed = await getOpeningConditionPilotTask("task-trial-async-1", { storePath });
+      if (refreshed?.state && refreshed.state !== "packet_uploaded") {
+        backgroundTask = refreshed;
+        break;
+      }
+    }
+
+    assert.notEqual(backgroundTask.state, "packet_uploaded");
+    assert.ok(
+      ["matching", "awaiting_human_review", "report_ready"].includes(backgroundTask.state),
+      `unexpected async background state: ${backgroundTask.state}; last event: ${
+        backgroundTask.events.at(-1)?.message ?? "none"
+      }`,
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

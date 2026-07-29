@@ -7343,6 +7343,7 @@ function OpeningConditionRealTrialIntakePanel({
         subcontractTeamId: workspace.participantEntityId,
         submittedBy,
         reviewScope,
+        asyncWorkflow: true,
       });
 
       if (!result.ok || !result.task) {
