@@ -344,6 +344,26 @@ type OpeningConditionAgentContentFactDiagnostic = {
   sourceLabel: string;
 };
 
+type OpeningConditionAgentEvidenceSummary = {
+  id: string;
+  fileName: string;
+  locator: string;
+  extractedValue: string;
+  confidenceLabel: string;
+  masterDataLabel: string;
+  providerLabel: string;
+};
+
+type OpeningConditionAgentDecisionLedgerStatus = {
+  label: string;
+  tone: "success" | "warning" | "danger" | "info";
+  actionable: boolean;
+  summary: string;
+  reviewerLabel: string;
+  decidedAtLabel: string;
+  safeNote?: string;
+};
+
 type OpeningConditionIssueClosureSummary = {
   statusLabel: string;
   statusTone: ReportFinding["dispositionTone"];
@@ -389,6 +409,48 @@ const openingContentComplianceLabels: Record<string, string> = {
   partially_compliant: "部分可支持",
   non_compliant: "内容不支持",
   not_evaluated: "未完成内容判断",
+};
+
+const openingEvidenceConfidenceLabels: Record<OpeningConditionPilotEvidence["confidence"], string> = {
+  high: "高置信",
+  medium: "中置信",
+  low: "低置信",
+};
+
+const openingHumanReviewLedgerStatusLabels: Record<
+  OpeningConditionPilotHumanReviewItem["status"],
+  { label: string; tone: OpeningConditionAgentDecisionLedgerStatus["tone"]; actionable: boolean; summary: string }
+> = {
+  open: {
+    label: "等待人工复核",
+    tone: "warning",
+    actionable: true,
+    summary: "该核查项仍在人工复核节点，需要操作员给出接受、修正、延期或驳回结论。",
+  },
+  deferred: {
+    label: "延期处理",
+    tone: "warning",
+    actionable: true,
+    summary: "该核查项已被延期，但仍阻塞最终报告，需要继续补充人工判断。",
+  },
+  confirmed: {
+    label: "已人工确认",
+    tone: "success",
+    actionable: false,
+    summary: "该核查项已经形成通过类人工结论，当前详情仅用于回看决策依据。",
+  },
+  corrected: {
+    label: "已修正结论",
+    tone: "success",
+    actionable: false,
+    summary: "该核查项已经由人工修正并形成结论，当前详情仅用于回看决策依据。",
+  },
+  rejected: {
+    label: "已驳回整改",
+    tone: "danger",
+    actionable: false,
+    summary: "该核查项已经由人工驳回，当前详情仅用于回看决策依据。",
+  },
 };
 
 function buildReportRectificationDeliveryRows(findings: ReportFinding[]): ReportRectificationDeliveryRow[] {
@@ -1725,6 +1787,73 @@ function buildOpeningConditionAgentReviewReasonLines({
   }
 
   return lines;
+}
+
+function buildOpeningConditionAgentEvidenceSummaries(
+  task: OpeningConditionPilotTask | null | undefined,
+  reviewItem: OpeningConditionAgentReviewItem | null,
+): OpeningConditionAgentEvidenceSummary[] {
+  if (!task || !reviewItem) {
+    return [];
+  }
+
+  const evidenceById = new Map(task.evidence.map((item) => [item.id, item]));
+  return (reviewItem.evidenceIds ?? [])
+    .map((evidenceId) => evidenceById.get(evidenceId))
+    .filter((evidence): evidence is OpeningConditionPilotEvidence => Boolean(evidence))
+    .slice(0, 6)
+    .map((evidence) => {
+      const providerLabel =
+        evidence.providerHandoffs && evidence.providerHandoffs.length > 0
+          ? evidence.providerHandoffs
+              .slice(0, 2)
+              .map((handoff) => `${handoff.provider} / ${handoff.state}${handoff.summary ? `：${handoff.summary}` : ""}`)
+              .join("；")
+          : "无 provider 交接记录";
+
+      return {
+        id: evidence.id,
+        fileName: evidence.objectRef.fileName || evidence.objectRef.objectId || "未命名资料",
+        locator: evidence.locator || "未记录页码或段落定位",
+        extractedValue: evidence.extractedValue || "未记录结构化摘录",
+        confidenceLabel: openingEvidenceConfidenceLabels[evidence.confidence] ?? "置信度未记录",
+        masterDataLabel:
+          evidence.masterDataIds.length > 0 ? evidence.masterDataIds.slice(0, 4).join(" / ") : "未关联主依据/主数据",
+        providerLabel,
+      };
+    });
+}
+
+function buildOpeningConditionAgentDecisionLedgerStatus(
+  reviewQueueItem?: OpeningConditionPilotHumanReviewItem | null,
+): OpeningConditionAgentDecisionLedgerStatus {
+  if (!reviewQueueItem) {
+    return {
+      label: "无待处理决策",
+      tone: "info",
+      actionable: false,
+      summary: "当前核查项没有 open/deferred 人工复核记录，可能已经形成结论，或该项并非本轮阻塞项。",
+      reviewerLabel: "复核人未记录",
+      decidedAtLabel: "决策时间未记录",
+    };
+  }
+
+  const meta = openingHumanReviewLedgerStatusLabels[reviewQueueItem.status] ?? {
+    label: reviewQueueItem.status,
+    tone: "info" as const,
+    actionable: false,
+    summary: "平台已记录该人工复核状态。",
+  };
+
+  return {
+    label: meta.label,
+    tone: meta.tone,
+    actionable: meta.actionable,
+    summary: meta.summary,
+    reviewerLabel: reviewQueueItem.reviewerId ? `复核人：${reviewQueueItem.reviewerId}` : "复核人未记录",
+    decidedAtLabel: reviewQueueItem.decidedAt ? `决策时间：${reviewQueueItem.decidedAt}` : "决策时间未记录",
+    safeNote: reviewQueueItem.safeNote,
+  };
 }
 
 function normalizeOpeningConditionAgentMatchText(value: unknown) {
@@ -3480,6 +3609,9 @@ function OpeningConditionObjectOverviewProductizedPage({
     reviewQueueItem: activeReviewQueueItem,
     reviewScope: selectedReviewScope,
   });
+  const activeEvidenceSummaries = buildOpeningConditionAgentEvidenceSummaries(selectedAgentTask, activeReviewItem);
+  const activeDecisionLedgerStatus = buildOpeningConditionAgentDecisionLedgerStatus(activeReviewQueueItem);
+  const canSubmitActiveReviewDecision = Boolean(activeReviewQueueItem && activeDecisionLedgerStatus.actionable && !pilotBusy);
   const blockingReviewCount =
     selectedAgentTask?.humanReviewQueue.filter((item) => item.status === "open" || item.status === "deferred").length ?? 0;
   const canCompleteHumanReview = Boolean(
@@ -3510,7 +3642,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   }
 
   function submitWorkbenchReviewDecision(decision: "confirm" | "correct" | "reject" | "defer") {
-    if (!activeReviewQueueItem || !onReviewDecision) {
+    if (!activeReviewQueueItem || !activeDecisionLedgerStatus.actionable || pilotBusy || !onReviewDecision) {
       return;
     }
     onReviewDecision(activeReviewQueueItem.id, decision, agentReviewNote.trim() || undefined);
@@ -3747,6 +3879,55 @@ function OpeningConditionObjectOverviewProductizedPage({
                     </div>
                     {activeReviewQueueItem?.safeNote ? <small>当前记录：{activeReviewQueueItem.safeNote}</small> : null}
                   </div>
+                  <div className="opening-agent-evidence-card">
+                    <div className="opening-agent-content-facts-header">
+                      <div>
+                        <strong>关联证据摘要</strong>
+                        <p>来自当前平台任务的证据记录，用于辅助判断该核查项是否具备可接受资料。</p>
+                      </div>
+                    </div>
+                    {activeEvidenceSummaries.length > 0 ? (
+                      <div className="opening-agent-evidence-list">
+                        {activeEvidenceSummaries.map((evidence) => (
+                          <article key={evidence.id} className="opening-agent-evidence-row">
+                            <div className="opening-agent-content-fact-row-header">
+                              <span className="opening-report-chip tone-info">{evidence.confidenceLabel}</span>
+                              <strong>{evidence.fileName}</strong>
+                            </div>
+                            <p>{evidence.extractedValue}</p>
+                            <div className="opening-agent-evidence-meta">
+                              <small>定位：{evidence.locator}</small>
+                              <small>依据关联：{evidence.masterDataLabel}</small>
+                              <small>Provider：{evidence.providerLabel}</small>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="opening-agent-content-fact-empty">
+                        当前核查项没有平台证据记录。请结合核查表上下文、资料文档库预览和人工经验判断，不要将文件名匹配视为内容已经通过。
+                      </div>
+                    )}
+                  </div>
+                  <div className="opening-agent-decision-ledger-card">
+                    <div className="opening-agent-content-facts-header">
+                      <div>
+                        <strong>人工复核决策账本</strong>
+                        <p>{activeDecisionLedgerStatus.summary}</p>
+                      </div>
+                      <span className={`opening-review-status tone-${activeDecisionLedgerStatus.tone}`}>
+                        {activeDecisionLedgerStatus.label}
+                      </span>
+                    </div>
+                    <div className="opening-agent-decision-ledger-meta">
+                      <small>{activeDecisionLedgerStatus.reviewerLabel}</small>
+                      <small>{activeDecisionLedgerStatus.decidedAtLabel}</small>
+                      {activeDecisionLedgerStatus.safeNote ? <small>记录说明：{activeDecisionLedgerStatus.safeNote}</small> : null}
+                      {!activeDecisionLedgerStatus.actionable ? (
+                        <small>操作状态：当前项没有可提交的新决策，请返回列表处理其他 open/deferred 复核项。</small>
+                      ) : null}
+                    </div>
+                  </div>
                   <div className="opening-agent-content-facts-card">
                     <div className="opening-agent-content-facts-header">
                       <div>
@@ -3820,23 +4001,29 @@ function OpeningConditionObjectOverviewProductizedPage({
                     />
                   </label>
                   <div className="opening-agent-review-action-grid">
-                    <button type="button" className="primary" onClick={() => submitWorkbenchReviewDecision("confirm")} disabled={!activeReviewQueueItem || pilotBusy}>
+                    <button type="button" className="primary" onClick={() => submitWorkbenchReviewDecision("confirm")} disabled={!canSubmitActiveReviewDecision}>
                       接受
                     </button>
-                    <button type="button" className="secondary" onClick={() => submitWorkbenchReviewDecision("correct")} disabled={!activeReviewQueueItem || pilotBusy}>
+                    <button type="button" className="secondary" onClick={() => submitWorkbenchReviewDecision("correct")} disabled={!canSubmitActiveReviewDecision}>
                       修正后接受
                     </button>
-                    <button type="button" className="secondary" onClick={() => submitWorkbenchReviewDecision("defer")} disabled={!activeReviewQueueItem || pilotBusy}>
+                    <button type="button" className="secondary" onClick={() => submitWorkbenchReviewDecision("defer")} disabled={!canSubmitActiveReviewDecision}>
                       延后处理
                     </button>
-                    <button type="button" className="danger subtle" onClick={() => submitWorkbenchReviewDecision("reject")} disabled={!activeReviewQueueItem || pilotBusy}>
+                    <button type="button" className="danger subtle" onClick={() => submitWorkbenchReviewDecision("reject")} disabled={!canSubmitActiveReviewDecision}>
                       拒绝
                     </button>
                   </div>
-                  {!activeReviewQueueItem ? (
+                  {!canSubmitActiveReviewDecision ? (
                     <div className="opening-agent-review-summary-card muted">
-                      <strong>当前项无需新的人工决策</strong>
-                      <p>该核查项已经有结论，或当前没有待处理的人审阻塞项。你仍可以返回列表继续查看其他项。</p>
+                      <strong>{activeReviewQueueItem ? "当前项无需新的人工决策" : "当前项没有待处理的人审阻塞项"}</strong>
+                      <p>
+                        {pilotBusy
+                          ? "平台正在处理当前任务，请等待处理完成后再提交人工判断。"
+                          : activeDecisionLedgerStatus.actionable
+                            ? "当前项暂时不能提交操作，请确认任务状态和后端复核记录是否仍然有效。"
+                            : "该核查项已经有结论，或当前没有待处理的人审阻塞项。你仍可以返回列表继续查看其他项。"}
+                      </p>
                     </div>
                   ) : null}
                 </div>
