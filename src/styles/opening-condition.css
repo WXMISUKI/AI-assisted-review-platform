@@ -914,12 +914,38 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .opening-agent-content-fact-row-header strong {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text-primary);
+  flex: 1 1 180px;
+}
+
+.opening-agent-content-fact-preview-button {
+  min-height: 30px;
+  border: 1px solid var(--button-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--button-bg);
+  color: var(--button-foreground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.opening-agent-content-fact-preview-button:hover,
+.opening-agent-content-fact-preview-button:focus-visible {
+  background: var(--button-hover-bg);
+  border-color: var(--button-hover-border);
+  color: var(--button-hover-foreground);
 }
 
 .opening-agent-content-fact-empty {

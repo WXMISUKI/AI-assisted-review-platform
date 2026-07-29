@@ -334,6 +334,7 @@ type OpeningConditionAgentContentFact = NonNullable<NonNullable<OpeningCondition
 type OpeningConditionAgentContentFactDiagnostic = {
   id: string;
   fileName: string;
+  previewFileId?: string;
   statusLabel: string;
   statusTone: "success" | "warning" | "danger" | "info";
   confidenceLabel: string;
@@ -1217,6 +1218,7 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
     sourceArchiveStorageKey?: string;
     assetizationStatus?: "derived_object_ready" | "manifest_only" | "source_object_fallback";
     hasDerivedAsset?: boolean;
+    derivedObjectId?: string;
   }> = [];
   const basisObject = task.basisVersion?.sourceObject;
   if (basisObject) {
@@ -1273,6 +1275,7 @@ function buildOpeningConditionAgentMaterialFiles(task?: OpeningConditionPilotTas
       sourceArchiveStorageKey: sourceArchive?.storageKey,
       assetizationStatus: entry.assetizationStatus,
       hasDerivedAsset: Boolean(derivedObject?.storageKey),
+      derivedObjectId: derivedObject?.objectId,
     });
   }
   return files;
@@ -1741,12 +1744,59 @@ function findOpeningConditionAgentCheckItem(
   return task.checkItems.find((item) => item.id === reviewItem.targetId) ?? null;
 }
 
+function findOpeningConditionContentFactPreviewFileId({
+  fact,
+  files,
+  task,
+}: {
+  fact: OpeningConditionAgentContentFact;
+  files: OpeningConditionAgentMaterialFile[];
+  task: OpeningConditionPilotTask;
+}) {
+  const packetEntry = fact.packetEntryId
+    ? task.packet?.inventoryEntries.find((entry) => entry.id === fact.packetEntryId)
+    : undefined;
+  const normalizedFactFileName = normalizeOpeningConditionAgentMatchText(fact.fileName);
+  const normalizedFactPath = normalizeOpeningConditionAgentMatchText(fact.relativePath);
+  const normalizedEntryFileName = normalizeOpeningConditionAgentMatchText(packetEntry?.fileName);
+  const normalizedEntryPath = normalizeOpeningConditionAgentMatchText(packetEntry?.relativePath);
+
+  const match = files.find((file) => {
+    if (!file.storageKey && !file.hasDerivedAsset) {
+      return false;
+    }
+
+    const normalizedFileName = normalizeOpeningConditionAgentMatchText(file.fileName);
+    const normalizedFilePath = normalizeOpeningConditionAgentMatchText(file.relativePath);
+    const matchesObject =
+      file.id === fact.derivedObjectId ||
+      file.id === fact.sourceObjectId ||
+      file.derivedObjectId === fact.derivedObjectId ||
+      file.sourceObjectId === fact.sourceObjectId;
+    const matchesEntry =
+      Boolean(packetEntry) &&
+      (file.sourceObjectId === packetEntry?.sourceObjectId ||
+        file.derivedObjectId === packetEntry?.derivedObjectRef?.objectId ||
+        normalizedFileName === normalizedEntryFileName ||
+        normalizedFilePath === normalizedEntryPath);
+    const matchesFactName =
+      Boolean(normalizedFactFileName && normalizedFileName === normalizedFactFileName) ||
+      Boolean(normalizedFactPath && (normalizedFileName === normalizedFactPath || normalizedFilePath === normalizedFactPath));
+
+    return matchesObject || matchesEntry || matchesFactName;
+  });
+
+  return match?.id;
+}
+
 function buildOpeningConditionAgentContentFactDiagnostics({
   task,
   reviewItem,
+  files,
 }: {
   task?: OpeningConditionPilotTask | null;
   reviewItem: OpeningConditionAgentReviewItem | null;
+  files: OpeningConditionAgentMaterialFile[];
 }): OpeningConditionAgentContentFactDiagnostic[] {
   if (!task?.packet || !reviewItem) {
     return [];
@@ -1822,6 +1872,7 @@ function buildOpeningConditionAgentContentFactDiagnostics({
     return {
       id: fact.id,
       fileName: fact.relativePath || fact.fileName || "未命名资料",
+      previewFileId: findOpeningConditionContentFactPreviewFileId({ fact, files, task }),
       statusLabel: statusMeta.label,
       statusTone: statusMeta.tone,
       confidenceLabel: openingContentFactConfidenceLabels[fact.confidence] ?? "置信度未记录",
@@ -3336,10 +3387,12 @@ function OpeningConditionObjectOverviewProductizedPage({
   const [workbenchMode, setWorkbenchMode] = useState<OpeningConditionAgentWorkbenchMode>({ kind: "list" });
   const [agentReviewNote, setAgentReviewNote] = useState("");
   const [progressPaneCollapsed, setProgressPaneCollapsed] = useState(false);
+  const [reviewPreviewOverrideFileId, setReviewPreviewOverrideFileId] = useState<string | null>(null);
 
   useEffect(() => {
     setWorkbenchMode({ kind: "list" });
     setAgentReviewNote("");
+    setReviewPreviewOverrideFileId(null);
   }, [selectedAgentTaskId]);
 
   useEffect(() => {
@@ -3352,12 +3405,16 @@ function OpeningConditionObjectOverviewProductizedPage({
     if (workbenchMode.kind === "preview" && !agentMaterialFiles.some((file) => file.id === workbenchMode.fileId)) {
       setWorkbenchMode({ kind: "list" });
     }
-  }, [agentMaterialFiles, workbenchMode]);
+    if (reviewPreviewOverrideFileId && !agentMaterialFiles.some((file) => file.id === reviewPreviewOverrideFileId)) {
+      setReviewPreviewOverrideFileId(null);
+    }
+  }, [agentMaterialFiles, reviewPreviewOverrideFileId, workbenchMode]);
 
   useEffect(() => {
     if (workbenchMode.kind === "review" && !agentReviewItems.some((item) => item.id === workbenchMode.checkItemId)) {
       setWorkbenchMode({ kind: "list" });
       setAgentReviewNote("");
+      setReviewPreviewOverrideFileId(null);
     }
   }, [agentReviewItems, workbenchMode]);
 
@@ -3373,7 +3430,8 @@ function OpeningConditionObjectOverviewProductizedPage({
     workbenchMode.kind === "preview"
       ? agentMaterialFiles.find((file) => file.id === workbenchMode.fileId) ?? null
       : workbenchMode.kind === "review"
-        ? findOpeningConditionAgentPreviewFile(agentMaterialFiles, activeReviewItem, selectedAgentTask)
+        ? agentMaterialFiles.find((file) => file.id === reviewPreviewOverrideFileId) ??
+          findOpeningConditionAgentPreviewFile(agentMaterialFiles, activeReviewItem, selectedAgentTask)
         : null;
   const latestReviewByTargetId = useMemo(
     () =>
@@ -3412,6 +3470,7 @@ function OpeningConditionObjectOverviewProductizedPage({
   const activeContentFactDiagnostics = buildOpeningConditionAgentContentFactDiagnostics({
     task: selectedAgentTask,
     reviewItem: activeReviewItem,
+    files: agentMaterialFiles,
   });
   const activeSemanticMatch = "semanticMatch" in (activeCheckItem ?? {}) ? activeCheckItem?.semanticMatch : undefined;
   const activeContentCompliance =
@@ -3433,14 +3492,21 @@ function OpeningConditionObjectOverviewProductizedPage({
   function resetToListMode() {
     setWorkbenchMode({ kind: "list" });
     setAgentReviewNote("");
+    setReviewPreviewOverrideFileId(null);
   }
 
   function openFilePreview(fileId: string) {
     setWorkbenchMode({ kind: "preview", fileId });
+    setReviewPreviewOverrideFileId(null);
   }
 
   function openReviewDetail(checkItemId: string) {
     setWorkbenchMode({ kind: "review", checkItemId });
+    setReviewPreviewOverrideFileId(null);
+  }
+
+  function selectContentFactPreview(fileId: string) {
+    setReviewPreviewOverrideFileId(fileId);
   }
 
   function submitWorkbenchReviewDecision(decision: "confirm" | "correct" | "reject" | "defer") {
@@ -3712,20 +3778,32 @@ function OpeningConditionObjectOverviewProductizedPage({
                     ) : null}
                     {activeContentFactDiagnostics.length > 0 ? (
                       <div className="opening-agent-content-fact-list">
-                        {activeContentFactDiagnostics.map((fact) => (
-                          <article key={fact.id} className="opening-agent-content-fact-row">
-                            <div className="opening-agent-content-fact-row-header">
-                              <span className={`opening-review-status tone-${fact.statusTone}`}>{fact.statusLabel}</span>
-                              <strong>{fact.fileName}</strong>
-                            </div>
-                            <p>{fact.summary}</p>
-                            {fact.snippets.length > 0 ? <small>内容片段：{fact.snippets.join(" / ")}</small> : null}
-                            {fact.locators.length > 0 ? <small>定位：{fact.locators.join(" / ")}</small> : null}
-                            <small>
-                              来源：{fact.sourceLabel} · {fact.confidenceLabel}
-                            </small>
-                          </article>
-                        ))}
+                        {activeContentFactDiagnostics.map((fact) => {
+                          const previewFileId = fact.previewFileId;
+                          return (
+                            <article key={fact.id} className="opening-agent-content-fact-row">
+                              <div className="opening-agent-content-fact-row-header">
+                                <span className={`opening-review-status tone-${fact.statusTone}`}>{fact.statusLabel}</span>
+                                <strong>{fact.fileName}</strong>
+                                {previewFileId ? (
+                                  <button
+                                    type="button"
+                                    className="opening-agent-content-fact-preview-button"
+                                    onClick={() => selectContentFactPreview(previewFileId)}
+                                  >
+                                    预览此资料
+                                  </button>
+                                ) : null}
+                              </div>
+                              <p>{fact.summary}</p>
+                              {fact.snippets.length > 0 ? <small>内容片段：{fact.snippets.join(" / ")}</small> : null}
+                              {fact.locators.length > 0 ? <small>定位：{fact.locators.join(" / ")}</small> : null}
+                              <small>
+                                来源：{fact.sourceLabel} · {fact.confidenceLabel}
+                              </small>
+                            </article>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="opening-agent-content-fact-empty">

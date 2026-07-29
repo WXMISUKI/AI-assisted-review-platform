@@ -231,6 +231,18 @@ The opening-condition execution console SHALL display a compact content-verifica
 - **WHEN** the selected item has no content-fact diagnostics
 - **THEN** the console shows an empty-state message explaining that only filename or checklist-level evidence is available
 
+### Requirement: Focused review preview can follow content facts
+The opening-condition execution console SHALL support switching the focused review preview based on the selected content-fact diagnostic.
+
+#### Scenario: Operator selects a content-fact preview action
+- **WHEN** the operator is in focused human-review mode and selects a content-fact preview action
+- **THEN** the left preview pane switches to the linked material file
+- **AND** the right decision pane remains in the same checklist review item
+
+#### Scenario: Operator changes review context
+- **WHEN** the operator opens a different checklist item or returns to list mode
+- **THEN** any previous content-fact preview override is cleared
+
 ### Requirement: Review task workbench
 The opening-condition portal SHALL provide a task-list workbench as the primary MVP entry for pilot runs.
 
